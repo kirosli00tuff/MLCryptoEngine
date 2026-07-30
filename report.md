@@ -232,3 +232,73 @@ Channels: `heartbeats`: 24 · `l2_data`: 872 · `market_trades`: 98 · `subscrip
 | >30000 ms | 0 |
 
 p50 ≤ 50 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 237.729 ms
+
+## Validation run — 2026-07-30 19:57 UTC
+
+### coinbase — 2026-07-30 — **FAIL**
+
+- ✗ BTC-USD: coverage outside gaps 19.39% < 99.9%
+- ✗ ETH-USD: coverage outside gaps 19.39% < 99.9%
+
+Messages: **5882** · recorded span: 16753s · feed gaps in span: 0 (0 ms, unioned)
+
+⚠ 28 gap record(s) totalling 32402 ms fall outside the recorded span (e.g. an earlier failed session the same day) — excluded from coverage, listed here so they are never silently dropped.
+
+Channels: `heartbeats`: 148 · `l2_data`: 5331 · `market_trades`: 397 · `subscriptions`: 6
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|
+| BTC-USD | 2809 | 2 | 0 (0) | 0 (0) | 0 (0) | 0 | 19.39% | 19.39% | 1 (1) | 19564 |
+| ETH-USD | 2518 | 2 | 0 (0) | 0 (0) | 0 (0) | 0 | 19.39% | 19.39% | 1 (1) | 19273 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 1 |
+| 0.01 to 0.05 ms | 119 |
+| 0.05 to 0.1 ms | 88 |
+| 0.1 to 0.5 ms | 168 |
+| 0.5 to 1 ms | 67 |
+| 1 to 5 ms | 450 |
+| 5 to 10 ms | 929 |
+| 10 to 50 ms | 3545 |
+| 50 to 100 ms | 488 |
+| 100 to 500 ms | 25 |
+| 500 to 1000 ms | 0 |
+| 1000 to 5000 ms | 0 |
+| 5000 to 30000 ms | 0 |
+| >30000 ms | 1 |
+
+p50 ≤ 50 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 1.66061e+07 ms
+
+### kraken — 2026-07-30 — **FAIL**
+
+- ✗ BTC/USD: coverage outside gaps 19.39% < 99.9%
+- ✗ ETH/USD: coverage outside gaps 19.39% < 99.9%
+
+Messages: **29725** · recorded span: 16753s · feed gaps in span: 0 (0 ms, unioned)
+
+Channels: `book`: 29515 · `heartbeat`: 147 · `status`: 2 · `subscribe`: 8 · `trade`: 53
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|
+| BTC/USD | 12544 | 2 | 0 (0) | 0 (0) | 0 (0) | 0 | 19.39% | 19.39% | 1 (1) | 29299 |
+| ETH/USD | 16967 | 2 | 0 (0) | 0 (0) | 0 (0) | 0 | 19.39% | 19.39% | 1 (1) | 33721 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 347 |
+| 0.01 to 0.05 ms | 14528 |
+| 0.05 to 0.1 ms | 3194 |
+| 0.1 to 0.5 ms | 1762 |
+| 0.5 to 1 ms | 948 |
+| 1 to 5 ms | 4379 |
+| 5 to 10 ms | 1501 |
+| 10 to 50 ms | 2335 |
+| 50 to 100 ms | 503 |
+| 100 to 500 ms | 226 |
+| 500 to 1000 ms | 0 |
+| 1000 to 5000 ms | 0 |
+| 5000 to 30000 ms | 0 |
+| >30000 ms | 1 |
+
+p50 ≤ 0.05 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 1.66072e+07 ms

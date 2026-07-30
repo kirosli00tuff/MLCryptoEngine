@@ -61,3 +61,30 @@ recorded data clearing `make validate` does.
 - 2026-07-30 — Deliverable 10 landed: pytest suite (27 tests) with real recorded fixtures from both venues — Kraken replay proves zero CRC32 checksum failures over the snapshot + 60 consecutive live updates; Coinbase fixture sequence-contiguous; config missing-secret failure path; Parquet round-trip schema stability (caught and fixed a real DuckDB hive-partitioning bug that silently overrode exact symbols); fake-WS reconnect test verifying gap logging and lossless capture across an abnormal 1011 close. make lint / make typecheck / make test all pass clean; frontend tsc + vite build clean. Phase A implementation complete — checkbox stays unchecked until real full-day data clears make validate.
 - 2026-07-30 — Stage 1.5 Task 1 landed: gap accounting fixed. Root cause investigated from raw gaps.jsonl (see Open questions): 28 out-of-span records from the pre-max_size dry-run reconnect storm were being summed against a later 24s recording. Dry-run no longer writes gap records; merge_windows unions overlapping/duplicate windows; validation attributes gaps in-span vs out-of-span (out-of-span reported, never counted); GapAccountingError invariant fails loudly when unioned in-span gap time exceeds the recorded span. 9 regression tests added (36 total). Verified on the real polluted day: in-span gaps now 0, the 28 records surfaced with explanation, invariant holds.
 - 2026-07-30 — Stage 1.5 Task 3 landed: Cortex repointed to reality. CortexPanel, ExperiencePanel, and lib/experience.ts removed — no component presents a fabricated learning metric. New FeedActivityPanel (same aesthetic) drives node population and pulse rate from live per-venue message throughput and connection state, labeled 'live from recorder heartbeats', with the Phase B model-instrument destination documented at the top of the file. New PhaseProgressPanel shows validation-derived progress plus last-validated book state (mid/spread/depth per symbol, new real fields in SymbolReport) and arrival percentiles. tsc + vite build clean.
+- 2026-07-30 — Stage 1.5 Task 4: checks green (ruff/mypy/36 tests/tsc+vite). First
+  Rust compile attempted: rustup 1.97.1 installed to ~/.cargo, but `cargo check`
+  stops in libdbus-sys — Ubuntu 26.04 is missing webkit2gtk-4.1, gtk+-3.0, and
+  dbus-1 dev packages, and installing them needs sudo (exact one-line apt command
+  now in desktop/README.md). Two-minute verification capture on both venues passed
+  validation's gap invariant: feed gaps in span 0 ms (unioned) ≤ recorded span; the
+  28 stale dry-run records remain quarantined as out-of-span.
+
+## Full-day recording run (in progress)
+
+Started: **2026-07-30T19:58:34Z** · target day to enclose: **2026-07-31 UTC**
+· earliest stop: **2026-08-01T00:15Z** (margin on both ends).
+
+Exact commands used (detached; survive terminal/session exit):
+
+```bash
+cd ~/Documents/GitHub/MLCryptoEngine
+setsid nohup uv run python -m data.recorder  > logs/record_run.out    2>&1 < /dev/null &
+setsid nohup uv run python -m ops.telemetry  > logs/telemetry_run.out 2>&1 < /dev/null &
+```
+
+Status checks: `tail -f logs/recorder.log` (heartbeats), `pgrep -af "data.recorder|ops.telemetry"`.
+After 2026-08-01T00:15Z, stop with `pkill -TERM -f "python -m data.recorder"; pkill -TERM -f "python -m ops.telemetry"`
+(SIGTERM = graceful zstd flush), then run `make validate --date 2026-07-31` — wait,
+use `uv run python -m data.validate --date 2026-07-31` — and review report.md
+against all four Phase A acceptance criteria. Do not check the Phase A box unless
+the verdict is PASS on both venues.

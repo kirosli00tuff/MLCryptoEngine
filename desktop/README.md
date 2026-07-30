@@ -14,16 +14,21 @@ tails their structured logs, and reads what they write to disk.
 - **uv** on PATH (the backend launches `uv run python -m data.recorder`)
 - Tauri's Linux system dependencies:
 
-### Ubuntu 22.04 / 24.04 (and Debian-based)
+### Ubuntu 22.04 / 24.04 / 26.04 (and Debian-based)
 
 ```bash
 sudo apt update
 sudo apt install -y \
-  libwebkit2gtk-4.1-dev \
+  libwebkit2gtk-4.1-dev libgtk-3-dev libdbus-1-dev pkg-config \
   build-essential curl wget file \
   libxdo-dev libssl-dev \
   libayatana-appindicator3-dev librsvg2-dev
 ```
+
+> Status on the operator's machine (Ubuntu 26.04, checked 2026-07-30): `glib-2.0`
+> is present but `webkit2gtk-4.1`, `gtk+-3.0`, and `dbus-1` development files are
+> **missing** — the first `cargo check` stops in `libdbus-sys` until the packages
+> above are installed. Rust itself is already installed via rustup (`~/.cargo`).
 
 ### Fedora 40+
 
