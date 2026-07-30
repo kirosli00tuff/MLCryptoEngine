@@ -1,0 +1,60 @@
+# Per-venue metadata. Fee schedules are the venues' documented public spot schedules
+# (bps of notional, by trailing 30-day USD volume tier). Verify against the venue
+# before Phase C backtests consume them — venues reprice occasionally.
+
+venues:
+  kraken:
+    name: Kraken
+    ws_url: wss://ws.kraken.com/v2
+    rest_status_url: https://api.kraken.com/0/public/Time
+    symbols: [BTC/USD, ETH/USD]
+    # Kraken WS v2 book channel supports depth 10/25/100/500/1000.
+    book_depth: 100
+    snapshot:
+      on_subscribe: true
+      checksum: true
+      notes: >-
+        Snapshot pushed on subscribe; every update carries a CRC32 checksum of the
+        top 10 levels, which the book builder verifies. On checksum mismatch the
+        book is invalid until resubscribe delivers a fresh snapshot.
+    # Matching engine at Equinix London (LD4); nearest cloud region is eu-west-2.
+    aws_region: eu-west-2
+    fee_tiers:
+      - { volume_usd_30d: 0,        maker_bps: 25, taker_bps: 40 }
+      - { volume_usd_30d: 10000,    maker_bps: 20, taker_bps: 35 }
+      - { volume_usd_30d: 50000,    maker_bps: 14, taker_bps: 24 }
+      - { volume_usd_30d: 100000,   maker_bps: 12, taker_bps: 22 }
+      - { volume_usd_30d: 250000,   maker_bps: 10, taker_bps: 20 }
+      - { volume_usd_30d: 500000,   maker_bps: 8,  taker_bps: 18 }
+      - { volume_usd_30d: 1000000,  maker_bps: 6,  taker_bps: 16 }
+      - { volume_usd_30d: 2500000,  maker_bps: 4,  taker_bps: 14 }
+      - { volume_usd_30d: 5000000,  maker_bps: 2,  taker_bps: 12 }
+      - { volume_usd_30d: 10000000, maker_bps: 0,  taker_bps: 10 }
+
+  coinbase:
+    name: Coinbase Advanced Trade
+    ws_url: wss://advanced-trade-ws.coinbase.com
+    rest_status_url: https://api.coinbase.com/api/v3/brokerage/time
+    symbols: [BTC-USD, ETH-USD]
+    # level2 channel delivers full-depth snapshot + incremental updates; depth here
+    # is the persisted reconstruction depth, not a subscription parameter.
+    book_depth: 100
+    snapshot:
+      on_subscribe: true
+      checksum: false
+      notes: >-
+        level2 channel sends a full snapshot event on subscribe followed by update
+        events; no checksum is provided, so validation relies on crossed-book
+        detection and periodic resubscribe-and-compare.
+    # Matching engine runs in AWS us-east-1; record from the same region for Phase D.
+    aws_region: us-east-1
+    fee_tiers:
+      - { volume_usd_30d: 0,         maker_bps: 40, taker_bps: 60 }
+      - { volume_usd_30d: 10000,     maker_bps: 25, taker_bps: 40 }
+      - { volume_usd_30d: 50000,     maker_bps: 15, taker_bps: 25 }
+      - { volume_usd_30d: 100000,    maker_bps: 10, taker_bps: 20 }
+      - { volume_usd_30d: 1000000,   maker_bps: 8,  taker_bps: 18 }
+      - { volume_usd_30d: 15000000,  maker_bps: 6,  taker_bps: 16 }
+      - { volume_usd_30d: 75000000,  maker_bps: 3,  taker_bps: 12 }
+      - { volume_usd_30d: 250000000, maker_bps: 0,  taker_bps: 8 }
+      - { volume_usd_30d: 400000000, maker_bps: 0,  taker_bps: 5 }

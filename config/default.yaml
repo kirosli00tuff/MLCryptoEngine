@@ -1,0 +1,37 @@
+# Runtime defaults. Every value here can be overridden by an environment variable
+# with the MLCE_ prefix (nested keys use __, e.g. MLCE_TELEMETRY__INTERVAL_S=30).
+# Environment always wins over this file.
+
+# Root for recorded data. raw/ and processed/ live under it. Gitignored.
+data_root: data
+logs_dir: logs
+log_level: INFO
+
+recorder:
+  # Reconnect backoff: exponential with full jitter, capped.
+  backoff_initial_s: 1.0
+  backoff_max_s: 60.0
+  backoff_jitter: 0.3
+  # Heartbeat cadence for liveness reporting (consumed by the desktop app).
+  heartbeat_interval_s: 10.0
+  # --dry-run prints this many messages and exits.
+  dry_run_messages: 50
+
+telemetry:
+  # Seconds between latency probes per venue.
+  interval_s: 60.0
+  # Per-request timeout. Anything slower is recorded as a timeout, not dropped.
+  timeout_s: 5.0
+  # Rolling window (number of samples) for P50/P95/P99 computation.
+  window: 240
+
+book:
+  # Fixed-interval snapshot cadence for reconstructed books, in milliseconds.
+  interval_snapshot_ms: 1000
+  # Depth levels persisted in depth snapshots.
+  snapshot_depth: 10
+
+# Names of environment variables that MUST be present and non-empty at startup.
+# Stage 1 uses public data only, so this list is empty. Phase D adds read-only
+# API keys here so a misconfigured VPS fails at boot, not mid-session.
+required_secrets: []
