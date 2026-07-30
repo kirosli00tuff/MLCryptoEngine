@@ -1,10 +1,10 @@
-import CortexPanel from "../components/CortexPanel";
 import CoverageHeatmap from "../components/CoverageHeatmap";
 import DataFootprintTile from "../components/DataFootprintTile";
-import ExperiencePanel from "../components/ExperiencePanel";
+import FeedActivityPanel from "../components/FeedActivityPanel";
 import LatencyChart from "../components/LatencyChart";
 import LatencyNowTile from "../components/LatencyNowTile";
 import LogStream from "../components/LogStream";
+import PhaseProgressPanel from "../components/PhaseProgressPanel";
 import VenueStatusCard from "../components/VenueStatusCard";
 
 export default function DashboardPage() {
@@ -24,10 +24,10 @@ export default function DashboardPage() {
       </div>
 
       <div className="col-span-8">
-        <CortexPanel />
+        <FeedActivityPanel />
       </div>
       <div className="col-span-4">
-        <ExperiencePanel />
+        <PhaseProgressPanel />
       </div>
 
       <div className="col-span-7">

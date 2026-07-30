@@ -56,6 +56,12 @@ class SymbolReport(BaseModel):
     snapshot_compares: int
     snapshot_mismatches: int
     rows_written: int
+    # Book state at the end of the replay — real, but only as fresh as the
+    # last `make validate` run; consumers must label it that way.
+    last_mid: float | None = None
+    last_spread: float | None = None
+    last_bid_levels: int = 0
+    last_ask_levels: int = 0
 
 
 class GapAccounts(BaseModel):
@@ -281,8 +287,18 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         marks = anomaly_ns[symbol]
         covered = valid_ns[symbol]
         denominator_excl = max(DAY_NS - gap_ns_in_day, 1)
+        best_bid, best_ask = builder.best_bid, builder.best_ask
+        last_spread = (
+            float(best_ask.price - best_bid.price)
+            if builder.valid and best_bid is not None and best_ask is not None
+            else None
+        )
         symbol_reports.append(
             SymbolReport(
+                last_mid=float(builder.mid) if builder.valid and builder.mid is not None else None,
+                last_spread=last_spread,
+                last_bid_levels=len(builder.bid_levels(vcfg.book_depth)) if builder.valid else 0,
+                last_ask_levels=len(builder.ask_levels(vcfg.book_depth)) if builder.valid else 0,
                 symbol=symbol,
                 events_applied=builder.events_applied,
                 snapshots=builder.snapshots_applied,

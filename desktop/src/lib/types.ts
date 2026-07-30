@@ -89,6 +89,10 @@ export interface SymbolReport {
   snapshot_compares: number;
   snapshot_mismatches: number;
   rows_written: number;
+  last_mid: number | null;
+  last_spread: number | null;
+  last_bid_levels: number;
+  last_ask_levels: number;
 }
 
 export interface DayReport {
