@@ -113,19 +113,10 @@ export interface ValidationSummary {
   runs: DayReport[];
 }
 
-export interface ApiCredentials {
-  kraken_api_key: string;
-  kraken_api_secret: string;
-  coinbase_api_key: string;
-  coinbase_api_secret: string;
-  databento_api_key: string;
-}
-
 export interface Settings {
   repo_root: string | null;
   record_kraken: boolean;
   record_coinbase: boolean;
-  api: ApiCredentials;
 }
 
 export interface RepoInfo {

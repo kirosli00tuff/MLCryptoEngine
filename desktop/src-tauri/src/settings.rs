@@ -6,16 +6,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-#[derive(Serialize, Deserialize, Clone, Default)]
-#[serde(default)]
-pub struct ApiCredentials {
-    pub kraken_api_key: String,
-    pub kraken_api_secret: String,
-    pub coinbase_api_key: String,
-    pub coinbase_api_secret: String,
-    pub databento_api_key: String,
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Settings {
@@ -23,7 +13,6 @@ pub struct Settings {
     pub repo_root: Option<String>,
     pub record_kraken: bool,
     pub record_coinbase: bool,
-    pub api: ApiCredentials,
 }
 
 impl Default for Settings {
@@ -32,7 +21,6 @@ impl Default for Settings {
             repo_root: None,
             record_kraken: true,
             record_coinbase: true,
-            api: ApiCredentials::default(),
         }
     }
 }
@@ -66,7 +54,24 @@ pub fn load(app: &AppHandle) -> Result<Settings, String> {
     }
     let text =
         std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
+    let mut value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))?;
+    // Migration (Stage 1.5): the app no longer stores credentials. A settings
+    // file written by an earlier build may carry a plaintext `api` object;
+    // strip it and rewrite the file immediately so no secret lingers on disk.
+    if let Some(object) = value.as_object_mut() {
+        if object.remove("api").is_some() {
+            let settings: Settings = serde_json::from_value(value)
+                .map_err(|e| format!("parse {}: {e}", path.display()))?;
+            save(app, &settings)?;
+            eprintln!(
+                "mlcryptoengine: removed legacy plaintext api credentials from {}",
+                path.display()
+            );
+            return Ok(settings);
+        }
+    }
+    serde_json::from_value(value).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
 pub fn save(app: &AppHandle, settings: &Settings) -> Result<(), String> {

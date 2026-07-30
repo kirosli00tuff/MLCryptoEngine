@@ -73,3 +73,31 @@ hot loop ever needs it, an isolated Rust extension can be introduced with its ow
 for the shell). No shared-memory bridging between Rust and Python — the boundary is
 process supervision and files (logs, Parquet, JSON status), which keeps coupling low
 and each side independently testable.
+
+---
+
+## ADR-004: The desktop app persists no credentials
+
+**Date:** 2026-07-30 · **Status:** accepted
+
+**Context.** Stage 1 specified that no API key with any permission is used or
+requested anywhere. The Stage 1 desktop app nevertheless shipped a Settings
+section with five key/secret fields, written as plaintext JSON into the OS
+config directory. Even though nothing consumed them, plaintext-on-disk is
+exactly the wrong default to inherit into Phase D, when keys become real and
+carry account access: config directories get backed up, synced, and copied
+into bug reports.
+
+**Decision.** Remove credential storage entirely: the `ApiCredentials` struct,
+the `api` settings field, and the five credential inputs are deleted. Loading
+an older `settings.json` that still contains an `api` object strips it and
+rewrites the file immediately, logging the removal, so no plaintext value
+lingers. A non-negotiable rule in CLAUDE.md now forbids the desktop app from
+persisting credentials at all; Phase D sources them from the OS keyring
+(Secret Service on Linux) or environment variables.
+
+**Consequences.** Phase D must budget for keyring integration (e.g. the
+`keyring` crate against Secret Service) before any authenticated connectivity
+lands, and its design review must treat "where do secrets rest" as a
+first-class question. Until then the desktop app has no secret-shaped state
+anywhere, which also keeps its config file safe to attach to bug reports.

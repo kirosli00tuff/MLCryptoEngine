@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { EyeIcon, EyeOffIcon, ShieldIcon } from "../components/icons";
 import Toggle from "../components/Toggle";
 import { fmtBytes } from "../lib/format";
-import type { ApiCredentials, Settings } from "../lib/types";
+import type { Settings } from "../lib/types";
 import { useAppData } from "../state/AppData";
 
 function SectionCard({
@@ -26,42 +25,6 @@ function SectionCard({
   );
 }
 
-function SecretField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const [visible, setVisible] = useState(false);
-  return (
-    <label className="block">
-      <span className="text-[11px] text-ink-dim">{label}</span>
-      <span className="mt-1 flex items-center gap-1.5">
-        <input
-          type={visible ? "text" : "password"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="not set"
-          autoComplete="off"
-          spellCheck={false}
-          className="num w-full rounded-md border border-hairline bg-panel2 px-2.5 py-1.5 text-[11.5px] text-ink placeholder:text-ink-faint"
-        />
-        <button
-          type="button"
-          onClick={() => setVisible((v) => !v)}
-          aria-label={visible ? `Hide ${label}` : `Show ${label}`}
-          className="rounded p-1.5 text-ink-faint transition-colors hover:text-ink"
-        >
-          {visible ? <EyeOffIcon /> : <EyeIcon />}
-        </button>
-      </span>
-    </label>
-  );
-}
-
 export default function SettingsPage() {
   const { settings, saveSettings, repoInfo, inventory, inTauri } = useAppData();
   const [draft, setDraft] = useState<Settings | null>(null);
@@ -81,8 +44,6 @@ export default function SettingsPage() {
   }
 
   const dirty = settings !== null && JSON.stringify(draft) !== JSON.stringify(settings);
-  const setApi = (patch: Partial<ApiCredentials>) =>
-    setDraft({ ...draft, api: { ...draft.api, ...patch } });
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 p-5 pb-24">
@@ -129,44 +90,12 @@ export default function SettingsPage() {
       </SectionCard>
 
       <SectionCard
-        title="API keys"
-        description="For later phases (account data, Databento market data). Stage 1 records public feeds only and never uses these."
+        title="Credentials"
+        description="This app stores no credentials, by rule. Stage 1 uses public market data only; when a later phase needs keys they will come from the OS keyring or environment variables — never a file."
       >
-        <div className="mb-4 flex gap-2.5 rounded-md border border-amberx/25 bg-amberx/8 p-3">
-          <ShieldIcon className="mt-0.5 h-4 w-4 shrink-0 text-amberx" />
-          <p className="text-[10.5px] leading-relaxed text-ink-dim">
-            Keys are stored locally in your OS config directory and never enter the
-            repository. Use <span className="text-ink">read-only</span> keys — never grant
-            trade or withdraw permission to anything this project uses.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <SecretField
-            label="Kraken API key"
-            value={draft.api.kraken_api_key}
-            onChange={(v) => setApi({ kraken_api_key: v })}
-          />
-          <SecretField
-            label="Kraken API secret"
-            value={draft.api.kraken_api_secret}
-            onChange={(v) => setApi({ kraken_api_secret: v })}
-          />
-          <SecretField
-            label="Coinbase API key"
-            value={draft.api.coinbase_api_key}
-            onChange={(v) => setApi({ coinbase_api_key: v })}
-          />
-          <SecretField
-            label="Coinbase API secret"
-            value={draft.api.coinbase_api_secret}
-            onChange={(v) => setApi({ coinbase_api_secret: v })}
-          />
-          <SecretField
-            label="Databento API key"
-            value={draft.api.databento_api_key}
-            onChange={(v) => setApi({ databento_api_key: v })}
-          />
-        </div>
+        <p className="text-[10.5px] leading-relaxed text-ink-faint">
+          See CLAUDE.md, non-negotiable rules, and DECISIONS.md ADR-004 in the repository.
+        </p>
       </SectionCard>
 
       <SectionCard title="Storage" description="Read-only view of where data lives.">

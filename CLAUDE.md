@@ -91,6 +91,10 @@ tests/           Pytest suite; tests/fixtures/ holds small recorded exchange mes
    per-venue latency distribution to feed into hftbacktest. Backtests using a constant
    latency assumption systematically overstate performance: they miss the tail of slow
    round trips, which is exactly where queue position is lost and fills degrade.
+4. **Credentials are never persisted by the desktop app.** No API key or secret is
+   ever written to a JSON file or any other plaintext store, in the repo or outside
+   it. When Phase D needs credentials they come from the OS keyring or environment
+   variables — never a file. See DECISIONS.md ADR-004.
 
 ## Git commit conventions
 
