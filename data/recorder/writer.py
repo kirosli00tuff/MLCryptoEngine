@@ -76,7 +76,7 @@ class RawFileWriter:
     def close(self) -> None:
         """Finish the current zstd frame and close the file. Safe to call twice."""
         if self._writer is not None:
-            self._writer.close()
+            self._writer.close()  # type: ignore[no-untyped-call]
             self._writer = None
         if self._fh is not None:
             self._fh.close()

@@ -10,14 +10,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from data.book.types import BookEvent, Level
 
 ChecksumFn = Callable[[list[Level], list[Level]], int]
 
 
-class ApplyResult(str, Enum):
+class ApplyResult(StrEnum):
     """Outcome of applying one event to the book."""
 
     SNAPSHOT = "snapshot"

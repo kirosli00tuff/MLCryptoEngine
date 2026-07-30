@@ -33,15 +33,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _run(coro: Coroutine[Any, Any, None]) -> None:
-    if sys.platform != "win32":
-        try:
-            import uvloop
-        except ImportError:  # pragma: no cover - uvloop is a core dependency
-            asyncio.run(coro)
-            return
-        uvloop.run(coro)
+    try:
+        import uvloop
+    except ImportError:  # pragma: no cover - uvloop is a core dependency on Linux
+        asyncio.run(coro)
         return
-    asyncio.run(coro)  # pragma: no cover - project targets Linux
+    uvloop.run(coro)
 
 
 def main() -> None:
