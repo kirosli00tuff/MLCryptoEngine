@@ -17,6 +17,11 @@ venues:
         Snapshot pushed on subscribe; every update carries a CRC32 checksum of the
         top 10 levels, which the book builder verifies. On checksum mismatch the
         book is invalid until resubscribe delivers a fresh snapshot.
+    # Fixed decimal precisions per symbol (price, quantity) — required to compute
+    # the WS v2 book checksum, since the feed encodes numbers as JSON floats.
+    instruments:
+      BTC/USD: { price_decimals: 1, qty_decimals: 8 }
+      ETH/USD: { price_decimals: 2, qty_decimals: 8 }
     # Matching engine at Equinix London (LD4); nearest cloud region is eu-west-2.
     aws_region: eu-west-2
     fee_tiers:

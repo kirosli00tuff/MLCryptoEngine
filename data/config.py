@@ -55,6 +55,13 @@ class SnapshotBehaviour(BaseModel):
     notes: str = ""
 
 
+class InstrumentMeta(BaseModel):
+    """Fixed decimal precisions for one symbol (price, quantity)."""
+
+    price_decimals: int = Field(ge=0)
+    qty_decimals: int = Field(ge=0)
+
+
 class VenueConfig(BaseModel):
     """Static metadata for one venue."""
 
@@ -66,6 +73,7 @@ class VenueConfig(BaseModel):
     snapshot: SnapshotBehaviour
     aws_region: str
     fee_tiers: list[FeeTier]
+    instruments: dict[str, InstrumentMeta] = Field(default_factory=dict)
 
     @field_validator("fee_tiers")
     @classmethod
