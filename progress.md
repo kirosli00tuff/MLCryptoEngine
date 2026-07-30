@@ -84,7 +84,8 @@ setsid nohup uv run python -m ops.telemetry  > logs/telemetry_run.out 2>&1 < /de
 
 Status checks: `tail -f logs/recorder.log` (heartbeats), `pgrep -af "data.recorder|ops.telemetry"`.
 After 2026-08-01T00:15Z, stop with `pkill -TERM -f "python -m data.recorder"; pkill -TERM -f "python -m ops.telemetry"`
-(SIGTERM = graceful zstd flush), then run `make validate --date 2026-07-31` — wait,
-use `uv run python -m data.validate --date 2026-07-31` — and review report.md
-against all four Phase A acceptance criteria. Do not check the Phase A box unless
-the verdict is PASS on both venues.
+(SIGTERM = graceful zstd flush), then run
+`uv run python -m data.validate --date 2026-07-31` (or plain `make validate` to
+revalidate every recorded day) and review report.md against all four Phase A
+acceptance criteria. Do not check the Phase A box unless the verdict is PASS on
+both venues.
