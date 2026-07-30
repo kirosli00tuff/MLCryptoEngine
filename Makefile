@@ -1,0 +1,35 @@
+.PHONY: help install lint typecheck test record validate telemetry desktop clean
+
+help: ## List available targets
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+
+install: ## Sync Python environment (uv) and install pre-commit hooks
+	uv sync --group dev
+	uv run pre-commit install
+
+lint: ## Ruff format check + lint
+	uv run ruff format --check .
+	uv run ruff check .
+
+typecheck: ## Mypy over data/, ops/, tests/
+	uv run mypy
+
+test: ## Run the pytest suite
+	uv run pytest
+
+record: ## Start the market data recorder (Kraken + Coinbase public feeds)
+	uv run python -m data.recorder
+
+validate: ## Reconstruct books from raw data, score quality, append results to report.md
+	uv run python -m data.validate
+
+telemetry: ## Start the venue latency probe (runs alongside the recorder)
+	uv run python -m ops.telemetry
+
+desktop: ## Run the desktop app in dev mode (requires Rust + Node, see desktop/README.md)
+	cd desktop && npm run tauri dev
+
+clean: ## Remove caches and build artifacts (never touches data/raw)
+	rm -rf .pytest_cache .mypy_cache .ruff_cache
+	find . -type d -name __pycache__ -not -path './.venv/*' -not -path './desktop/node_modules/*' -exec rm -rf {} +
+	rm -rf desktop/dist desktop/src-tauri/target

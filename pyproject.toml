@@ -1,0 +1,90 @@
+[project]
+name = "mlcryptoengine"
+version = "0.1.0"
+description = "Personal quantitative research: ML on tick-level market microstructure (Stage 1: data pipeline)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "polars>=1.0",
+    "duckdb>=1.0",
+    "pyarrow>=17.0",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "websockets>=13.0",
+    "orjson>=3.10",
+    "uvloop>=0.20; sys_platform != 'win32'",
+    "httpx>=0.27",
+    "structlog>=24.0",
+    "zstandard>=0.23",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pre-commit>=3.8",
+    "types-pyyaml>=6.0",
+]
+research = [
+    "lightgbm>=4.5",
+    "scikit-learn>=1.5",
+    "numpy>=2.0",
+    "matplotlib>=3.9",
+    "jupyterlab>=4.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["data", "ops"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["research/notebooks", "desktop"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+    "RET",  # flake8-return
+    "PTH",  # flake8-use-pathlib
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "E501",  # line length is enforced by the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+files = ["data", "ops", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "pyarrow.*", "uvloop.*", "zstandard.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"
