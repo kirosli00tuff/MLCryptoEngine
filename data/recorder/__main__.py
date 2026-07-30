@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import sys
 from collections.abc import Coroutine
 from typing import Any
 
