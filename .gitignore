@@ -1,0 +1,27 @@
+# environment / secrets
+.env
+*secret*
+*key*
+.venv/
+
+# data — raw is immutable and lives outside git; processed is regenerable
+data/raw/
+data/processed/
+*.parquet
+
+# logs
+*.log
+logs/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# rust / node
+target/
+node_modules/
+desktop/dist/
