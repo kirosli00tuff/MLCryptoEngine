@@ -57,8 +57,11 @@ def load_book_range(
     if kind is not None:
         conditions.append("kind = ?")
         params.append(kind)
+    # hive_partitioning=false: the path segments are sanitized for the
+    # filesystem (BTC-USD); the columns inside the files carry exact values
+    # (BTC/USD) and must not be overridden by auto-detected hive columns.
     query = (
-        f"SELECT * FROM read_parquet('{pattern.as_posix()}') "
+        f"SELECT * FROM read_parquet('{pattern.as_posix()}', hive_partitioning=false) "
         f"WHERE {' AND '.join(conditions)} ORDER BY ts_ns"
     )
     with duckdb.connect() as con:

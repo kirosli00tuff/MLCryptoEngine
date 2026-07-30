@@ -79,6 +79,7 @@ strict = true
 warn_unreachable = true
 show_error_codes = true
 files = ["data", "ops", "tests"]
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = ["duckdb.*", "pyarrow.*", "uvloop.*", "zstandard.*"]
@@ -86,5 +87,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 addopts = "-q"
