@@ -64,8 +64,15 @@ def render_section(runs: list[DayReport]) -> str:
             span = f"{(report.last_ns - report.first_ns) / 1e9:.0f}s"
         lines.append(
             f"Messages: **{report.msgs_total}** · recorded span: {span} · "
-            f"feed gaps: {report.feed_gaps} ({report.feed_gap_ms} ms)"
+            f"feed gaps in span: {report.feed_gaps} ({report.feed_gap_ms} ms, unioned)"
         )
+        if report.gaps_outside_span:
+            lines.append(
+                f"\n⚠ {report.gaps_outside_span} gap record(s) totalling "
+                f"{report.gap_ms_outside_span} ms fall outside the recorded span "
+                "(e.g. an earlier failed session the same day) — excluded from "
+                "coverage, listed here so they are never silently dropped."
+            )
         lines.append("")
         channels = " · ".join(f"`{k}`: {v}" for k, v in sorted(report.channel_counts.items()))
         lines.append(f"Channels: {channels}")

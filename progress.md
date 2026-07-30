@@ -21,6 +21,24 @@ recorded data clearing `make validate` does.
 
 ## Open questions
 
+- **Resolved finding (2026-07-30, Stage 1.5 Task 1): the "28 gaps / 32,402 ms in a
+  24-second recording" was two accounting defects amplifying one real, already-fixed
+  reconnect storm.** Evidence from `data/raw/venue=coinbase/gaps.jsonl`: all 28
+  records carry the identical reason `ConnectionClosedError: sent 1009 (message too
+  big) frame after reading ~1.03 MB exceeds limit of 1048576 bytes` and span
+  15:15:01–15:15:58 UTC — the failed `--dry-run` diagnostic run *before* the
+  max_size fix landed (Stage 1 commit 34aebd5 raised the websockets frame cap to
+  64 MiB; close code 1009 disappeared afterwards). The actual recording ran
+  15:17:56–15:18:20; zero of the 28 gaps overlap it. Defect one: dry-run mode wrote
+  gap records to the permanent sidecar despite recording no data (fixed — dry-run
+  now only logs to structlog). Defect two: validation summed every gap overlapping
+  the calendar day, with no union and no relationship to the recorded span (fixed —
+  gaps are unioned via `merge_windows`, attributed in-span vs out-of-span, and a
+  `GapAccountingError` invariant refuses to produce coverage numbers when unioned
+  in-span gap time exceeds the recorded span). The 28 records remain on disk as
+  evidence and are reported by the harness as out-of-span. Trust takeaway: numbers
+  derived from side-channel records deserve the same cross-checking as the primary
+  data — this bug would have silently poisoned every partial-day validation.
 - The Rust side of the desktop app is written but was not compiled in the
   implementation environment (no Rust toolchain or webkit2gtk dev libraries
   available there). First `make desktop` on this machine will surface any
@@ -41,3 +59,4 @@ recorded data clearing `make validate` does.
 - 2026-07-30 — Latency telemetry landed: scheduled RTT probes to venue public REST endpoints, rolling exact P50/P95/P99, per-venue-day Parquet (idempotent day rewrite, restart-safe seeding) plus logs/telemetry_latest.json with recent history for the desktop chart. Verified live: real probes recorded for both venues. Note on constant-latency backtest bias already in CLAUDE.md rule 3.
 - 2026-07-30 — Desktop app landed: Tauri 2 Rust backend (spawns/supervises recorder+telemetry via uv with SIGTERM-graceful stop, tails structured logs as events, scans dataset inventory, reads validation/telemetry JSON, persists settings to OS config dir, window-state plugin) + React/TS/Tailwind v4 dark terminal frontend: venue status cards with live heartbeats and sparklines, latency now/chart (Recharts), coverage calendar, filterable log stream, growing 'Cortex' neural-net canvas driven by real recorded experience, Settings page (repo path, venue toggles, masked API keys stored locally only). Frontend verified: tsc clean, vite build clean, dashboard + settings render with zero console errors and designed empty states outside the shell. Rust compile not verified here (no Rust toolchain/webkit dev libs in this environment) — build steps documented in desktop/README.md.
 - 2026-07-30 — Deliverable 10 landed: pytest suite (27 tests) with real recorded fixtures from both venues — Kraken replay proves zero CRC32 checksum failures over the snapshot + 60 consecutive live updates; Coinbase fixture sequence-contiguous; config missing-secret failure path; Parquet round-trip schema stability (caught and fixed a real DuckDB hive-partitioning bug that silently overrode exact symbols); fake-WS reconnect test verifying gap logging and lossless capture across an abnormal 1011 close. make lint / make typecheck / make test all pass clean; frontend tsc + vite build clean. Phase A implementation complete — checkbox stays unchecked until real full-day data clears make validate.
+- 2026-07-30 — Stage 1.5 Task 1 landed: gap accounting fixed. Root cause investigated from raw gaps.jsonl (see Open questions): 28 out-of-span records from the pre-max_size dry-run reconnect storm were being summed against a later 24s recording. Dry-run no longer writes gap records; merge_windows unions overlapping/duplicate windows; validation attributes gaps in-span vs out-of-span (out-of-span reported, never counted); GapAccountingError invariant fails loudly when unioned in-span gap time exceeds the recorded span. 9 regression tests added (36 total). Verified on the real polluted day: in-span gaps now 0, the 28 records surfaced with explanation, invariant holds.

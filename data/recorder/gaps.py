@@ -2,12 +2,30 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import orjson
 from pydantic import BaseModel
 
 GAPS_FILE_NAME = "gaps.jsonl"
+
+
+def merge_windows(windows: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Union half-open ``[start, end)`` windows.
+
+    Overlapping, touching, and duplicate windows collapse into one, so summing
+    the result never double-counts a nanosecond. Empty/inverted windows are
+    dropped. This is the only sanctioned way to aggregate gap durations.
+    """
+    ordered = sorted((start, end) for start, end in windows if end > start)
+    merged: list[tuple[int, int]] = []
+    for start, end in ordered:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
 
 
 class GapRecord(BaseModel):

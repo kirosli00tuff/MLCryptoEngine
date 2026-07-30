@@ -100,6 +100,8 @@ export interface DayReport {
   last_ns: number | null;
   feed_gaps: number;
   feed_gap_ms: number;
+  gaps_outside_span: number;
+  gap_ms_outside_span: number;
   arrival: ArrivalStats;
   symbols: SymbolReport[];
   passed: boolean;

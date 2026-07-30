@@ -21,10 +21,15 @@ from data.book.coinbase_parse import envelope_sequence
 from data.book.kraken_checksum import checksum_fn_for
 from data.book.types import BookEvent
 from data.config import AppConfig
-from data.recorder.gaps import GapRecord, read_gaps
+from data.recorder.gaps import GapRecord, merge_windows, read_gaps
 from data.recorder.reader import iter_day_records
 from data.store import write_book_day
 from data.validate.stats import ArrivalHistogram, ArrivalStats
+
+
+class GapAccountingError(RuntimeError):
+    """Gap records contradict recorded data; nothing downstream is trustworthy."""
+
 
 NS_PER_S = 1_000_000_000
 DAY_NS = 86_400 * NS_PER_S
@@ -53,6 +58,16 @@ class SymbolReport(BaseModel):
     rows_written: int
 
 
+class GapAccounts(BaseModel):
+    """Union-based gap accounting for one venue-day."""
+
+    gaps_in_span: int
+    gap_ms_in_span: int
+    gaps_outside_span: int
+    gap_ms_outside_span: int
+    gap_ns_excluded_from_day: int
+
+
 class DayReport(BaseModel):
     venue: str
     date: str
@@ -62,10 +77,74 @@ class DayReport(BaseModel):
     last_ns: int | None
     feed_gaps: int
     feed_gap_ms: int
+    gaps_outside_span: int
+    gap_ms_outside_span: int
     arrival: ArrivalStats
     symbols: list[SymbolReport]
     passed: bool
     failure_reasons: list[str] = Field(default_factory=list)
+
+
+def account_gaps(
+    gaps: list[GapRecord],
+    span: tuple[int, int] | None,
+    day_bounds: tuple[int, int],
+) -> GapAccounts:
+    """Attribute gap records to a venue-day, merged (never summed) and audited.
+
+    Only gaps that touch the recorded span count against coverage: a gap logged
+    while nothing was being recorded (for example an earlier failed session the
+    same day) is unrecorded time, not a hole in recorded data. Such records are
+    still surfaced — as ``gaps_outside_span`` — never silently dropped.
+
+    Invariant (the point of this function): unioned gap time touching the
+    recorded span can never exceed the span itself. If it does, the sidecar
+    contradicts the recorded messages and this raises
+    :class:`GapAccountingError` instead of producing coverage numbers.
+    """
+    day_start, day_end = day_bounds
+    in_day = [g for g in gaps if g.overlaps_ns(day_start, day_end)]
+
+    if span is None:
+        outside_windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in in_day)
+        return GapAccounts(
+            gaps_in_span=0,
+            gap_ms_in_span=0,
+            gaps_outside_span=len(in_day),
+            gap_ms_outside_span=sum(e - s for s, e in outside_windows) // 1_000_000,
+            gap_ns_excluded_from_day=0,
+        )
+
+    span_start, span_end = span
+
+    def touches_span(gap: GapRecord) -> bool:
+        return gap.disconnect_ns <= span_end and gap.reconnect_ns >= span_start
+
+    in_records = [g for g in in_day if touches_span(g)]
+    out_records = [g for g in in_day if not touches_span(g)]
+    in_windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in in_records)
+    out_windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in out_records)
+
+    in_span_ns = sum(e - s for s, e in in_windows)
+    span_ns = span_end - span_start
+    if in_span_ns > span_ns:
+        raise GapAccountingError(
+            f"{in_span_ns / 1e6:.0f} ms of unioned gap time touches a recorded span of only "
+            f"{span_ns / 1e6:.0f} ms. Gap records contradict the recorded messages; "
+            "distrust this venue-day's sidecar and investigate before using any "
+            "downstream number."
+        )
+
+    excluded_ns = sum(
+        min(e, day_end) - max(s, day_start) for s, e in in_windows if s < day_end and e > day_start
+    )
+    return GapAccounts(
+        gaps_in_span=len(in_records),
+        gap_ms_in_span=in_span_ns // 1_000_000,
+        gaps_outside_span=len(out_records),
+        gap_ms_outside_span=sum(e - s for s, e in out_windows) // 1_000_000,
+        gap_ns_excluded_from_day=excluded_ns,
+    )
 
 
 def _day_bounds_ns(date: str) -> tuple[int, int]:
@@ -178,10 +257,20 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
             rows[event.symbol].extend(emitters[event.symbol].on_event(recv_ns, event.seq))
 
     day_start_ns, day_end_ns = _day_bounds_ns(date)
-    gaps = [g for g in read_gaps(cfg.raw_dir, venue) if g.overlaps_ns(day_start_ns, day_end_ns)]
-    gap_ns_in_day = sum(
-        min(g.reconnect_ns, day_end_ns) - max(g.disconnect_ns, day_start_ns) for g in gaps
-    )
+    span = (first_ns, last_ns) if first_ns is not None and last_ns is not None else None
+    all_gaps = read_gaps(cfg.raw_dir, venue)
+    accounts = account_gaps(all_gaps, span, (day_start_ns, day_end_ns))
+    # Gaps that touch the recorded span (union-clamped to the day) are the only
+    # trustworthy exclusions from the coverage denominator.
+    gaps = [
+        g
+        for g in all_gaps
+        if g.overlaps_ns(day_start_ns, day_end_ns)
+        and span is not None
+        and g.disconnect_ns <= span[1]
+        and g.reconnect_ns >= span[0]
+    ]
+    gap_ns_in_day = accounts.gap_ns_excluded_from_day
 
     symbol_reports: list[SymbolReport] = []
     for symbol, builder in sorted(builders.items()):
@@ -242,8 +331,10 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         channel_counts=dict(channel_counts),
         first_ns=first_ns,
         last_ns=last_ns,
-        feed_gaps=len(gaps),
-        feed_gap_ms=gap_ns_in_day // 1_000_000,
+        feed_gaps=accounts.gaps_in_span,
+        feed_gap_ms=accounts.gap_ms_in_span,
+        gaps_outside_span=accounts.gaps_outside_span,
+        gap_ms_outside_span=accounts.gap_ms_outside_span,
         arrival=hist.snapshot(),
         symbols=symbol_reports,
         passed=not failure_reasons,

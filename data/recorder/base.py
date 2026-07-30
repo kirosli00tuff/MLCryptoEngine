@@ -101,12 +101,22 @@ class VenueRecorder(ABC):
                 ) as ws:
                     reconnect_ns = time.time_ns()
                     if disconnect_ns is not None:
-                        gap = self.gaps.log_gap(disconnect_ns, reconnect_ns, disconnect_reason)
-                        self._log.warning(
-                            "gap_logged",
-                            duration_ms=gap.duration_ms,
-                            reason=disconnect_reason,
-                        )
+                        if self._dry_run is None:
+                            gap = self.gaps.log_gap(disconnect_ns, reconnect_ns, disconnect_reason)
+                            self._log.warning(
+                                "gap_logged",
+                                duration_ms=gap.duration_ms,
+                                reason=disconnect_reason,
+                            )
+                        else:
+                            # Dry-run records no market data, so it must not
+                            # pollute the permanent gap sidecar either — a
+                            # diagnostic mode stays out of the data plane.
+                            self._log.warning(
+                                "gap_not_logged_dry_run",
+                                duration_ms=(reconnect_ns - disconnect_ns) // 1_000_000,
+                                reason=disconnect_reason,
+                            )
                         disconnect_ns = None
                     attempt = 0
                     await self._subscribe(ws)
