@@ -1,0 +1,46 @@
+; systemd *user* unit for the venue latency telemetry probe.
+;
+; Install: see ops/deploy/README.md. Edit WorkingDirectory and ExecStart if the
+; repo or uv lives elsewhere — systemd expands neither ~ nor $HOME in either.
+;
+; DO NOT enable or start this while the 2026-07-31 capture is running: a second
+; probe would double-write the same telemetry day partition.
+
+[Unit]
+Description=MLCryptoEngine venue latency telemetry probe
+Documentation=file:///home/kiros-li/Documents/GitHub/MLCryptoEngine/ops/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+; Must live in [Unit] — systemd silently ignores it under [Service], leaving
+; the default "five restarts in ten seconds then fail permanently" in force.
+StartLimitIntervalSec=0
+; Telemetry exists to give Phase C a measured latency distribution covering the
+; same wall-clock as the capture (CLAUDE.md rule 3), so it follows the recorder
+; rather than running on its own schedule. Wants, not Requires: a telemetry
+; outage must never take the recorder down with it.
+Wants=mlce-recorder.service
+After=mlce-recorder.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kiros-li/Documents/GitHub/MLCryptoEngine
+ExecStart=/home/kiros-li/.local/bin/uv run python -m ops.telemetry
+Environment=PYTHONUNBUFFERED=1
+
+Restart=always
+RestartSec=10
+
+; SIGTERM lets the current probe cycle flush its Parquet day before exiting.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mlce-telemetry
+
+; Unauthenticated GETs against public REST status endpoints only.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

@@ -1,4 +1,4 @@
-.PHONY: help install lint typecheck test record validate telemetry desktop clean
+.PHONY: help install lint typecheck test record status validate telemetry desktop clean
 
 help: ## List available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -19,6 +19,9 @@ test: ## Run the pytest suite
 
 record: ## Start the market data recorder (Kraken + Coinbase public feeds)
 	uv run python -m data.recorder
+
+status: ## Process liveness, heartbeat age per venue, today's partition sizes, free disk
+	uv run python -m ops.status
 
 validate: ## Reconstruct books from raw data, score quality, append results to report.md
 	uv run python -m data.validate

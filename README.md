@@ -48,12 +48,20 @@ cp .env.example .env
 # 3. Record public market data from Kraken and Coinbase
 make record
 
-# 4. In another terminal: reconstruct books and validate the recorded data
+# 4. In another terminal: liveness, heartbeat age per venue, today's bytes, free disk
+make status
+
+# 5. Reconstruct books and validate the recorded data
 make validate
 
-# 5. Run the desktop app (requires Rust + Node; see desktop/README.md)
+# 6. Run the desktop app (requires Rust + Node; see desktop/README.md)
 make desktop
 ```
+
+The recorder is meant to run continuously — Phase B needs many days across
+different volatility regimes, and no amount of modeling recovers data that was
+never captured. `ops/deploy/` holds systemd user units for the recorder and the
+telemetry probe; see `ops/deploy/README.md` to install them.
 
 `make help` lists every target. See `CLAUDE.md` for the full operating manual,
 `progress.md` for current status, and `DECISIONS.md` for why things are the way they

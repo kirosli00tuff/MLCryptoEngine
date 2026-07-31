@@ -1,0 +1,50 @@
+; systemd *user* unit for the market data recorder.
+;
+; Install: see ops/deploy/README.md. Edit WorkingDirectory and ExecStart if the
+; repo or uv lives elsewhere — systemd expands neither ~ nor $HOME in either.
+;
+; DO NOT enable or start this while the 2026-07-31 capture is running: systemd
+; would start a second recorder writing into the same hour files.
+
+[Unit]
+Description=MLCryptoEngine market data recorder (Kraken + Coinbase public feeds)
+Documentation=file:///home/kiros-li/Documents/GitHub/MLCryptoEngine/ops/deploy/README.md
+; Public WebSocket feeds only, so the network must be up before this is useful.
+After=network-online.target
+Wants=network-online.target
+; Never give up restarting. The default rate limit puts a unit into permanent
+; failed state after five restarts in ten seconds — precisely the outcome
+; Restart=always exists to prevent. This directive lives in [Unit]: systemd
+; silently ignores it under [Service], which would leave the limit in force.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/home/kiros-li/Documents/GitHub/MLCryptoEngine
+ExecStart=/home/kiros-li/.local/bin/uv run python -m data.recorder
+; Unbuffered so journald sees each JSON log line as it is written rather than
+; in 8 KiB bursts; the recorder is I/O bound, so the cost is irrelevant.
+Environment=PYTHONUNBUFFERED=1
+
+; Always come back. A recorder that stays down after a crash silently loses a
+; day, and a day of tick data cannot be recaptured at any price. Restart
+; backoff is RestartSec; venue-side disconnects never reach systemd at all,
+; because the recorder reconnects internally with jittered exponential backoff.
+Restart=always
+RestartSec=5
+
+; SIGTERM lets the writer close its zstd frame cleanly; give it room to finish.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mlce-recorder
+
+; Records public market data and writes only inside the repo. It holds no
+; credentials (CLAUDE.md rule 4), so it needs no privilege at all.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

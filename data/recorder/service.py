@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import signal
+import time
 
 import structlog
 
@@ -12,6 +13,7 @@ from data.config import AppConfig, load_config
 from data.logsetup import configure_logging
 from data.recorder import RECORDER_TYPES
 from data.recorder.base import DryRunLimiter, VenueRecorder
+from data.recorder.diskguard import DiskGuard
 from data.recorder.gaps import GapLogger
 from data.recorder.writer import RawFileWriter
 
@@ -50,12 +52,17 @@ async def _emit_heartbeats(
     recorders: list[VenueRecorder],
     interval_s: float,
     stop: asyncio.Event,
+    disk_guard: DiskGuard | None = None,
 ) -> None:
     log = structlog.get_logger("recorder")
     previous: dict[str, int] = {}
     while not stop.is_set():
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=interval_s)
+        if disk_guard is not None:
+            # Advisory only — the guard logs and returns; nothing here reacts to
+            # a low reading by stopping capture or removing data.
+            disk_guard.check(time.monotonic())
         for recorder in recorders:
             total = recorder.heartbeat.messages_total
             rate = (total - previous.get(recorder.venue_key, 0)) / interval_s
@@ -89,8 +96,9 @@ async def run_service(venue_keys: list[str] | None, dry_run: bool) -> None:
             loop.add_signal_handler(sig, stop.set)
 
     log.info("recorder_starting", venues=keys, dry_run=dry_run)
+    disk_guard = DiskGuard(cfg.raw_dir, cfg.disk.warn_free_gb, cfg.disk.critical_free_gb)
     heartbeat_task = asyncio.create_task(
-        _emit_heartbeats(recorders, cfg.recorder.heartbeat_interval_s, stop)
+        _emit_heartbeats(recorders, cfg.recorder.heartbeat_interval_s, stop, disk_guard)
     )
     try:
         await asyncio.gather(*(r.run(stop) for r in recorders))

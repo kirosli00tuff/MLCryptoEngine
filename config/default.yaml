@@ -17,6 +17,13 @@ recorder:
   # --dry-run prints this many messages and exits.
   dry_run_messages: 50
 
+# Free-space guard. Advisory only: crossing a threshold logs loudly and does
+# nothing else. Recording is never stopped and data is never deleted — a full
+# disk costs the tail of one day, a guard that prunes costs days already banked.
+disk:
+  warn_free_gb: 50.0
+  critical_free_gb: 20.0
+
 telemetry:
   # Seconds between latency probes per venue.
   interval_s: 60.0

@@ -113,6 +113,32 @@ recorded data clearing `make validate` does.
   7 regression tests in `tests/test_integrity_scoring.py` replay both real
   fixtures end-to-end through `validate_venue_day`.
 
+- 2026-07-30 — Stage 1.6 Task 3 landed: continuous recording is now the default
+  operating mode. systemd **user** units for the recorder and telemetry probe
+  under `ops/deploy/` (`Restart=always`, `RestartSec` backoff, journald,
+  absolute `WorkingDirectory` and `uv` path since systemd expands neither `~`
+  nor `$HOME`), documented in `ops/deploy/README.md` with
+  `systemctl --user enable --now` and `loginctl enable-linger` — the latter
+  being the step whose omission fails silently until the first reboot.
+  `systemd-analyze --user verify` caught a real bug before install:
+  `StartLimitIntervalSec` was in `[Service]`, where systemd ignores it, so the
+  "five restarts in ten seconds then fail permanently" default would still have
+  applied — exactly the outcome `Restart=always` is there to prevent. Moved to
+  `[Unit]`; both units now verify clean. **The units are written and documented
+  but deliberately NOT enabled or started** — activating them during the
+  in-flight 2026-07-31 capture would start a second recorder writing the same
+  hour files. Activation is the operator's call once the day validates; the
+  README says so at the top. Disk guard (`data/recorder/diskguard.py`) runs on
+  the heartbeat cycle and logs a warning below `disk.warn_free_gb` (50 GB) and
+  an error below `disk.critical_free_gb` (20 GB); it warns only — never stops
+  recording, never deletes, pinned by a test that asserts recorded bytes survive
+  repeated CRITICAL readings. New `make status` reports process liveness,
+  heartbeat age per venue, the current day's partition sizes and free disk, and
+  exits non-zero when unhealthy so it works as a cron check. Building it
+  surfaced a second real bug: substring-matching `/proc` command lines counted
+  the launching `bash -c` wrapper as *both* processes, so matching is now
+  token-exact on `-m <module>`. 20 new tests (68 total).
+
 ## Full-day recording run (in progress)
 
 Started: **2026-07-30T19:58:34Z** · target day to enclose: **2026-07-31 UTC**

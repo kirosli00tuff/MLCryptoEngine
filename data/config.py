@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -109,6 +109,26 @@ class RecorderSettings(BaseModel):
     dry_run_messages: int = Field(default=50, gt=0)
 
 
+class DiskSettings(BaseModel):
+    """Free-space thresholds for the recorder's disk guard.
+
+    Advisory only: crossing either threshold logs, and nothing else. Nothing in
+    the pipeline stops recording or deletes data on low disk.
+    """
+
+    warn_free_gb: float = Field(default=50.0, gt=0)
+    critical_free_gb: float = Field(default=20.0, gt=0)
+
+    @model_validator(mode="after")
+    def _critical_below_warn(self) -> DiskSettings:
+        if self.critical_free_gb > self.warn_free_gb:
+            raise ValueError(
+                f"critical_free_gb ({self.critical_free_gb}) must not exceed "
+                f"warn_free_gb ({self.warn_free_gb})"
+            )
+        return self
+
+
 class TelemetrySettings(BaseModel):
     interval_s: float = Field(default=60.0, gt=0)
     timeout_s: float = Field(default=5.0, gt=0)
@@ -133,6 +153,7 @@ class AppConfig(BaseSettings):
     logs_dir: Path = Path("logs")
     log_level: str = "INFO"
     recorder: RecorderSettings = RecorderSettings()
+    disk: DiskSettings = DiskSettings()
     telemetry: TelemetrySettings = TelemetrySettings()
     book: BookSettings = BookSettings()
     required_secrets: list[str] = Field(default_factory=list)
