@@ -73,14 +73,29 @@ export interface ArrivalStats {
   p99_ms: number;
 }
 
+/**
+ * Which integrity mechanism scored a venue-day. Kraken WS v2 has no sequence
+ * numbers and Coinbase provides no checksums, so a `null` count means "this
+ * feed provides none" and must render as n/a — never as zero, which would read
+ * as a clean check that never ran.
+ */
+export interface IntegrityReport {
+  mechanism: string;
+  sequence_checks: number | null;
+  checksum_checks: number | null;
+}
+
 export interface SymbolReport {
   symbol: string;
   events_applied: number;
   snapshots: number;
-  seq_gaps: number;
-  seq_gaps_unexplained: number;
-  checksum_failures: number;
-  checksum_failures_unexplained: number;
+  /** null when the venue's feed carries no sequence numbers. */
+  seq_gaps: number | null;
+  seq_gaps_unexplained: number | null;
+  /** null when the venue's feed carries no book checksums. */
+  checksum_failures: number | null;
+  checksum_failures_unexplained: number | null;
+  checksums_verified: number | null;
   crossed_total: number;
   crossed_unexplained: number;
   locked_total: number;
@@ -110,6 +125,7 @@ export interface DayReport {
   gaps_outside_span: number;
   gap_ms_outside_span: number;
   arrival: ArrivalStats;
+  integrity: IntegrityReport;
   symbols: SymbolReport[];
   passed: boolean;
   failure_reasons: string[];

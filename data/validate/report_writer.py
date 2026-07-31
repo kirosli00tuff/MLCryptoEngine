@@ -16,18 +16,53 @@ import orjson
 from data.validate.replay import DayReport
 
 
+def _check_cell(failures: int | None, unexplained: int | None) -> str:
+    """Render one integrity check, or "n/a" when it does not apply to the venue.
+
+    Never renders 0 for an unavailable check: on a feed with no sequence
+    numbers, "0 (0)" would read as a clean continuity check that in fact never
+    ran. See :mod:`data.validate.integrity`.
+    """
+    if failures is None:
+        return "n/a"
+    return f"{failures} ({unexplained})"
+
+
+def _volume(label: str, count: int | None) -> str:
+    if count is None:
+        return f"{label}: n/a (this feed provides none)"
+    return f"{label}: {count:,} checked"
+
+
+def _integrity_line(report: DayReport) -> str:
+    """Name the mechanism that certified this venue-day and how much it checked.
+
+    The crossed/locked-book criterion is only meaningful alongside whatever
+    keeps the book honest between snapshots, and that differs per venue — so
+    the mechanism is named here rather than left implicit.
+    """
+    integrity = report.integrity
+    return (
+        f"Integrity mechanism: **{integrity.mechanism}** · "
+        f"{_volume('sequence numbers', integrity.sequence_checks)} · "
+        f"{_volume('book checksums', integrity.checksum_checks)}"
+    )
+
+
 def _symbol_table(report: DayReport) -> list[str]:
     lines = [
         "| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) "
-        "| crossed (unexpl.) | locked | day coverage | coverage excl. gaps "
-        "| snap compares (mismatch) | rows |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| cksums verified | crossed (unexpl.) | locked | day coverage "
+        "| coverage excl. gaps | snap compares (mismatch) | rows |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for s in report.symbols:
+        verified = "n/a" if s.checksums_verified is None else str(s.checksums_verified)
         lines.append(
             f"| {s.symbol} | {s.events_applied} | {s.snapshots} "
-            f"| {s.seq_gaps} ({s.seq_gaps_unexplained}) "
-            f"| {s.checksum_failures} ({s.checksum_failures_unexplained}) "
+            f"| {_check_cell(s.seq_gaps, s.seq_gaps_unexplained)} "
+            f"| {_check_cell(s.checksum_failures, s.checksum_failures_unexplained)} "
+            f"| {verified} "
             f"| {s.crossed_total} ({s.crossed_unexplained}) | {s.locked_total} "
             f"| {s.valid_coverage_day_pct:.2f}% | {s.valid_coverage_excl_gaps_pct:.2f}% "
             f"| {s.snapshot_compares} ({s.snapshot_mismatches}) | {s.rows_written} |"
@@ -84,6 +119,8 @@ def render_section(runs: list[DayReport]) -> str:
         lines.append("")
         channels = " · ".join(f"`{k}`: {v}" for k, v in sorted(report.channel_counts.items()))
         lines.append(f"Channels: {channels}")
+        lines.append("")
+        lines.append(_integrity_line(report))
         lines.append("")
         lines.extend(_symbol_table(report))
         lines.append("")

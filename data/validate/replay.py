@@ -24,6 +24,13 @@ from data.config import AppConfig
 from data.recorder.gaps import GapRecord, merge_windows, read_gaps
 from data.recorder.reader import iter_day_records
 from data.store import write_book_day
+from data.validate.integrity import (
+    CHECKSUM,
+    IntegrityReport,
+    describe,
+    mechanisms_for,
+    uncertified_reason,
+)
 from data.validate.stats import ArrivalHistogram, ArrivalStats
 
 
@@ -41,13 +48,18 @@ FULL_DAY_THRESHOLD = 0.999
 
 
 class SymbolReport(BaseModel):
+    """Per-symbol scorecard. ``None`` on a check means "not applicable to this
+    venue" — a venue that provides no sequence numbers reports ``None``, never
+    ``0``, so an unavailable check can never be read as a clean one."""
+
     symbol: str
     events_applied: int
     snapshots: int
-    seq_gaps: int
-    seq_gaps_unexplained: int
-    checksum_failures: int
-    checksum_failures_unexplained: int
+    seq_gaps: int | None
+    seq_gaps_unexplained: int | None
+    checksum_failures: int | None
+    checksum_failures_unexplained: int | None
+    checksums_verified: int | None
     crossed_total: int
     crossed_unexplained: int
     locked_total: int
@@ -90,6 +102,7 @@ class DayReport(BaseModel):
     gaps_outside_span: int
     gap_ms_outside_span: int
     arrival: ArrivalStats
+    integrity: IntegrityReport
     symbols: list[SymbolReport]
     passed: bool
     failure_reasons: list[str] = Field(default_factory=list)
@@ -233,6 +246,9 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
     if venue not in ("kraken", "coinbase"):
         raise ValueError(f"No replay support for venue '{venue}'")
     vcfg = cfg.venues[venue]
+    mechanisms = mechanisms_for(vcfg)
+    seq_applies = vcfg.sequence_numbers
+    checksum_applies = vcfg.snapshot.checksum
 
     builders: dict[str, BookBuilder] = {}
     emitters: dict[str, SnapshotEmitter] = {}
@@ -283,7 +299,10 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         channel_counts[str(channel or "unknown")] += 1
 
         if venue == "coinbase":
-            seq = envelope_sequence(message)
+            # Gated on config, not on the venue name: a feed we have not
+            # declared as sequence-numbered is never scored on sequence
+            # continuity, so it cannot bank an unearned clean check.
+            seq = envelope_sequence(message) if seq_applies else None
             seq_ok = tracker.observe(seq) if seq is not None else True
             events = parse_coinbase(message, recv_ns)
         else:
@@ -344,6 +363,17 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         )
         symbol_reports.append(
             SymbolReport(
+                seq_gaps=builder.seq_gaps if seq_applies else None,
+                seq_gaps_unexplained=(
+                    sum(1 for t in marks["seq"] if not _explained(t, gaps)) if seq_applies else None
+                ),
+                checksum_failures=builder.checksum_failures if checksum_applies else None,
+                checksum_failures_unexplained=(
+                    sum(1 for t in marks["checksum"] if not _explained(t, gaps))
+                    if checksum_applies
+                    else None
+                ),
+                checksums_verified=builder.checksums_verified if checksum_applies else None,
                 last_mid=float(builder.mid) if builder.valid and builder.mid is not None else None,
                 last_spread=last_spread,
                 last_bid_levels=len(builder.bid_levels(vcfg.book_depth)) if builder.valid else 0,
@@ -351,12 +381,6 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
                 symbol=symbol,
                 events_applied=builder.events_applied,
                 snapshots=builder.snapshots_applied,
-                seq_gaps=builder.seq_gaps,
-                seq_gaps_unexplained=sum(1 for t in marks["seq"] if not _explained(t, gaps)),
-                checksum_failures=builder.checksum_failures,
-                checksum_failures_unexplained=sum(
-                    1 for t in marks["checksum"] if not _explained(t, gaps)
-                ),
                 crossed_total=builder.crossed_events,
                 crossed_unexplained=sum(1 for t in marks["crossed"] if not _explained(t, gaps)),
                 locked_total=builder.locked_events,
@@ -368,20 +392,45 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
             )
         )
 
+    integrity = IntegrityReport(
+        mechanism=describe(mechanisms),
+        sequence_checks=tracker.observations if seq_applies else None,
+        checksum_checks=(
+            sum(b.checksums_verified for b in builders.values()) if checksum_applies else None
+        ),
+    )
+
     failure_reasons: list[str] = []
     if not symbol_reports:
         failure_reasons.append("no book data found for this venue-day")
+    # The crossed/locked criterion is only as good as the mechanism that keeps
+    # the book honest between snapshots. Refuse to certify a venue-day whose
+    # declared mechanism never ran; "zero crossed books" from an unchecked
+    # reconstruction is not evidence of anything.
+    uncertified = uncertified_reason(venue, mechanisms, integrity) if symbol_reports else None
+    if uncertified is not None:
+        failure_reasons.append(uncertified)
     for report in symbol_reports:
         prefix = f"{report.symbol}: "
         if report.crossed_unexplained:
             failure_reasons.append(
-                f"{prefix}{report.crossed_unexplained} unexplained crossed books"
+                f"{prefix}{report.crossed_unexplained} unexplained crossed books "
+                f"(integrity mechanism: {integrity.mechanism})"
             )
         if report.seq_gaps_unexplained:
             failure_reasons.append(f"{prefix}{report.seq_gaps_unexplained} unexplained seq gaps")
         if report.checksum_failures_unexplained:
             failure_reasons.append(
                 f"{prefix}{report.checksum_failures_unexplained} unexplained checksum failures"
+            )
+        # Per-symbol counterpart to the venue-level check: on Kraken a symbol
+        # missing its instruments precisions builds no checksum function, so it
+        # replays entirely unverified while its siblings verify normally.
+        if report.checksums_verified == 0 and report.events_applied > 0:
+            failure_reasons.append(
+                f"{prefix}0 of {report.events_applied} updates verified against "
+                f"{CHECKSUM} — no instrument precisions configured for this symbol, "
+                "so zero checksum failures is not evidence of integrity"
             )
         if report.valid_coverage_excl_gaps_pct < FULL_DAY_THRESHOLD * 100:
             failure_reasons.append(
@@ -403,6 +452,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         gaps_outside_span=accounts.gaps_outside_span,
         gap_ms_outside_span=accounts.gap_ms_outside_span,
         arrival=hist.snapshot(),
+        integrity=integrity,
         symbols=symbol_reports,
         passed=not failure_reasons,
         failure_reasons=failure_reasons,

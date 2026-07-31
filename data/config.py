@@ -74,6 +74,11 @@ class VenueConfig(BaseModel):
     aws_region: str
     fee_tiers: list[FeeTier]
     instruments: dict[str, InstrumentMeta] = Field(default_factory=dict)
+    # Does this feed stamp messages with a sequence number the recorder can
+    # check for continuity? Defaults to False on purpose: an undeclared venue
+    # is reported as "sequence check not applicable" rather than credited with
+    # zero sequence gaps, so a missing declaration can never look like a pass.
+    sequence_numbers: bool = False
 
     @field_validator("fee_tiers")
     @classmethod

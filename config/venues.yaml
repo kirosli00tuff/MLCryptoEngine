@@ -10,6 +10,10 @@ venues:
     symbols: [BTC/USD, ETH/USD]
     # Kraken WS v2 book channel supports depth 10/25/100/500/1000.
     book_depth: 100
+    # Kraken WS v2 public channels carry no sequence number (recorder heartbeats
+    # show last_seq: null). Integrity comes from the CRC32 checksum below, and
+    # the validation report says "n/a" for the sequence check rather than 0.
+    sequence_numbers: false
     snapshot:
       on_subscribe: true
       checksum: true
@@ -44,6 +48,9 @@ venues:
     # level2 channel delivers full-depth snapshot + incremental updates; depth here
     # is the persisted reconstruction depth, not a subscription parameter.
     book_depth: 100
+    # Every Advanced Trade envelope carries sequence_num; continuity of that
+    # counter is this venue's integrity mechanism, since it provides no checksum.
+    sequence_numbers: true
     snapshot:
       on_subscribe: true
       checksum: false

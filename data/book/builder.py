@@ -33,9 +33,14 @@ class SequenceTracker:
     def __init__(self) -> None:
         self._last: int | None = None
         self.gaps = 0
+        # How many sequence numbers were actually inspected. Zero gaps out of
+        # zero observations is not evidence of continuity, and the validation
+        # harness reports the two together so it can never be read that way.
+        self.observations = 0
 
     def observe(self, seq: int) -> bool:
         """Record ``seq``; True when contiguous (or first), False on a gap."""
+        self.observations += 1
         last = self._last
         self._last = seq
         if last is None or seq == last + 1:
@@ -79,6 +84,10 @@ class BookBuilder:
         self.ignored_while_invalid = 0
         self.seq_gaps = 0
         self.checksum_failures = 0
+        # Checksums actually compared. A venue-day with zero failures out of
+        # zero comparisons has not been integrity-checked at all; the harness
+        # scores the pair, never the failure count alone.
+        self.checksums_verified = 0
         self.crossed_events = 0
         self.locked_events = 0
 
@@ -111,6 +120,7 @@ class BookBuilder:
         self._after_change()
 
         if event.checksum is not None and self._checksum_fn is not None:
+            self.checksums_verified += 1
             computed = self._checksum_fn(self.bid_levels(10), self.ask_levels(10))
             if computed != event.checksum:
                 self.checksum_failures += 1

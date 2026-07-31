@@ -90,6 +90,29 @@ recorded data clearing `make validate` does.
   — but any partial-day run would have inflated gap time and could have
   spuriously raised `GapAccountingError`.
 
+- 2026-07-30 — Stage 1.6 Task 2: audited the Kraken checksum-vs-sequence
+  asymmetry. **It was not already correct — the harness had three ways to score
+  a false pass, all now fixed.** (1) Kraken replays with `seq_ok=True`
+  unconditionally, so `seq_gaps` was always 0 and the report printed `0 (0)`,
+  indistinguishable from a continuity check that ran and found nothing;
+  symmetrically Coinbase printed `0 (0)` checksum failures despite the feed
+  providing no checksums. Both counters are now `None` when the mechanism does
+  not exist and render as `n/a`, never `0`. (2) The worse hole: a Kraken symbol
+  missing its `instruments` precisions builds no checksum function, so every
+  update replayed *entirely unverified* and the venue-day passed on `0`
+  failures out of `0` comparisons. `BookBuilder.checksums_verified` and
+  `SequenceTracker.observations` now count comparisons actually performed, and
+  a declared mechanism that ran zero comparisons is a FAIL. (3) The
+  crossed/locked criterion is computed identically per venue (it is pure book
+  state) but is only meaningful alongside whatever invalidates the book between
+  snapshots — that mechanism is now named in report.md on every venue-day and
+  quoted in each crossed-book failure reason. New `data/validate/integrity.py`
+  owns the applicability logic; venue capability is declared in `venues.yaml`
+  (`sequence_numbers: false` for Kraken, `true` for Coinbase) and defaults to
+  `false` so an undeclared venue is reported n/a rather than credited.
+  7 regression tests in `tests/test_integrity_scoring.py` replay both real
+  fixtures end-to-end through `validate_venue_day`.
+
 ## Full-day recording run (in progress)
 
 Started: **2026-07-30T19:58:34Z** · target day to enclose: **2026-07-31 UTC**
