@@ -64,8 +64,16 @@ def render_section(runs: list[DayReport]) -> str:
             span = f"{(report.last_ns - report.first_ns) / 1e9:.0f}s"
         lines.append(
             f"Messages: **{report.msgs_total}** · recorded span: {span} · "
-            f"feed gaps in span: {report.feed_gaps} ({report.feed_gap_ms} ms, unioned)"
+            f"feed gaps in span: {report.feed_gaps} ({report.feed_gap_ms} ms, unioned "
+            "and clamped to the span)"
         )
+        if report.gaps_partially_outside_span:
+            lines.append(
+                f"\n⚠ {report.gaps_partially_outside_span} gap record(s) extend past the "
+                f"recorded span; {report.gap_ms_clipped_outside_span} ms of their duration "
+                "lies outside it and is excluded. Only the intersected portion counts "
+                "against coverage — the clamp is reported, never silent."
+            )
         if report.gaps_outside_span:
             lines.append(
                 f"\n⚠ {report.gaps_outside_span} gap record(s) totalling "

@@ -103,7 +103,10 @@ export interface DayReport {
   first_ns: number | null;
   last_ns: number | null;
   feed_gaps: number;
+  /** Unioned gap time intersected with the recorded span — never full window durations. */
   feed_gap_ms: number;
+  gaps_partially_outside_span: number;
+  gap_ms_clipped_outside_span: number;
   gaps_outside_span: number;
   gap_ms_outside_span: number;
   arrival: ArrivalStats;

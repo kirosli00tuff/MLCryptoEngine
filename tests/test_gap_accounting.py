@@ -19,7 +19,7 @@ from data.recorder.base import DryRunLimiter
 from data.recorder.gaps import GapLogger, GapRecord, merge_windows, read_gaps
 from data.recorder.kraken import KrakenRecorder
 from data.recorder.writer import RawFileWriter
-from data.validate.replay import GapAccountingError, account_gaps
+from data.validate.replay import GapAccountingError, account_gaps, gaps_touching_span
 
 S = 1_000_000_000  # ns per second
 
@@ -92,6 +92,101 @@ def test_gap_spanning_midnight_is_clamped_to_the_day() -> None:
     assert accounts.gap_ns_excluded_from_day == 20 * S  # only [100, 120)
 
 
+# --- span clamping -----------------------------------------------------------
+#
+# In-span gap time is the intersection with [span_start, span_end), never the
+# window's full duration: time before recording started is unrecorded time, not
+# a hole in recorded data.
+
+
+def test_gap_entirely_before_the_span_is_reported_not_counted() -> None:
+    accounts = account_gaps([_gap(10, 40)], span=(100 * S, 200 * S), day_bounds=DAY)
+
+    assert accounts.gaps_in_span == 0
+    assert accounts.gap_ms_in_span == 0
+    assert accounts.gap_ns_excluded_from_day == 0
+    assert accounts.gaps_partially_outside_span == 0
+    assert accounts.gaps_outside_span == 1
+    assert accounts.gap_ms_outside_span == 30_000
+
+
+def test_gap_straddling_span_start_counts_only_its_intersection() -> None:
+    # 50s window, but only its last 10s overlap the recording.
+    accounts = account_gaps([_gap(60, 110)], span=(100 * S, 200 * S), day_bounds=DAY)
+
+    assert accounts.gaps_in_span == 1
+    assert accounts.gap_ms_in_span == 10_000  # [100, 110), not [60, 110)
+    assert accounts.gap_ns_excluded_from_day == 10 * S
+    assert accounts.gaps_partially_outside_span == 1
+    assert accounts.gap_ms_clipped_outside_span == 40_000
+
+
+def test_gap_straddling_span_end_counts_only_its_intersection() -> None:
+    accounts = account_gaps([_gap(190, 260)], span=(100 * S, 200 * S), day_bounds=DAY)
+
+    assert accounts.gaps_in_span == 1
+    assert accounts.gap_ms_in_span == 10_000  # [190, 200)
+    assert accounts.gap_ns_excluded_from_day == 10 * S
+    assert accounts.gaps_partially_outside_span == 1
+    assert accounts.gap_ms_clipped_outside_span == 60_000
+
+
+def test_gap_enclosing_the_whole_span_clamps_to_the_span() -> None:
+    # Before clamping this summed 500s against a 100s span and tripped the
+    # invariant as an accounting artifact. Now it is exactly the span.
+    accounts = account_gaps([_gap(0, 500)], span=(100 * S, 200 * S), day_bounds=DAY)
+
+    assert accounts.gaps_in_span == 1
+    assert accounts.gap_ms_in_span == 100_000
+    assert accounts.gap_ns_excluded_from_day == 100 * S
+    assert accounts.gaps_partially_outside_span == 1
+    assert accounts.gap_ms_clipped_outside_span == 400_000
+
+
+def test_gap_abutting_the_span_boundary_does_not_touch_it() -> None:
+    # Half-open [start, end) everywhere: a gap ending exactly at span_start and
+    # one starting exactly at span_end are both outside.
+    accounts = account_gaps(
+        [_gap(50, 100), _gap(200, 250)], span=(100 * S, 200 * S), day_bounds=DAY
+    )
+
+    assert accounts.gaps_in_span == 0
+    assert accounts.gap_ms_in_span == 0
+    assert accounts.gaps_outside_span == 2
+    assert accounts.gap_ns_excluded_from_day == 0
+
+
+def test_scoping_helper_agrees_with_accounting_on_the_boundary() -> None:
+    # gaps_touching_span decides which gaps may *explain* an anomaly;
+    # account_gaps decides which gaps *count*. One predicate, so a gap can never
+    # excuse a crossed book while contributing nothing to the gap accounting.
+    span = (100 * S, 200 * S)
+    abutting, straddling, outside = _gap(50, 100), _gap(90, 130), _gap(10, 40)
+
+    in_scope = gaps_touching_span([abutting, straddling, outside], span, DAY)
+
+    assert in_scope == [straddling]
+    assert account_gaps([abutting, straddling, outside], span, DAY).gaps_in_span == 1
+
+
+def test_scoping_helper_returns_nothing_without_a_recorded_span() -> None:
+    assert gaps_touching_span([_gap(10, 20)], span=None, day_bounds=DAY) == []
+
+
+def test_partial_and_fully_outside_records_are_accounted_separately() -> None:
+    accounts = account_gaps(
+        [_gap(10, 40), _gap(90, 130), _gap(150, 160)],
+        span=(100 * S, 200 * S),
+        day_bounds=DAY,
+    )
+
+    assert accounts.gaps_outside_span == 1  # [10, 40)
+    assert accounts.gaps_in_span == 2  # [90, 130) and [150, 160)
+    assert accounts.gaps_partially_outside_span == 1  # only [90, 130)
+    assert accounts.gap_ms_in_span == 40_000  # 30s clamped + 10s whole
+    assert accounts.gap_ms_clipped_outside_span == 10_000  # [90, 100)
+
+
 def test_no_recorded_span_means_no_coverage_exclusions() -> None:
     accounts = account_gaps([_gap(10, 20)], span=None, day_bounds=DAY)
 
@@ -103,12 +198,35 @@ def test_no_recorded_span_means_no_coverage_exclusions() -> None:
 # --- the invariant -----------------------------------------------------------
 
 
-def test_invariant_fires_when_gap_time_exceeds_recorded_span() -> None:
-    # A gap record claiming a 100s outage that encloses a 24s recorded span:
-    # messages on disk contradict the gap, so accounting must refuse.
-    gaps = [_gap(0, 100)]
-    with pytest.raises(GapAccountingError, match="contradict"):
-        account_gaps(gaps, span=(30 * S, 54 * S), day_bounds=DAY)
+def test_invariant_survives_an_enclosing_gap_because_clamping_handles_it() -> None:
+    # The old failure mode: a 100s gap record enclosing a 24s recorded span
+    # summed unclamped and tripped the invariant. That was an accounting
+    # artifact, not corruption — clamping resolves it to exactly the span.
+    accounts = account_gaps([_gap(0, 100)], span=(30 * S, 54 * S), day_bounds=DAY)
+
+    assert accounts.gap_ms_in_span == 24_000
+    assert accounts.gaps_partially_outside_span == 1
+
+
+def test_invariant_fires_on_a_corrupt_inverted_span() -> None:
+    # A span whose end precedes its start means records were read out of order.
+    # Clamped gap time can only exceed the span under that kind of corruption,
+    # which is exactly what the invariant now guards.
+    with pytest.raises(GapAccountingError, match="corrupt"):
+        account_gaps([_gap(0, 200)], span=(100 * S, 50 * S), day_bounds=DAY)
+
+
+def test_invariant_fires_when_window_merging_regresses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Simulate a merge_windows regression that returns overlapping windows:
+    # the union double-counts, and accounting must refuse rather than report.
+    monkeypatch.setattr(
+        "data.validate.replay.merge_windows",
+        lambda windows: [(0, 100 * S), (0, 100 * S)],
+    )
+    with pytest.raises(GapAccountingError, match="corrupt"):
+        account_gaps([_gap(0, 100)], span=(0, 100 * S), day_bounds=DAY)
 
 
 def test_invariant_accepts_gap_time_equal_to_bounded_outages() -> None:

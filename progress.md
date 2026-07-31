@@ -69,6 +69,27 @@ recorded data clearing `make validate` does.
   validation's gap invariant: feed gaps in span 0 ms (unioned) ≤ recorded span; the
   28 stale dry-run records remain quarantined as out-of-span.
 
+- 2026-07-30 — Stage 1.6 Task 1 landed: gap windows are clamped to the recorded
+  span. `account_gaps` previously summed the *full* duration of every unioned
+  window touching the span, so a gap that began before recording started
+  contributed its entire pre-recording length to in-span gap time — the same
+  class of defect as Stage 1.5 (counting time that is not a hole in recorded
+  data), just smaller. Windows are now intersected with `[span_start, span_end)`
+  before summing; the trimmed remainder is reported as
+  `gaps_partially_outside_span` / `gap_ms_clipped_outside_span` rather than
+  silently truncated. Scoping is half-open everywhere: the old `touches_span`
+  used `<=`/`>=` while `GapRecord.overlaps_ns` used `<`/`>`, so a gap ending
+  exactly at `span_start` was treated as touching and then counted in full. One
+  predicate (`gaps_touching_span`) now serves both coverage accounting and
+  anomaly explanation, so they cannot disagree. The `GapAccountingError`
+  invariant is kept but re-scoped: after clamping it can only fire on genuine
+  corruption (merge regression, inverted span), which the docstring says
+  explicitly. 12 new tests covering gap-before-span, straddling either
+  boundary, enclosing the span, exact-boundary abutment, and both corruption
+  paths. Impact today is bounded — the enclosed 2026-07-31 run makes span ≈ day
+  — but any partial-day run would have inflated gap time and could have
+  spuriously raised `GapAccountingError`.
+
 ## Full-day recording run (in progress)
 
 Started: **2026-07-30T19:58:34Z** · target day to enclose: **2026-07-31 UTC**

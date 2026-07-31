@@ -65,10 +65,12 @@ class SymbolReport(BaseModel):
 
 
 class GapAccounts(BaseModel):
-    """Union-based gap accounting for one venue-day."""
+    """Union-based, span-clamped gap accounting for one venue-day."""
 
     gaps_in_span: int
     gap_ms_in_span: int
+    gaps_partially_outside_span: int
+    gap_ms_clipped_outside_span: int
     gaps_outside_span: int
     gap_ms_outside_span: int
     gap_ns_excluded_from_day: int
@@ -83,6 +85,8 @@ class DayReport(BaseModel):
     last_ns: int | None
     feed_gaps: int
     feed_gap_ms: int
+    gaps_partially_outside_span: int
+    gap_ms_clipped_outside_span: int
     gaps_outside_span: int
     gap_ms_outside_span: int
     arrival: ArrivalStats
@@ -91,22 +95,73 @@ class DayReport(BaseModel):
     failure_reasons: list[str] = Field(default_factory=list)
 
 
+def _clip(windows: list[tuple[int, int]], lo: int, hi: int) -> list[tuple[int, int]]:
+    """Intersect half-open ``[start, end)`` windows with ``[lo, hi)``.
+
+    Windows falling entirely outside — and any window whose intersection is
+    empty — are dropped, so the result only ever describes time inside the
+    bound. Never widens a window.
+    """
+    clipped = [(max(start, lo), min(end, hi)) for start, end in windows]
+    return [(start, end) for start, end in clipped if end > start]
+
+
+def _in_scope(gap: GapRecord, span: tuple[int, int], day_bounds: tuple[int, int]) -> bool:
+    """True if ``gap`` overlaps both the calendar day and the recorded span.
+
+    Half-open ``[start, end)`` on both bounds, delegating to
+    :meth:`GapRecord.overlaps_ns` so gap scoping, :func:`merge_windows`, and
+    :func:`_clip` all share one convention: a gap ending exactly at
+    ``span_start`` does not touch the span, and neither does one starting
+    exactly at ``span_end``.
+    """
+    return gap.overlaps_ns(*day_bounds) and gap.overlaps_ns(*span)
+
+
+def gaps_touching_span(
+    gaps: list[GapRecord],
+    span: tuple[int, int] | None,
+    day_bounds: tuple[int, int],
+) -> list[GapRecord]:
+    """The gap records in scope for a venue-day: overlapping the day *and* the span.
+
+    The single definition of "in scope". Coverage accounting
+    (:func:`account_gaps`) and anomaly explanation (:func:`_explained`) both
+    consume it, so the two can never drift into disagreeing about which gaps
+    are real holes in recorded data.
+    """
+    if span is None:
+        return []
+    return [g for g in gaps if _in_scope(g, span, day_bounds)]
+
+
 def account_gaps(
     gaps: list[GapRecord],
     span: tuple[int, int] | None,
     day_bounds: tuple[int, int],
 ) -> GapAccounts:
-    """Attribute gap records to a venue-day, merged (never summed) and audited.
+    """Attribute gap records to a venue-day, merged (never summed) and clamped.
 
     Only gaps that touch the recorded span count against coverage: a gap logged
     while nothing was being recorded (for example an earlier failed session the
     same day) is unrecorded time, not a hole in recorded data. Such records are
     still surfaced — as ``gaps_outside_span`` — never silently dropped.
 
-    Invariant (the point of this function): unioned gap time touching the
-    recorded span can never exceed the span itself. If it does, the sidecar
-    contradicts the recorded messages and this raises
-    :class:`GapAccountingError` instead of producing coverage numbers.
+    Gap time is counted at its *intersection* with ``[span_start, span_end)``,
+    never at the window's full duration. A gap that began before recording
+    started contributes only the part that overlaps the recording; the trimmed
+    remainder is reported as ``gap_ms_clipped_outside_span`` against
+    ``gaps_partially_outside_span`` records, so clamping is visible rather than
+    silent. Counting the untrimmed duration is the same class of error as
+    counting out-of-span gaps at all: time that is not a hole in recorded data.
+
+    Invariant: unioned, span-clamped gap time can never exceed the span. After
+    clamping this is structurally near-impossible to trip, which is the point —
+    it no longer fires on an accounting artifact (the old unclamped sum), so a
+    :class:`GapAccountingError` now means genuine corruption: ``merge_windows``
+    returning overlapping windows, or a span whose end precedes its start
+    (records read out of order). Either way the numbers are not trustworthy and
+    this raises instead of producing coverage.
     """
     day_start, day_end = day_bounds
     in_day = [g for g in gaps if g.overlaps_ns(day_start, day_end)]
@@ -116,40 +171,41 @@ def account_gaps(
         return GapAccounts(
             gaps_in_span=0,
             gap_ms_in_span=0,
+            gaps_partially_outside_span=0,
+            gap_ms_clipped_outside_span=0,
             gaps_outside_span=len(in_day),
             gap_ms_outside_span=sum(e - s for s, e in outside_windows) // 1_000_000,
             gap_ns_excluded_from_day=0,
         )
 
     span_start, span_end = span
-
-    def touches_span(gap: GapRecord) -> bool:
-        return gap.disconnect_ns <= span_end and gap.reconnect_ns >= span_start
-
-    in_records = [g for g in in_day if touches_span(g)]
-    out_records = [g for g in in_day if not touches_span(g)]
+    in_records = [g for g in in_day if _in_scope(g, span, day_bounds)]
+    out_records = [g for g in in_day if not _in_scope(g, span, day_bounds)]
     in_windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in in_records)
     out_windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in out_records)
 
-    in_span_ns = sum(e - s for s, e in in_windows)
+    span_windows = _clip(in_windows, span_start, span_end)
+    in_span_ns = sum(e - s for s, e in span_windows)
+    clipped_ns = sum(e - s for s, e in in_windows) - in_span_ns
     span_ns = span_end - span_start
     if in_span_ns > span_ns:
         raise GapAccountingError(
-            f"{in_span_ns / 1e6:.0f} ms of unioned gap time touches a recorded span of only "
-            f"{span_ns / 1e6:.0f} ms. Gap records contradict the recorded messages; "
-            "distrust this venue-day's sidecar and investigate before using any "
-            "downstream number."
+            f"{in_span_ns / 1e6:.0f} ms of unioned, span-clamped gap time inside a recorded "
+            f"span of only {span_ns / 1e6:.0f} ms. Clamped gap time cannot exceed the span "
+            "unless window merging or the recorded span itself is corrupt; distrust this "
+            "venue-day entirely and investigate before using any downstream number."
         )
 
-    excluded_ns = sum(
-        min(e, day_end) - max(s, day_start) for s, e in in_windows if s < day_end and e > day_start
-    )
     return GapAccounts(
         gaps_in_span=len(in_records),
         gap_ms_in_span=in_span_ns // 1_000_000,
+        gaps_partially_outside_span=sum(
+            1 for g in in_records if g.disconnect_ns < span_start or g.reconnect_ns > span_end
+        ),
+        gap_ms_clipped_outside_span=clipped_ns // 1_000_000,
         gaps_outside_span=len(out_records),
         gap_ms_outside_span=sum(e - s for s, e in out_windows) // 1_000_000,
-        gap_ns_excluded_from_day=excluded_ns,
+        gap_ns_excluded_from_day=sum(e - s for s, e in _clip(span_windows, day_start, day_end)),
     )
 
 
@@ -266,16 +322,9 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
     span = (first_ns, last_ns) if first_ns is not None and last_ns is not None else None
     all_gaps = read_gaps(cfg.raw_dir, venue)
     accounts = account_gaps(all_gaps, span, (day_start_ns, day_end_ns))
-    # Gaps that touch the recorded span (union-clamped to the day) are the only
-    # trustworthy exclusions from the coverage denominator.
-    gaps = [
-        g
-        for g in all_gaps
-        if g.overlaps_ns(day_start_ns, day_end_ns)
-        and span is not None
-        and g.disconnect_ns <= span[1]
-        and g.reconnect_ns >= span[0]
-    ]
+    # Gaps that touch the recorded span are the only trustworthy exclusions from
+    # the coverage denominator, and the only ones that can explain an anomaly.
+    gaps = gaps_touching_span(all_gaps, span, (day_start_ns, day_end_ns))
     gap_ns_in_day = accounts.gap_ns_excluded_from_day
 
     symbol_reports: list[SymbolReport] = []
@@ -349,6 +398,8 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         last_ns=last_ns,
         feed_gaps=accounts.gaps_in_span,
         feed_gap_ms=accounts.gap_ms_in_span,
+        gaps_partially_outside_span=accounts.gaps_partially_outside_span,
+        gap_ms_clipped_outside_span=accounts.gap_ms_clipped_outside_span,
         gaps_outside_span=accounts.gaps_outside_span,
         gap_ms_outside_span=accounts.gap_ms_outside_span,
         arrival=hist.snapshot(),
