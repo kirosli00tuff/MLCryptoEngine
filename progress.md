@@ -404,3 +404,68 @@ both venues.
     provenance, sequence audit, capability matrix enforcement). make lint /
     make typecheck / make test clean. Existing recorder confirmed alive
     (heartbeats: kraken 3,136,023 / coinbase 1,486,994 msgs this session).
+
+- 2026-08-01 — Stage C.2: Hyperliquid recording activated; bbo capability
+  verified against recorded data; real cadence measured. **Two documented
+  behaviours turned out to be wrong, in opposite directions.**
+  - **Why Hyperliquid was not recording:** nothing in the recorder — it was
+    already registered and would have started on the next restart. The
+    misleading part was `make status`, which iterated `cfg.venues` and so
+    demanded a heartbeat from `cme`, a vendor-fed venue with no recorder
+    process; it printed "no heartbeat in log" forever and exited non-zero,
+    which as a cron health check would have cried wolf permanently. Status
+    now expects heartbeats only from venues in `RECORDER_TYPES`.
+  - **Restart:** `systemctl --user restart mlce-recorder` (never a kill), so
+    zstd frames closed cleanly and the lifecycle logic self-recorded the
+    downtime: session end 18:51:59.364Z -> start 18:51:59.913Z, derived as a
+    **548 ms clean downtime gap** on kraken and coinbase (hyperliquid's
+    first session has a start marker and no prior end, correctly yielding no
+    gap). All three venues then showed heartbeats <30 s old, and
+    `data/raw/venue=hyperliquid/date=2026-08-01/hour=18/` appeared.
+  - **bbo DOES carry best-level sizes — the matrix was right.** Checked
+    171,195 recorded bbo updates: **every one** carries `px` and `sz` on
+    both sides, plus `n` (resting order count). Sample shape, for later
+    re-checking:
+    `{"channel":"bbo","data":{"coin":"BTC","time":1785610320070,"bbo":[{"px":"62362.0","sz":"13.27152","n":29},{"px":"62363.0","sz":"1.21691","n":4}]}}`
+    Microprice weights the mid by resting size, so `micro_minus_mid` is
+    genuinely supported and stays in `BBO_AND_TRADE_FEATURES`. bbo also
+    fires on **size-only** changes (164,821 of 171,195 updates) — better
+    than the documented "on BBO change", since queue changes at a static
+    touch are visible.
+  - **l2Book is ~10x slower than documented — the real finding.** Documented
+    minimum interval is roughly 0.5 s per block. Measured over 3,148
+    intervals per coin: **p50 5,387 ms · p90 5,505 ms · p99 5,635 ms · max
+    6,915 ms · zero intervals >10 s.** Remarkably regular, and ten times
+    slower than advertised. Nothing sub-5-second is measurable from l2Book
+    alone; the 100 ms / 500 ms / 1 s label horizons exist on this venue only
+    via bbo.
+  - **bbo cadence** (the channel that actually matters here): BTC p50 123 ms
+    · p90 404 ms · p99 1,163 ms · max 4,789 ms (n=88,755); ETH p50 128 ms ·
+    p90 440 ms · p99 1,281 ms · max 5,895 ms (n=82,438). **trades:** BTC p50
+    0 ms · p90 1,497 ms · max 11,050 ms; ETH p50 67 ms · p90 1,732 ms · max
+    11,041 ms (bursts share a timestamp, hence the 0 ms median).
+  - **Per-feature audit of everything the matrix credits to Hyperliquid**
+    (inputs checked against recorded bbo/trades, not docs): `spread_abs`,
+    `spread_bps`, `micro_minus_mid` — px+sz both sides present, PASS.
+    `signed_vol_1s/5s/30s`, `trade_count_5s`, `interarrival_mean_ms`,
+    `interarrival_std_ms`, `vwap_minus_mid_5s`, `time_since_trade_ms` —
+    trades carry coin/px/sz/side/time/tid, PASS. `rvol_1s/5s/30s`,
+    `ret_1s`, `abs_ret_1s` — need mid updates inside a 1 s window; bbo at
+    p50 123 ms supplies ~8/s, PASS. `xv_mid_diff_bps`, `xv_diff_z`,
+    `xv_leadlag_0`, `xv_leadlag_m500`, `xv_leadlag_p500` — 500 ms bins vs
+    123 ms updates, PASS. **`xv_leadlag_m100` and `xv_leadlag_p100` — FAIL:**
+    100 ms bins against a 123 ms median interval leave most bins empty, so
+    the correlation is a sparse subsample rather than a measurement. Both
+    moved into a new `SUB_100MS_FEATURES` category and removed from
+    Hyperliquid's capability set (kraken/coinbase/cme keep them).
+  - **Load-bearing caveat now enforced in code:** every feature Hyperliquid
+    is credited with needs the **bbo** channel, and
+    `data/book/hyperliquid_parse.py` currently maps **only l2Book** (bbo is
+    deliberately not merged into book state, per ADR-013). Until bbo is
+    plumbed into the event stream, those features would be computed from
+    5.4-second snapshots — silently stale by orders of magnitude. New
+    `REQUIRED_CHANNELS` + `assert_stream_supports()` make that fail loudly;
+    the plumbing itself is deferred (this stage builds no research
+    components).
+  - 141 tests (3 new); make lint / make typecheck / make test clean; all
+    three recorders alive.

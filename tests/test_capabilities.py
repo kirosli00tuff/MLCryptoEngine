@@ -8,7 +8,9 @@ from research.features.capabilities import (
     ALL_FEATURES,
     BBO_AND_TRADE_FEATURES,
     DEPTH_FEATURES,
+    SUB_100MS_FEATURES,
     UnsupportedFeatureError,
+    assert_stream_supports,
     require_supported,
     supported_features,
 )
@@ -23,6 +25,41 @@ def test_matrix_stays_in_exact_correspondence_with_the_feature_library() -> None
         "capability matrix and FEATURE_COLUMNS drifted — every feature must be classified"
     )
     assert not (DEPTH_FEATURES & BBO_AND_TRADE_FEATURES)
+
+
+def test_microprice_is_supported_because_bbo_carries_best_level_sizes() -> None:
+    """Verified 2026-08-01 against 171,195 recorded bbo updates: every one
+    carries px AND sz on both sides, e.g.
+    {"px":"62362.0","sz":"13.27152","n":29}. Microprice weights the mid by
+    resting size, so this classification is correct — but only at bbo
+    resolution, which is why hyperliquid is in REQUIRED_CHANNELS."""
+    require_supported("hyperliquid", "micro_minus_mid")
+    assert "micro_minus_mid" in supported_features("hyperliquid")
+
+
+def test_features_binned_finer_than_measured_bbo_cadence_are_unsupported() -> None:
+    """100 ms lead-lag bins against a measured 123 ms median bbo interval
+    leave most bins empty — a sparse subsample, not a correlation."""
+    assert {"xv_leadlag_m100", "xv_leadlag_p100"} == SUB_100MS_FEATURES
+    for feature in SUB_100MS_FEATURES:
+        assert feature not in supported_features("hyperliquid")
+        with pytest.raises(UnsupportedFeatureError, match="not supported"):
+            require_supported("hyperliquid", feature)
+        # Full-L2 venues update far faster than 100 ms and keep them.
+        require_supported("kraken", feature)
+    # The coarser cross-venue bins survive.
+    for feature in ("xv_leadlag_0", "xv_leadlag_m500", "xv_leadlag_p500", "xv_mid_diff_bps"):
+        require_supported("hyperliquid", feature)
+
+
+def test_crediting_hyperliquid_requires_the_bbo_channel_in_the_stream() -> None:
+    """The plumbing gap must fail loudly: l2Book alone is p50 5,387 ms, so
+    computing microprice from it would be silently 5 seconds stale."""
+    assert_stream_supports("hyperliquid", frozenset({"l2Book", "bbo", "trades"}))
+    with pytest.raises(UnsupportedFeatureError, match="requires the 'bbo' channel"):
+        assert_stream_supports("hyperliquid", frozenset({"l2Book", "trades"}))
+    # Venues with no channel precondition are unaffected.
+    assert_stream_supports("kraken", frozenset({"book"}))
 
 
 def test_requesting_an_unsupported_feature_raises_rather_than_returning() -> None:
@@ -71,7 +108,7 @@ def test_engine_nulls_unsupported_features_instead_of_computing_garbage() -> Non
     hl_features = hyperliquid.compute(t)
     kraken_features = kraken.compute(t)
 
-    for name in DEPTH_FEATURES:
+    for name in DEPTH_FEATURES | SUB_100MS_FEATURES:
         assert hl_features[name] is None, f"{name} must be nulled on a snapshot-stream venue"
     assert hl_features["spread_bps"] is not None
     assert hl_features["micro_minus_mid"] is not None

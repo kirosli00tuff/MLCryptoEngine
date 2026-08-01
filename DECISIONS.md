@@ -405,3 +405,46 @@ BBO-derived, trade-derived, and cross-venue features — honestly labeled as
 such in every downstream artifact. If depth-resolution work on this venue
 ever matters, it needs a different data source (e.g. an order-flow
 reconstruction from the chain), not a reinterpretation of this feed.
+
+**Amended 2026-08-01 (Stage C.2), by measurement:** the documented cadence
+in this ADR was wrong. Recorded l2Book intervals are p50 5,387 ms, not the
+documented ~0.5 s minimum — ten times slower. Every conclusion above holds
+a fortiori. See ADR-014 for what measurement changed.
+
+---
+
+## ADR-014: Capability claims are measured against recorded data, not vendor docs
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** ADR-013 classified Hyperliquid's features from the venue's
+documentation: l2Book "per block, ~0.5 s minimum", bbo "on top-of-book
+change". Stage C.2 checked both against 242,907 recorded messages and found
+the documentation wrong in both directions. l2Book actually arrives at p50
+5,387 ms (p90 5,505; max 6,915) — an order of magnitude slower than
+documented, which would have quietly destroyed any sub-5-second label on
+this venue. bbo is *better* than documented: it carries `px`, `sz`, and `n`
+at both touches (171,195 of 171,195 updates) and fires on size-only changes
+(164,821 of them), not merely price changes. The specific question that
+prompted the check — does microprice belong in the BBO set, given it needs
+resting sizes — resolved in the matrix's favour, but only by looking.
+
+**Decision.** Capability classifications are justified by measurements taken
+from recorded data, with the numbers and a sample message shape recorded in
+progress.md so any future session can re-check them. Two structural
+consequences land in the matrix itself: (1) `SUB_100MS_FEATURES` — a feature
+whose bin width is finer than a venue's measured median update interval is
+unsupported there, which removes the ±100 ms cross-venue lead-lags from
+Hyperliquid (100 ms bins against 123 ms median bbo updates are mostly
+empty); and (2) `REQUIRED_CHANNELS` plus `assert_stream_supports()` — when a
+venue's credited features depend on a channel the parser does not yet emit
+(Hyperliquid's bbo, which `hyperliquid_parse.py` deliberately does not map),
+the mismatch raises instead of silently computing 5.4-second-stale values.
+
+**Consequences.** Adding a venue now costs a measurement pass before its
+capabilities can be trusted, and re-measurement is warranted whenever a
+venue changes its infrastructure. The bbo-to-event-stream plumbing is a
+known, guarded gap rather than a silent one: until it lands, Hyperliquid
+features cannot be computed at all rather than being computed wrongly.
+Documented venue behaviour is treated the same way as documented fee
+schedules (ADR-012) — a dated hint, never an authority.

@@ -21,6 +21,7 @@ from pathlib import Path
 import orjson
 
 from data.config import AppConfig, load_config
+from data.recorder import RECORDER_TYPES
 from data.recorder.diskguard import DiskLevel, DiskStatus, read_disk
 from data.recorder.writer import RAW_FILE_NAME
 
@@ -177,8 +178,12 @@ def render(cfg: AppConfig, now: datetime) -> tuple[str, bool]:
 
     stale_after = cfg.recorder.heartbeat_interval_s * STALE_HEARTBEAT_INTERVALS
     heartbeats = latest_heartbeats(cfg.logs_dir / "recorder.log", now)
+    # Only venues with a live recorder are expected to heartbeat: vendor-fed
+    # venues (cme via Databento) have no recorder process and must not read
+    # as unhealthy forever.
+    live_venues = sorted(set(cfg.venues) & set(RECORDER_TYPES))
     lines.append(f"Heartbeats (stale after {stale_after:.0f}s)")
-    for venue in sorted(cfg.venues):
+    for venue in live_venues:
         beat = heartbeats.get(venue)
         if beat is None:
             healthy = False
@@ -196,7 +201,7 @@ def render(cfg: AppConfig, now: datetime) -> tuple[str, bool]:
     date = now.strftime("%Y-%m-%d")
     lines.append(f"Raw capture for {date} (compressed on disk)")
     day_total = 0
-    for venue in sorted(cfg.venues):
+    for venue in live_venues:
         hours, size = day_partition_bytes(cfg.raw_dir, venue, date)
         day_total += size
         lines.append(f"  {venue:<10} {hours:>2} hour file(s) · {_fmt_bytes(size)}")
