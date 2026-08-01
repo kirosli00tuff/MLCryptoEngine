@@ -336,3 +336,11 @@ both venues.
     pipeline runs over enough days to cover multiple volatility regimes,
     which depends on continuous recording, not on more code.
   - make lint / make typecheck / make test: clean (124 tests).
+  - **Correction (2026-08-01, Stage C.1):** the Phase B Kraken results above
+    were computed with a stale fee schedule. Kraken restructured on
+    2026-07-09 to 0.40% maker / 0.80% taker at base tier; venues.yaml carried
+    the pre-restructure 0.25%/0.40%. The Kraken EV numbers are therefore
+    optimistic by roughly 30 bps per round trip (maker: 50 → 80 bps) — which
+    strengthens, not weakens, the conclusion that nothing at these horizons
+    is tradeable at retail spot fees. venues.yaml base tier corrected;
+    non-base tiers still carry pre-restructure values pending verification.
