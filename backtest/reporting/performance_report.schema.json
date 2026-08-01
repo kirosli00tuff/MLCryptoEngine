@@ -1,0 +1,271 @@
+{
+  "$defs": {
+    "CostAssumption": {
+      "description": "The fee/spread assumption the evaluation was run under.",
+      "properties": {
+        "fee_bps_per_leg": {
+          "minimum": 0,
+          "title": "Fee Bps Per Leg",
+          "type": "number"
+        },
+        "includes_spread": {
+          "title": "Includes Spread",
+          "type": "boolean"
+        },
+        "mode": {
+          "enum": [
+            "maker",
+            "taker"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "fee_bps_per_leg",
+        "includes_spread"
+      ],
+      "title": "CostAssumption",
+      "type": "object"
+    },
+    "DrawdownPoint": {
+      "properties": {
+        "drawdown_pct": {
+          "maximum": 0,
+          "title": "Drawdown Pct",
+          "type": "number"
+        },
+        "ts_ns": {
+          "title": "Ts Ns",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ts_ns",
+        "drawdown_pct"
+      ],
+      "title": "DrawdownPoint",
+      "type": "object"
+    },
+    "EquityPoint": {
+      "properties": {
+        "gross": {
+          "title": "Gross",
+          "type": "number"
+        },
+        "net": {
+          "title": "Net",
+          "type": "number"
+        },
+        "ts_ns": {
+          "title": "Ts Ns",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ts_ns",
+        "gross",
+        "net"
+      ],
+      "title": "EquityPoint",
+      "type": "object"
+    },
+    "LatencyPercentiles": {
+      "description": "Round-trip latency distribution for the run (measured, never assumed).",
+      "properties": {
+        "p50_ms": {
+          "minimum": 0,
+          "title": "P50 Ms",
+          "type": "number"
+        },
+        "p95_ms": {
+          "minimum": 0,
+          "title": "P95 Ms",
+          "type": "number"
+        },
+        "p99_ms": {
+          "minimum": 0,
+          "title": "P99 Ms",
+          "type": "number"
+        }
+      },
+      "required": [
+        "p50_ms",
+        "p95_ms",
+        "p99_ms"
+      ],
+      "title": "LatencyPercentiles",
+      "type": "object"
+    },
+    "Mode": {
+      "description": "Where the numbers came from. Required everywhere, defaulted nowhere.",
+      "enum": [
+        "backtest",
+        "paper",
+        "live"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "SlippageStats": {
+      "description": "Realized fill quality against what the simulation assumed.",
+      "properties": {
+        "expected_bps": {
+          "title": "Expected Bps",
+          "type": "number"
+        },
+        "realized_bps": {
+          "title": "Realized Bps",
+          "type": "number"
+        }
+      },
+      "required": [
+        "expected_bps",
+        "realized_bps"
+      ],
+      "title": "SlippageStats",
+      "type": "object"
+    },
+    "TradeRecord": {
+      "properties": {
+        "entry_ns": {
+          "title": "Entry Ns",
+          "type": "integer"
+        },
+        "exit_ns": {
+          "title": "Exit Ns",
+          "type": "integer"
+        },
+        "fees": {
+          "minimum": 0,
+          "title": "Fees",
+          "type": "number"
+        },
+        "gross_pnl": {
+          "title": "Gross Pnl",
+          "type": "number"
+        },
+        "net_pnl": {
+          "title": "Net Pnl",
+          "type": "number"
+        },
+        "side": {
+          "enum": [
+            "long",
+            "short"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "size": {
+          "exclusiveMinimum": 0,
+          "title": "Size",
+          "type": "number"
+        }
+      },
+      "required": [
+        "entry_ns",
+        "exit_ns",
+        "side",
+        "size",
+        "gross_pnl",
+        "fees",
+        "net_pnl"
+      ],
+      "title": "TradeRecord",
+      "type": "object"
+    }
+  },
+  "description": "One strategy evaluation, self-describing enough to be trusted alone.",
+  "properties": {
+    "cost": {
+      "$ref": "#/$defs/CostAssumption"
+    },
+    "data_end_ns": {
+      "title": "Data End Ns",
+      "type": "integer"
+    },
+    "data_start_ns": {
+      "title": "Data Start Ns",
+      "type": "integer"
+    },
+    "drawdown": {
+      "items": {
+        "$ref": "#/$defs/DrawdownPoint"
+      },
+      "title": "Drawdown",
+      "type": "array"
+    },
+    "equity_curve": {
+      "items": {
+        "$ref": "#/$defs/EquityPoint"
+      },
+      "title": "Equity Curve",
+      "type": "array"
+    },
+    "expectancy_bps_net": {
+      "title": "Expectancy Bps Net",
+      "type": "number"
+    },
+    "hit_rate": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Hit Rate"
+    },
+    "latency": {
+      "$ref": "#/$defs/LatencyPercentiles"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "slippage": {
+      "$ref": "#/$defs/SlippageStats"
+    },
+    "symbol": {
+      "title": "Symbol",
+      "type": "string"
+    },
+    "trades": {
+      "items": {
+        "$ref": "#/$defs/TradeRecord"
+      },
+      "title": "Trades",
+      "type": "array"
+    },
+    "venue": {
+      "title": "Venue",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "mode",
+    "venue",
+    "symbol",
+    "data_start_ns",
+    "data_end_ns",
+    "cost",
+    "equity_curve",
+    "drawdown",
+    "trades",
+    "expectancy_bps_net",
+    "slippage",
+    "latency"
+  ],
+  "title": "PerformanceReport",
+  "type": "object"
+}

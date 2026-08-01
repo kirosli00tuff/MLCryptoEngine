@@ -72,30 +72,31 @@ def book_partition_dir(processed_dir: Path, venue: str, symbol: str, date: str) 
     )
 
 
-class BookDayWriter:
-    """Streams one venue/symbol/day of book snapshot rows to Parquet.
+class StreamingPartWriter:
+    """Streams rows to one Parquet part file in bounded memory.
 
     Rows are buffered and written out as a row group every ``flush_rows`` rows,
-    so a day of any size passes through bounded memory — the fix for the
+    so a dataset of any size passes through bounded memory — the fix for the
     2026-07-31 OOM, where a full day of retained rows reached 12.8 GB RSS.
-    Output goes to a temporary name inside the partition directory and is
-    renamed to the deterministic part name by :meth:`close`, so reprocessing
-    stays idempotent and a crashed run never leaves a partial file at the
-    final path; the leftover temporary is overwritten by the next run.
+    Output goes to a temporary name inside the target directory and is renamed
+    to the deterministic final name by :meth:`close`, so reprocessing stays
+    idempotent and a crashed run never leaves a partial file at the final
+    path; the leftover temporary is overwritten by the next run.
     """
 
     def __init__(
         self,
-        processed_dir: Path,
-        venue: str,
-        symbol: str,
-        date: str,
+        path: Path,
+        schema: pa.Schema,
         flush_rows: int = DEFAULT_FLUSH_ROWS,
+        use_dictionary: list[str] | None = None,
     ) -> None:
         if flush_rows <= 0:
             raise ValueError(f"flush_rows must be positive, got {flush_rows}")
-        self._final_path = book_partition_dir(processed_dir, venue, symbol, date) / PART_NAME
-        self._tmp_path = self._final_path.with_name(PART_NAME + _INPROGRESS_SUFFIX)
+        self._final_path = path
+        self._tmp_path = path.with_name(path.name + _INPROGRESS_SUFFIX)
+        self._schema = schema
+        self._use_dictionary = use_dictionary
         self._flush_rows = flush_rows
         self._buffer: list[dict[str, Any]] = []
         self._writer: pq.ParquetWriter | None = None
@@ -115,11 +116,11 @@ class BookDayWriter:
             self._final_path.parent.mkdir(parents=True, exist_ok=True)
             self._writer = pq.ParquetWriter(
                 self._tmp_path,
-                BOOK_SNAPSHOT_SCHEMA,
+                self._schema,
                 compression=COMPRESSION,
-                use_dictionary=DICTIONARY_COLUMNS,
+                use_dictionary=self._use_dictionary if self._use_dictionary is not None else True,
             )
-        self._writer.write_table(pa.Table.from_pylist(self._buffer, schema=BOOK_SNAPSHOT_SCHEMA))
+        self._writer.write_table(pa.Table.from_pylist(self._buffer, schema=self._schema))
         self._buffer = []
 
     def close(self) -> Path | None:
@@ -134,6 +135,76 @@ class BookDayWriter:
         self._writer = None
         self._tmp_path.replace(self._final_path)
         return self._final_path
+
+
+class BookDayWriter(StreamingPartWriter):
+    """Streams one venue/symbol/day of book snapshot rows to Parquet."""
+
+    def __init__(
+        self,
+        processed_dir: Path,
+        venue: str,
+        symbol: str,
+        date: str,
+        flush_rows: int = DEFAULT_FLUSH_ROWS,
+    ) -> None:
+        super().__init__(
+            book_partition_dir(processed_dir, venue, symbol, date) / PART_NAME,
+            BOOK_SNAPSHOT_SCHEMA,
+            flush_rows=flush_rows,
+            use_dictionary=DICTIONARY_COLUMNS,
+        )
+
+
+TRADES_DATASET = "trades"
+
+# Executed trades extracted losslessly from raw capture. ``ts_ns`` is the
+# recorder's local receive timestamp (ordering and horizons use this);
+# ``exchange_ns`` is what the venue claims — kept, never used for ordering.
+# ``venue_side`` is the venue-reported side string verbatim; its aggressor
+# semantics differ per venue and are resolved downstream (see
+# research/features/signing.py).
+TRADE_SCHEMA = pa.schema(
+    [
+        pa.field("venue", pa.string()),
+        pa.field("symbol", pa.string()),
+        pa.field("ts_ns", pa.int64()),
+        pa.field("exchange_ns", pa.int64()),
+        pa.field("price", pa.float64()),
+        pa.field("qty", pa.float64()),
+        pa.field("venue_side", pa.string()),
+        pa.field("trade_id", pa.string()),
+    ]
+)
+
+
+def trade_partition_dir(processed_dir: Path, venue: str, symbol: str, date: str) -> Path:
+    return (
+        processed_dir
+        / TRADES_DATASET
+        / f"venue={venue}"
+        / f"symbol={sanitize_symbol(symbol)}"
+        / f"date={date}"
+    )
+
+
+class TradesDayWriter(StreamingPartWriter):
+    """Streams one venue/symbol/day of executed trades to Parquet."""
+
+    def __init__(
+        self,
+        processed_dir: Path,
+        venue: str,
+        symbol: str,
+        date: str,
+        flush_rows: int = DEFAULT_FLUSH_ROWS,
+    ) -> None:
+        super().__init__(
+            trade_partition_dir(processed_dir, venue, symbol, date) / PART_NAME,
+            TRADE_SCHEMA,
+            flush_rows=flush_rows,
+            use_dictionary=["venue", "symbol", "venue_side"],
+        )
 
 
 def write_book_day(

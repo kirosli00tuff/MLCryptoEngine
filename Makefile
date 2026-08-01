@@ -1,4 +1,4 @@
-.PHONY: help install lint typecheck test record status validate telemetry desktop clean
+.PHONY: help install lint typecheck test record status validate telemetry types research desktop clean
 
 help: ## List available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -28,6 +28,12 @@ validate: ## Reconstruct books from raw data, score quality, append results to r
 
 telemetry: ## Start the venue latency probe (runs alongside the recorder)
 	uv run python -m ops.telemetry
+
+types: ## Regenerate performance-report JSON Schema + desktop TS types (generated files are never edited by hand)
+	uv run python -m backtest.reporting
+
+research: ## Run the Phase B pipeline on a date: make research DATE=2026-07-31
+	uv run python -m research --date $(DATE)
 
 desktop: ## Run the desktop app in dev mode (requires Rust + Node, see desktop/README.md)
 	cd desktop && npm run tauri dev
