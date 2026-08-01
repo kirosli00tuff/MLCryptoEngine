@@ -139,10 +139,13 @@ recorded data clearing `make validate` does.
   the launching `bash -c` wrapper as *both* processes, so matching is now
   token-exact on `-m <module>`. 20 new tests (68 total).
 
-## Full-day recording run (in progress)
+## Full-day recording run (completed)
 
 Started: **2026-07-30T19:58:34Z** · target day to enclose: **2026-07-31 UTC**
 · earliest stop: **2026-08-01T00:15Z** (margin on both ends).
+**Outcome:** recorder exited cleanly 2026-08-01T01:06:40Z; all 24 hour
+partitions present on both venues, zero error-level log lines; 2026-07-31
+validated **PASS on both venues** (see 2026-08-01 log entry below).
 
 Exact commands used (detached; survive terminal/session exit):
 
@@ -159,3 +162,69 @@ After 2026-08-01T00:15Z, stop with `pkill -TERM -f "python -m data.recorder"; pk
 revalidate every recorded day) and review report.md against all four Phase A
 acceptance criteria. Do not check the Phase A box unless the verdict is PASS on
 both venues.
+
+- 2026-08-01 — Stage 1.7: full-day validation OOM diagnosed, validator made
+  streaming, day-boundary warm start added, 2026-07-31 validated: **PASS on
+  both venues.**
+  - **Failure.** `uv run python -m data.validate --date 2026-07-31` printed both
+    "validating" lines then died with exit 143 and no report section. journalctl
+    shows the kernel OOM killer (global_oom, not systemd-oomd) killed python3
+    three times (18:33/22:17/22:52 PDT) at 12.4–12.8 GB anon RSS on this 14 GiB
+    + 4 GiB swap machine.
+  - **Diagnosis (confirmed, not assumed).** A single-venue single-symbol probe
+    showed RSS growing linearly with retained rows — ~2.3 KB/row, 37 MB →
+    2,289 MB over 2.0M messages / 994k rows, no plateau. Cause:
+    `validate_venue_day` materialized every emitted snapshot row per symbol and
+    wrote Parquet once at end of day; the ~20M-message Kraken day extrapolates
+    to ~23 GB. The validator had only ever been exercised on ≤30k-message
+    samples — three orders of magnitude below a real day.
+  - **Fix: streaming replay.** New `BookDayWriter` (data/store) streams rows as
+    50k-row Parquet row groups to a temp file renamed into place on close —
+    idempotent, and a crashed run never leaves a partial file at the final
+    name. The replay retains only current book state, running aggregates, and a
+    bounded anomaly ledger (timestamps nowhere near any gap window are counted
+    unexplained immediately; only near-gap timestamps are kept for span-scoped
+    re-evaluation — semantics identical to before). Progress prints every 1M
+    messages with day position, elapsed time, and RSS. Memory regression guard
+    (tests/test_validate_memory.py): a 400k-message synthetic day validated in
+    a subprocess must stay under a 600 MB peak-RSS ceiling — 1,462 MB (RED)
+    against the old code, ~440 MB streaming (GREEN). The real full day replays
+    at a flat ~430–445 MB.
+  - **Second tooling gap found on the way: cold start at the day boundary.**
+    Continuous recording keeps one WS session running across days, so a day's
+    opening book snapshot lives in the *previous* date's partition; replayed
+    cold, real 2026-08-01 scored 0% coverage and 0 checksums verified despite
+    lossless capture. Fix: warm-start replay (data/validate/warmup.py) locates
+    the previous day's last snapshot per symbol (newest hour first), replays
+    that tail through midnight building state only, resets all counters at the
+    boundary, and preserves sequence continuity across midnight — a
+    cross-boundary sequence break is scored to the day (pinned by test).
+    report.md now states warm vs cold start on every venue-day.
+  - **Partial day exercised for real.** 2026-08-01 (66-minute span) went
+    through span-clamped gap accounting twice without `GapAccountingError`;
+    with warm start both venues cover exactly the recorded span (4.63% of the
+    calendar day) and fail only the full-day coverage criterion — the correct
+    verdict for a partial day.
+  - **Verdict for 2026-07-31 (report.md section "2026-08-01 06:52 UTC"): PASS
+    on both venues.** Kraken: 17,489,620 msgs over the full 86,400 s span, 6
+    feed gaps (12,883 ms unioned+clamped), CRC32 mechanism performed
+    17,361,554 comparisons — BTC/USD 7,745,333 events, 7,745,333 checksums
+    verified, 0 failures (0 unexplained), 0 crossed, 0 locked, day coverage
+    100.00%; ETH/USD 9,616,221 events, 9,616,221 verified, 0 (0), 0 crossed,
+    100.00%. Coinbase: 3,408,568 msgs over 86,400 s, 5 feed gaps (6,155 ms),
+    sequence mechanism performed 3,408,568 comparisons — BTC-USD 1,588,608
+    events, 0 seq gaps (0 unexplained), 0 crossed, 100.00%; ETH-USD 1,457,355
+    events, 0 (0), 0 crossed, 100.00%. Rows regenerated: 7,831,738 + 9,702,626
+    (kraken), 1,675,019 + 1,543,769 (coinbase).
+  - **Noted honestly, on the record:** (1) "coverage excl. gaps" prints
+    100.01–100.02%: a book that stays valid across a reconnect credits the gap
+    interval to the numerator while the denominator excludes it. The error is
+    bounded by unioned in-span gap time (≤12.9 s ≈ 0.015% here); true
+    outside-gap coverage is ≈99.985%, comfortably above the 99.9% threshold,
+    so the verdict is unaffected — but the artifact should be cleaned up
+    before coverage numbers feed anything downstream. (2) TOB-vs-snapshot
+    compares mismatch at some reconnect snapshots (coinbase 7 of 12 and 9 of
+    15, kraken 0 of 6 and 2 of 6): expected staleness across a disconnect,
+    informational, not a pass/fail criterion.
+  - Phase A checkbox intentionally left unchecked — both venue-days meet the
+    stated criteria, but checking the box is the operator's call.

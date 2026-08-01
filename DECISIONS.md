@@ -101,3 +101,77 @@ persisting credentials at all; Phase D sources them from the OS keyring
 lands, and its design review must treat "where do secrets rest" as a
 first-class question. Until then the desktop app has no secret-shaped state
 anywhere, which also keeps its config file safe to attach to bug reports.
+
+---
+
+## ADR-005: Validation streams in bounded memory; data-path code is tested at realistic scale
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** The first real full-day validation (2026-07-31: ~17.5M Kraken +
+~3.4M Coinbase messages) was killed by the kernel OOM killer at 12.8 GB RSS on
+the 14 GiB development machine. `validate_venue_day` materialized every emitted
+book-snapshot row per symbol (~2.3 KB per row, measured) and wrote Parquet once
+at end of day — ~23 GB extrapolated for the Kraken day alone. The defect
+shipped because the validator had only ever been exercised on 25-second
+(~7,700-message) and ~30,000-message samples, three orders of magnitude below
+one real day. Every future day is this size or larger, and Phase B depends on
+this path.
+
+**Decision.** The replay processes a venue-day as a single pass in bounded
+memory: only current book state plus running aggregates (histogram counters,
+gap accounting, checksum/sequence tallies, coverage arithmetic) are held;
+snapshot rows stream to Parquet in 50k-row groups through `BookDayWriter`,
+which writes to a temporary name and renames on close so reprocessing stays
+idempotent and a crashed run never leaves a partial part file. Unexplained
+anomalies are counted with a bounded ledger: a timestamp near no gap window is
+definitively unexplained and is discarded immediately; only near-gap
+timestamps are retained for span-scoped re-evaluation. Long replays print
+progress (messages, day position, elapsed, RSS) so a working process is
+distinguishable from a hung one. And the general rule this failure bought:
+**data-path components must be tested at the scale they will meet in
+production, not on convenience samples.** The pytest suite enforces it with a
+memory regression guard that validates a 400k-message synthetic day in a
+subprocess and asserts peak RSS under a fixed 600 MB ceiling (the retained-rows
+design measured 1,462 MB; streaming measures ~440 MB).
+
+**Consequences.** Full days validate on the laptop at a flat ~450 MB RSS
+regardless of day size, and can run alongside a live recorder. The guard test
+adds ~30 s to the suite — accepted as the price of never shipping an
+unbounded data path again. `rows_written` now comes from the streaming writer,
+and any future emitter change that reintroduces per-message retention fails
+the guard rather than production.
+
+---
+
+## ADR-006: Day replays warm-start from the previous day's last snapshot
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** Continuous recording (the default since Stage 1.6) keeps one
+WebSocket session running across days, so a calendar day usually starts
+mid-session: its opening book snapshot was recorded on the previous date.
+Replayed cold, such a day leaves every book invalid until the first intra-day
+reconnect — the real 2026-08-01 partial day scored 0% coverage and zero
+verified checksums despite lossless capture, and 2026-07-31 would have capped
+at ~93% (Kraken) / ~86% (Coinbase) purely by reconnect luck. The recorder
+encloses a target day with margin precisely so the pre-midnight snapshot
+exists on disk; the replay simply refused to look at it.
+
+**Decision.** `validate_venue_day` warm-starts: it scans the previous day's
+hour files newest-first for each symbol's last snapshot, replays that tail
+through midnight building book state only (checksums and sequence numbers
+verified during warm-up so a corrupt tail leaves the book invalid, not
+trustingly valid), then resets every scoring counter at the boundary. Metrics
+therefore describe the target day alone, while sequence continuity still spans
+midnight — a cross-boundary sequence break is scored to the day being
+validated. Only the immediately preceding date is consulted; a session that
+somehow ran longer than a day without any snapshot replays cold and fails
+honestly. Every report section states its warm or cold start explicitly.
+
+**Consequences.** Full-day coverage is achievable for any day enclosed by a
+running recorder, which is the normal operating condition from now on.
+Validation cost includes replaying the previous day's tail (bounded by one
+day, typically minutes). Coverage begins at midnight for warmed books, so the
+coverage number finally measures the data, not the replay's ignorance of the
+prior session.
