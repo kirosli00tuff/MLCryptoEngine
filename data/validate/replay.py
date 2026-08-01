@@ -15,6 +15,7 @@ at 12.8 GB replaying the first real full day.)
 from __future__ import annotations
 
 import time
+from bisect import bisect_right
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -31,7 +32,9 @@ from data.book.types import BookEvent
 from data.config import AppConfig
 from data.recorder.gaps import GapRecord, merge_windows, read_gaps
 from data.recorder.reader import iter_day_records
+from data.recorder.sessions import read_sessions
 from data.store import BookDayWriter
+from data.validate.downtime import derive_downtime_gaps, last_activity_ns
 from data.validate.integrity import (
     CHECKSUM,
     IntegrityReport,
@@ -89,10 +92,23 @@ class SymbolReport(BaseModel):
 
 
 class GapAccounts(BaseModel):
-    """Union-based, span-clamped gap accounting for one venue-day."""
+    """Union-based, span-clamped gap accounting for one venue-day.
+
+    ``gaps_in_span``/``gap_ms_in_span`` describe the union across all gap
+    kinds — what coverage actually excludes. The per-kind fields report each
+    cause separately (each its own clamped union), so feed gaps and recorder
+    downtime are never conflated; where kinds overlap, the per-kind sums can
+    exceed the overall union, which is why only the union feeds coverage.
+    """
 
     gaps_in_span: int
     gap_ms_in_span: int
+    feed_gaps_in_span: int = 0
+    feed_gap_ms_in_span: int = 0
+    downtime_gaps_in_span: int = 0
+    downtime_gap_ms_in_span: int = 0
+    unclean_gaps_in_span: int = 0
+    unclean_gap_ms_in_span: int = 0
     gaps_partially_outside_span: int
     gap_ms_clipped_outside_span: int
     gaps_outside_span: int
@@ -110,8 +126,16 @@ class DayReport(BaseModel):
     # Receive timestamp of the previous-day snapshot the replay warmed up
     # from; None when the day replayed cold (no usable prior-day snapshot).
     warmup_start_ns: int | None = None
+    # Per-cause gap reporting: feed gaps (the venue dropped us) vs recorder
+    # downtime (we were not there) vs unclean terminations (we died without a
+    # shutdown record). Coverage excludes the union of all kinds.
     feed_gaps: int
     feed_gap_ms: int
+    downtime_gaps: int = 0
+    downtime_gap_ms: int = 0
+    unclean_gaps: int = 0
+    unclean_gap_ms: int = 0
+    gap_ms_excluded: int = 0
     gaps_partially_outside_span: int
     gap_ms_clipped_outside_span: int
     gaps_outside_span: int
@@ -212,6 +236,16 @@ def account_gaps(
     in_windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in in_records)
     out_windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in out_records)
 
+    def kind_in_span(kind: str) -> tuple[int, int]:
+        of_kind = [g for g in in_records if g.kind == kind]
+        windows = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in of_kind)
+        clamped = _clip(windows, span_start, span_end)
+        return len(of_kind), sum(e - s for s, e in clamped) // 1_000_000
+
+    feed_n, feed_ms = kind_in_span("feed")
+    downtime_n, downtime_ms = kind_in_span("downtime")
+    unclean_n, unclean_ms = kind_in_span("unclean")
+
     span_windows = _clip(in_windows, span_start, span_end)
     in_span_ns = sum(e - s for s, e in span_windows)
     clipped_ns = sum(e - s for s, e in in_windows) - in_span_ns
@@ -227,6 +261,12 @@ def account_gaps(
     return GapAccounts(
         gaps_in_span=len(in_records),
         gap_ms_in_span=in_span_ns // 1_000_000,
+        feed_gaps_in_span=feed_n,
+        feed_gap_ms_in_span=feed_ms,
+        downtime_gaps_in_span=downtime_n,
+        downtime_gap_ms_in_span=downtime_ms,
+        unclean_gaps_in_span=unclean_n,
+        unclean_gap_ms_in_span=unclean_ms,
         gaps_partially_outside_span=sum(
             1 for g in in_records if g.disconnect_ns < span_start or g.reconnect_ns > span_end
         ),
@@ -323,7 +363,33 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
 
     # Gap records are loaded up front so anomalies can be triaged as they
     # occur (see _AnomalyLedger) instead of retaining every timestamp.
-    all_gaps = read_gaps(cfg.raw_dir, venue)
+    # Recorder-downtime gaps derived from session markers join the feed gaps
+    # here: identical clamping/union/explanation treatment, separate report.
+    all_gaps = read_gaps(cfg.raw_dir, venue) + derive_downtime_gaps(
+        read_sessions(cfg.raw_dir, venue),
+        lambda before_ns: last_activity_ns(cfg.raw_dir, venue, before_ns),
+    )
+    # Valid-book time credited between events must not include time inside a
+    # gap window: a book that stayed "valid" across a reconnect or recorder
+    # downtime would otherwise credit the entire hole as covered — while the
+    # coverage denominator excludes it. Numerator and denominator agree on
+    # what a gap is, or the percentage means nothing.
+    gap_union = merge_windows((g.disconnect_ns, g.reconnect_ns) for g in all_gaps)
+    gap_union_starts = [start for start, _ in gap_union]
+
+    def credit_outside_gaps(start_ns: int, end_ns: int) -> int:
+        """Length of ``[start_ns, end_ns)`` minus its overlap with gap windows."""
+        if end_ns <= start_ns:
+            return 0
+        credited = end_ns - start_ns
+        index = bisect_right(gap_union_starts, end_ns) - 1
+        while index >= 0:
+            win_start, win_end = gap_union[index]
+            if win_end <= start_ns:
+                break
+            credited -= min(win_end, end_ns) - max(win_start, start_ns)
+            index -= 1
+        return credited
 
     builders: dict[str, BookBuilder] = {}
     emitters: dict[str, SnapshotEmitter] = {}
@@ -422,7 +488,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
                     snap_mismatches[event.symbol] += 1
 
             if event.symbol in last_event_ns and builder.valid:
-                valid_ns[event.symbol] += recv_ns - last_event_ns[event.symbol]
+                valid_ns[event.symbol] += credit_outside_gaps(last_event_ns[event.symbol], recv_ns)
             last_event_ns[event.symbol] = recv_ns
 
             crossed_before = builder.crossed_events
@@ -537,8 +603,13 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         first_ns=first_ns,
         last_ns=last_ns,
         warmup_start_ns=warmup.start_ns,
-        feed_gaps=accounts.gaps_in_span,
-        feed_gap_ms=accounts.gap_ms_in_span,
+        feed_gaps=accounts.feed_gaps_in_span,
+        feed_gap_ms=accounts.feed_gap_ms_in_span,
+        downtime_gaps=accounts.downtime_gaps_in_span,
+        downtime_gap_ms=accounts.downtime_gap_ms_in_span,
+        unclean_gaps=accounts.unclean_gaps_in_span,
+        unclean_gap_ms=accounts.unclean_gap_ms_in_span,
+        gap_ms_excluded=accounts.gap_ms_in_span,
         gaps_partially_outside_span=accounts.gaps_partially_outside_span,
         gap_ms_clipped_outside_span=accounts.gap_ms_clipped_outside_span,
         gaps_outside_span=accounts.gaps_outside_span,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Literal
 
 import orjson
 from pydantic import BaseModel
@@ -29,13 +30,25 @@ def merge_windows(windows: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
 
 
 class GapRecord(BaseModel):
-    """One disconnect→reconnect window during recording."""
+    """One window of missing data, distinguished by cause.
+
+    ``kind`` separates causes that must never be conflated: a ``feed`` gap is
+    the venue dropping us while the recorder ran (written to gaps.jsonl at
+    reconnect); a ``downtime`` gap is the recorder not running between a clean
+    session end and the next start; ``unclean`` is downtime after a
+    termination that wrote no session-end marker (crash, OOM kill, power
+    loss), measured from last observed activity. Downtime kinds are derived
+    from session markers at validation time — see
+    :mod:`data.validate.downtime`. Legacy records carry no ``kind`` field and
+    default to ``feed``.
+    """
 
     venue: str
     disconnect_ns: int
     reconnect_ns: int
     duration_ms: int
     reason: str
+    kind: Literal["feed", "downtime", "unclean"] = "feed"
 
     def overlaps_ns(self, start_ns: int, end_ns: int) -> bool:
         """True if this gap intersects the half-open window ``[start_ns, end_ns)``."""

@@ -15,6 +15,7 @@ from data.recorder import RECORDER_TYPES
 from data.recorder.base import DryRunLimiter, VenueRecorder
 from data.recorder.diskguard import DiskGuard
 from data.recorder.gaps import GapLogger
+from data.recorder.sessions import SessionLogger
 from data.recorder.writer import RawFileWriter
 
 
@@ -96,6 +97,13 @@ async def run_service(venue_keys: list[str] | None, dry_run: bool) -> None:
             loop.add_signal_handler(sig, stop.set)
 
     log.info("recorder_starting", venues=keys, dry_run=dry_run)
+    # Session markers bound recorder lifetime so validation can derive
+    # downtime gaps. Dry-run writes none — same rule as gap records: a
+    # diagnostic run must leave no permanent sidecar trace.
+    session_loggers = [] if dry_run else [SessionLogger(cfg.raw_dir, key) for key in keys]
+    start_ns = time.time_ns()
+    for sessions in session_loggers:
+        sessions.log("start", start_ns)
     disk_guard = DiskGuard(cfg.raw_dir, cfg.disk.warn_free_gb, cfg.disk.critical_free_gb)
     heartbeat_task = asyncio.create_task(
         _emit_heartbeats(recorders, cfg.recorder.heartbeat_interval_s, stop, disk_guard)
@@ -107,6 +115,9 @@ async def run_service(venue_keys: list[str] | None, dry_run: bool) -> None:
         await heartbeat_task
         for recorder in recorders:
             recorder.writer.close()
+        end_ns = time.time_ns()
+        for sessions in session_loggers:
+            sessions.log("end", end_ns)
         log.info(
             "recorder_stopped",
             totals={r.venue_key: r.heartbeat.messages_total for r in recorders},

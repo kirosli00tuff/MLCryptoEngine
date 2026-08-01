@@ -99,8 +99,11 @@ def render_section(runs: list[DayReport]) -> str:
             span = f"{(report.last_ns - report.first_ns) / 1e9:.0f}s"
         lines.append(
             f"Messages: **{report.msgs_total}** · recorded span: {span} · "
-            f"feed gaps in span: {report.feed_gaps} ({report.feed_gap_ms} ms, unioned "
-            "and clamped to the span)"
+            f"feed gaps in span: {report.feed_gaps} ({report.feed_gap_ms} ms) · "
+            f"recorder downtime: {report.downtime_gaps} ({report.downtime_gap_ms} ms) · "
+            f"unclean terminations: {report.unclean_gaps} ({report.unclean_gap_ms} ms) · "
+            f"excluded from coverage: {report.gap_ms_excluded} ms "
+            "(all kinds unioned and clamped to the span)"
         )
         if report.warmup_start_ns is not None:
             warm_stamp = datetime.fromtimestamp(report.warmup_start_ns / 1e9, tz=UTC).strftime(
