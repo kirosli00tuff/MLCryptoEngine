@@ -40,6 +40,7 @@ data/recorder/   Asyncio WebSocket recorders that write raw exchange-native mess
 data/book/       Order book reconstruction: replay raw feeds into a maintained L2 book
 data/store/      Parquet writer and DuckDB-backed query helpers over recorded data
 data/validate/   Validation harness that scores recorded data quality and writes report.md
+data/trades/     Executed-trade extraction: raw capture → processed trades Parquet
 research/        Feature engineering, labeling, model training, and notebooks (Phase B+)
 backtest/        Simulation with measured latency distributions and true fee tiers (Phase C)
 engine/          Live execution engine (Phase D+); risk code lives here — see review rule below
@@ -50,7 +51,7 @@ tests/           Pytest suite; tests/fixtures/ holds small recorded exchange mes
 
 ## Tech stack and why
 
-- **Python 3.11+ / asyncio** — the data pipeline is I/O bound; asyncio with `uvloop`
+- **Python 3.12+ / asyncio** — the data pipeline is I/O bound; asyncio with `uvloop`
   handles multiple WebSocket feeds in one process with low overhead.
 - **uv** — dependency management; fast, lockfile-based, reproducible environments.
 - **polars + pyarrow + Parquet** — columnar storage and fast scans over tick data;
@@ -70,7 +71,8 @@ tests/           Pytest suite; tests/fixtures/ holds small recorded exchange mes
 
 ## Coding standards
 
-- Python 3.11+ only. Type hints are required on all function signatures.
+- Python 3.12+ only (tooling targets 3.12; the venv runs it). Type hints are
+  required on all function signatures.
 - `ruff format` and `ruff check` must pass clean. `mypy` must pass clean.
 - Anything with logic gets a pytest test. Real tests, not smoke tests.
 - Keep files focused and small; prefer many small modules over one large one.
@@ -95,6 +97,38 @@ tests/           Pytest suite; tests/fixtures/ holds small recorded exchange mes
    ever written to a JSON file or any other plaintext store, in the repo or outside
    it. When Phase D needs credentials they come from the OS keyring or environment
    variables — never a file. See DECISIONS.md ADR-004.
+
+## Research honesty rules (Phase B+)
+
+- **A result on days of data is pipeline validation, not evidence of edge.**
+  Microstructure relationships shift with volatility regime, session, and venue
+  conditions; a signal fitted on one day is fitted on that day's regime. Any
+  model metric produced before the pipeline has run over enough days to span
+  multiple regimes carries that caveat in report.md, leading the section. No
+  future session may mistake a promising number on three days of data for a
+  discovery. The Phase B research conclusion stays open until continuous
+  recording has accumulated regime-diverse data — that is a data problem, not
+  a code problem.
+- **Every training run is logged** to research/experiments.jsonl (append-only,
+  committed) with configuration, data range, features, label definition, cost
+  assumption, and results — from the first run, or a deflated Sharpe ratio can
+  never be computed honestly.
+- **Every reported metric names its cost assumption** (maker vs taker, fee
+  tier, spread treatment). A model that looks predictive on raw mid moves and
+  worthless net of costs is worthless.
+
+## Dashboard rules for performance data
+
+- Panels displaying performance data may only be built once a producer
+  actually writes the corresponding data. No mock reports, no sample data, no
+  fixtures shaped like real results — the only report files on disk are ones a
+  backtest actually produced.
+- Empty states are the default, not a fallback.
+- Simulated and live results must be visually unmistakable in any interface
+  that displays them; the `mode` field (backtest | paper | live) is required
+  at the schema level and has no default.
+- Generated types under desktop/src/lib/generated/ are never edited by hand;
+  regenerate with `make types`.
 
 ## Git commit conventions
 

@@ -221,3 +221,91 @@ downtime windows from feature computation with the same confidence as feed
 gaps. The marker protocol adds one file per venue and two writes per process
 lifetime; the honest cost is that unclean terminations depend on raw data for
 their start bound, which is exactly the evidence that survives a crash.
+
+---
+
+## ADR-008: Event and imbalance bars by default; time bars for comparison only
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** Phase B needs a sampling scheme deciding when a feature/label
+sample is drawn from the event stream. Fixed time bars are the familiar
+default, but tick data is not uniformly informative in time: quiet minutes
+carry almost nothing while bursts carry everything. Time bars oversample the
+quiet stretches and undersample exactly the moments that matter, degrading
+label quality and inflating serial correlation between adjacent samples
+(Lopez de Prado 2018, ch. 2). The venues also run wildly different message
+rates — Kraken roughly 3-9x Coinbase depending on session — so any
+count-based scheme behaves differently per venue over the same wall clock.
+
+**Decision.** Event bars (every N book updates) are the default sampler;
+imbalance bars (cumulative signed order flow crossing a threshold) are the
+information-driven alternative; fixed time bars are implemented but exist
+for comparison only and are never the default. The sampler reports samples
+per venue per hour so the cross-venue rate asymmetry is visible in every run
+rather than discovered as a surprise. Imbalance-bar sample decisions use the
+triggering trade's signed quantity computed from pre-sample state, keeping
+the strictly-before-t contract intact.
+
+**Consequences.** Sample density follows information arrival, at the cost of
+uneven wall-clock spacing (all downstream code treats sample times as data,
+never assumes a grid). Identical settings produce different per-venue sample
+counts — reported, not hidden. Threshold/interval tuning is deferred until
+the pipeline is trusted, same rationale as hyperparameter search.
+
+---
+
+## ADR-009: Labels are cost-aware; every metric names its cost assumption
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** Micro-pattern edges here are single-digit basis points while a
+Kraken taker round trip costs ~8 bps in tier-0 fees plus the spread. A model
+trained on raw mid moves will look predictive and be worthless: most
+correctly-predicted moves are smaller than the cost of trading them. This is
+the single most common way microstructure research self-deceives.
+
+**Decision.** Alongside raw forward returns, every sample carries net labels
+that must clear a configurable round-trip cost before counting as directional
+(`y_net_maker_*`, `y_net_taker_*`): +1/-1 only when the move exceeds the
+cost, else 0 — an untradeable move is a non-event, not a small win. Fees come
+from config/venues.yaml (tier 0 by default, the honest small-account
+assumption); maker and taker are computed separately because the answer
+differs enormously — maker pays two fee legs, taker pays two legs plus the
+spread. Evaluation reports expected value per prediction net of cost next to
+AUC/hit-rate for every horizon and both cost modes, and the experiment log
+records the assumption on every run.
+
+**Consequences.** Results tables are twice as wide and far more honest. A
+model can (and often will) show AUC > 0.5 with negative net EV — that is the
+finding, not a contradiction. Queue position and fill probability for maker
+assumptions remain execution-layer questions for Phase C; the label layer
+states its assumption and does not pretend to answer them.
+
+---
+
+## ADR-010: Gradient boosted trees before deep learning
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** The Phase B feature set is small (~43 engineered tabular
+features), the data volume is a handful of days, and the immediate goal is
+validating a leakage-free pipeline — not maximizing predictive power. Deep
+sequence models (LSTMs/transformers over raw book states) demand orders of
+magnitude more data to avoid memorizing one regime, are slower to train and
+iterate, and their failure modes are harder to audit for leakage — precisely
+the property Phase B cannot afford.
+
+**Decision.** LightGBM classifier and regressor with fixed, conservative
+defaults are the Phase B models, preceded by two trivial baselines every
+model must beat: predict zero (never trade) and predict the sign of the last
+return. No hyperparameter search until the pipeline is trusted — searching
+over a leaky pipeline just finds the leak. Deep learning is out of scope for
+this stage and earns an ADR of its own if regime-diverse data ever justifies
+it.
+
+**Consequences.** Cheap training (seconds per fold on the laptop), directly
+inspectable feature importances, and native NaN handling for genuinely-missing
+features. The ceiling on model capacity is accepted: if a real edge exists at
+these horizons, trees on good features should show a trace of it, and a trace
+is all a few days of data could support anyway.

@@ -8,7 +8,9 @@ checkbox stays unchecked until full recorded days clear `make validate`)
 - [ ] **Phase A — data pipeline** ← current: storage, order book reconstruction
       validated against full recorded days
 - [ ] Phase B — feature and label library, gradient boosted tree baseline, purged
-      cross-validation
+      cross-validation (pipeline built and validated 2026-08-01; the research
+      conclusion stays open until it has run over enough days to cover multiple
+      volatility regimes — that depends on continuous recording, not more code)
 - [ ] Phase C — hftbacktest simulation with measured latency distributions and true fee
       tiers
 - [ ] Phase D — paper trading against live feeds on a placed VPS
@@ -268,3 +270,69 @@ both venues.
     validates with `recorder downtime: 3 (21919496 ms)` explained and honest
     coverage of 7.95% (coinbase) / 8.07% (kraken) outside gaps — a partial-day
     FAIL on the full-day criterion, which is expected and not a data problem.
+
+- 2026-08-01 — Stage 2: Phase B research layer built, leakage-tested, reviewed,
+  and run end to end on the full validated 2026-07-31 day. **Everything below
+  is pipeline validation, not evidence of edge** (one day, one regime; the
+  standing rule is now in CLAUDE.md).
+  - **What landed.** Trades extraction (`data/trades/`, raw → processed
+    Parquet, venue snapshot-replays excluded); point-in-time event stream
+    (`research/stream/`, local receive clock for all ordering and horizons,
+    exchange ts kept but never ordered on, previous-day feature warm-up tail
+    flagged and never trained on); samplers (`research/sampling/`: event bars
+    default, imbalance bars, time bars for comparison only, per-venue-hour
+    counts reported); 42-column feature library (`research/features/`: CKS
+    order-flow imbalance, queue imbalance, Stoikov microprice displacement,
+    spread, depth/slope/asymmetry/DWP, signed volume with per-venue signing
+    method — Kraken venue flag, Coinbase tick rule — intensity, interarrival,
+    VWAP−mid, realized vol windows, and cross-venue mid-diff bps / divergence
+    z-score / lead-lag correlations on the common local clock); labels
+    (`research/labels/`: fixed-horizon 100 ms–30 s, Lopez de Prado triple
+    barrier with vol-scaled barriers, cost-aware net labels that must clear
+    2×maker or 2×taker+spread from config/venues.yaml); purged k-fold with
+    embargo + walk-forward + append-only experiment log
+    (`research/validation/`, first entry logged); baselines and LightGBM with
+    fixed defaults, no search (`research/models/`); Phase B report sections
+    led by the caveat line; and the PerformanceReport contract
+    (`backtest/reporting/`: mode backtest|paper|live required with no
+    default, JSON Schema + generated desktop TS types via `make types`,
+    drift-fails-CI test). No UI components, no mock reports.
+  - **Leakage suite** (tests/test_leakage.py): prefix invariance (features at
+    t exactly reproducible from events strictly before t, catching off-by-one
+    inclusion), planted-future correlation sweep over every feature on a
+    seeded random walk, and a deliberately leaky canary the detector must
+    flag. All pass; the suite also runs inside every `python -m research`
+    invocation and its result is quoted in report.md.
+  - **Scale guards.** Extraction of a 400k-event synthetic day in a
+    subprocess must stay under 900 MB peak RSS; the pending-labels buffer is
+    hard-capped (oldest sample flushes censored if labels stall). Full real
+    day: kraken BTC/USD 9.3M events → 153,942 valid samples in ~7 min at flat
+    RSS; ETH/USD 11.2M events → 190,959 samples; coinbase ~31k/29k samples —
+    the 3–9× venue rate asymmetry made visible, as designed.
+  - **Code check** (python-reviewer agent over the full diff) found 2
+    HIGH / 2 MEDIUM / 1 LOW, all fixed and pinned by tests before the final
+    run: triple-barrier timeouts now resolve at the deadline mid (not a mid
+    arbitrarily past it), the pending buffer is capped, interarrival stats
+    are age-bounded to the gap-check lookback, Python floor aligned to 3.12,
+    censored-sample dict entries cleaned. The pre-fix run's outputs were
+    discarded and regenerated with the fixed code.
+  - **Result (pipeline validation only, quoting report.md 2026-08-01 17:45
+    UTC).** Direction is genuinely predictable at short horizons and decays
+    exactly as microstructure literature predicts — kraken BTC/USD AUC 0.940
+    at 100 ms → 0.901 (500 ms) → 0.878 (1 s) → 0.809 (5 s) → 0.668 (30 s);
+    coinbase BTC-USD 0.886 → 0.552. And it is worthless net of costs at
+    tier-0 fees, exactly as the cost-aware framing predicted: expected value
+    per trade ≈ −50 bps (kraken maker) to −120 bps (coinbase taker) for the
+    model, the regressor, and the last-sign baseline alike — the always-trade
+    evaluation pays the full round trip on every prediction while typical
+    mid moves at these horizons are single-digit bps. AUC 0.94 with −50 bps
+    EV in one table is the whole point of ADR-009. (Metric note: hit rate at
+    the shortest horizons reads low because zero-move outcomes count as
+    misses; it is labeled a secondary diagnostic.)
+  - **Deferred deliberately:** hyperparameter search (after the pipeline is
+    trusted, per ADR-010), deep learning (ADR-010), imbalance-bar threshold
+    tuning, maker queue/fill modeling (Phase C's job), and any multi-day
+    conclusion — the Phase B research conclusion stays open until the
+    pipeline runs over enough days to cover multiple volatility regimes,
+    which depends on continuous recording, not on more code.
+  - make lint / make typecheck / make test: clean (124 tests).
