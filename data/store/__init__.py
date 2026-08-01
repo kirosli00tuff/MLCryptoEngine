@@ -2,6 +2,7 @@
 
 from data.store.parquet_writer import (
     BOOK_SNAPSHOT_SCHEMA,
+    BookDayWriter,
     book_partition_dir,
     sanitize_symbol,
     write_book_day,
@@ -10,6 +11,7 @@ from data.store.query import PartitionInfo, dataset_coverage, load_book_range, o
 
 __all__ = [
     "BOOK_SNAPSHOT_SCHEMA",
+    "BookDayWriter",
     "PartitionInfo",
     "book_partition_dir",
     "dataset_coverage",

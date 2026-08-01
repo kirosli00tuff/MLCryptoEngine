@@ -102,6 +102,19 @@ def render_section(runs: list[DayReport]) -> str:
             f"feed gaps in span: {report.feed_gaps} ({report.feed_gap_ms} ms, unioned "
             "and clamped to the span)"
         )
+        if report.warmup_start_ns is not None:
+            warm_stamp = datetime.fromtimestamp(report.warmup_start_ns / 1e9, tz=UTC).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            lines.append(
+                f"\nWarm start: previous-day tail replayed from {warm_stamp}Z so books "
+                "are live at midnight (state only — nothing before the day is scored)."
+            )
+        else:
+            lines.append(
+                "\n⚠ Cold start: no usable previous-day snapshot; books are invalid "
+                "until the first snapshot inside the day."
+            )
         if report.gaps_partially_outside_span:
             lines.append(
                 f"\n⚠ {report.gaps_partially_outside_span} gap record(s) extend past the "

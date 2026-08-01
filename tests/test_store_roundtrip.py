@@ -12,6 +12,7 @@ from data.book import BookBuilder, SnapshotEmitter, parse_kraken
 from data.book.kraken_checksum import checksum_fn_for
 from data.store import (
     BOOK_SNAPSHOT_SCHEMA,
+    BookDayWriter,
     book_partition_dir,
     dataset_coverage,
     load_book_range,
@@ -87,3 +88,58 @@ def test_rewrite_is_idempotent(tmp_path: Path) -> None:
     assert (info.venue, info.symbol, info.date) == ("kraken", "BTC/USD", DATE)
     assert info.rows == len(rows)
     assert info.files == 1
+
+
+def test_streamed_writer_matches_bulk_write_across_flushes(tmp_path: Path) -> None:
+    rows = _rows_from_fixture()
+    bulk_path = write_book_day(tmp_path / "bulk", "kraken", "BTC/USD", DATE, rows)
+
+    # flush_rows far below len(rows) forces many intermediate row-group flushes.
+    writer = BookDayWriter(tmp_path / "streamed", "kraken", "BTC/USD", DATE, flush_rows=7)
+    for row in rows:
+        writer.append([row])
+    streamed_path = writer.close()
+
+    assert streamed_path is not None
+    assert writer.rows_written == len(rows)
+    streamed = pq.read_table(streamed_path)
+    assert streamed.schema.equals(BOOK_SNAPSHOT_SCHEMA)
+    assert streamed.to_pylist() == pq.read_table(bulk_path).to_pylist()
+
+
+def test_streamed_writer_with_no_rows_writes_no_file(tmp_path: Path) -> None:
+    writer = BookDayWriter(tmp_path, "kraken", "BTC/USD", DATE)
+
+    assert writer.close() is None
+    assert writer.rows_written == 0
+    partition = book_partition_dir(tmp_path, "kraken", "BTC/USD", DATE)
+    assert not partition.exists() or not list(partition.iterdir())
+
+
+def test_streamed_writer_never_exposes_a_partial_final_file(tmp_path: Path) -> None:
+    rows = _rows_from_fixture()
+    partition = book_partition_dir(tmp_path, "kraken", "BTC/USD", DATE)
+
+    writer = BookDayWriter(tmp_path, "kraken", "BTC/USD", DATE, flush_rows=7)
+    writer.append(rows)
+    # Flushes have happened, but the deterministic final name must not exist
+    # until close() renames the finished file into place.
+    assert not (partition / "part-000.parquet").exists()
+
+    path = writer.close()
+    assert path == partition / "part-000.parquet"
+    assert path.exists()
+    assert not list(partition.glob("*.inprogress"))
+    assert pq.read_table(path).num_rows == len(rows)
+
+
+def test_streamed_rewrite_is_idempotent(tmp_path: Path) -> None:
+    rows = _rows_from_fixture()
+    for _ in range(2):
+        writer = BookDayWriter(tmp_path, "kraken", "BTC/USD", DATE, flush_rows=7)
+        writer.append(rows)
+        writer.close()
+
+    partition = book_partition_dir(tmp_path, "kraken", "BTC/USD", DATE)
+    assert len(list(partition.glob("*.parquet"))) == 1
+    assert pq.read_table(partition / "part-000.parquet").num_rows == len(rows)

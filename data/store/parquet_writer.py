@@ -26,6 +26,12 @@ import pyarrow.parquet as pq
 
 BOOK_DATASET = "book_snapshots"
 PART_NAME = "part-000.parquet"
+COMPRESSION = "zstd"
+DICTIONARY_COLUMNS = ["venue", "symbol", "kind"]
+# Rows buffered before each streamed row-group flush. Sized so the buffer of
+# Python dicts (~2.3 KB each measured on real tick data) stays around 100 MB.
+DEFAULT_FLUSH_ROWS = 50_000
+_INPROGRESS_SUFFIX = ".inprogress"
 
 BOOK_SNAPSHOT_SCHEMA = pa.schema(
     [
@@ -66,6 +72,70 @@ def book_partition_dir(processed_dir: Path, venue: str, symbol: str, date: str) 
     )
 
 
+class BookDayWriter:
+    """Streams one venue/symbol/day of book snapshot rows to Parquet.
+
+    Rows are buffered and written out as a row group every ``flush_rows`` rows,
+    so a day of any size passes through bounded memory — the fix for the
+    2026-07-31 OOM, where a full day of retained rows reached 12.8 GB RSS.
+    Output goes to a temporary name inside the partition directory and is
+    renamed to the deterministic part name by :meth:`close`, so reprocessing
+    stays idempotent and a crashed run never leaves a partial file at the
+    final path; the leftover temporary is overwritten by the next run.
+    """
+
+    def __init__(
+        self,
+        processed_dir: Path,
+        venue: str,
+        symbol: str,
+        date: str,
+        flush_rows: int = DEFAULT_FLUSH_ROWS,
+    ) -> None:
+        if flush_rows <= 0:
+            raise ValueError(f"flush_rows must be positive, got {flush_rows}")
+        self._final_path = book_partition_dir(processed_dir, venue, symbol, date) / PART_NAME
+        self._tmp_path = self._final_path.with_name(PART_NAME + _INPROGRESS_SUFFIX)
+        self._flush_rows = flush_rows
+        self._buffer: list[dict[str, Any]] = []
+        self._writer: pq.ParquetWriter | None = None
+        # Rows appended so far; all of them are on disk once close() returns.
+        self.rows_written = 0
+
+    def append(self, rows: list[dict[str, Any]]) -> None:
+        self._buffer.extend(rows)
+        self.rows_written += len(rows)
+        if len(self._buffer) >= self._flush_rows:
+            self._flush()
+
+    def _flush(self) -> None:
+        if not self._buffer:
+            return
+        if self._writer is None:
+            self._final_path.parent.mkdir(parents=True, exist_ok=True)
+            self._writer = pq.ParquetWriter(
+                self._tmp_path,
+                BOOK_SNAPSHOT_SCHEMA,
+                compression=COMPRESSION,
+                use_dictionary=DICTIONARY_COLUMNS,
+            )
+        self._writer.write_table(pa.Table.from_pylist(self._buffer, schema=BOOK_SNAPSHOT_SCHEMA))
+        self._buffer = []
+
+    def close(self) -> Path | None:
+        """Flush the remainder and rename into place; None when nothing was appended.
+
+        Safe to call more than once — later calls find nothing to write.
+        """
+        self._flush()
+        if self._writer is None:
+            return None
+        self._writer.close()
+        self._writer = None
+        self._tmp_path.replace(self._final_path)
+        return self._final_path
+
+
 def write_book_day(
     processed_dir: Path,
     venue: str,
@@ -81,7 +151,7 @@ def write_book_day(
     pq.write_table(
         table,
         path,
-        compression="zstd",
-        use_dictionary=["venue", "symbol", "kind"],
+        compression=COMPRESSION,
+        use_dictionary=DICTIONARY_COLUMNS,
     )
     return path

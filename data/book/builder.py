@@ -38,6 +38,16 @@ class SequenceTracker:
         # harness reports the two together so it can never be read that way.
         self.observations = 0
 
+    def reset_counts(self) -> None:
+        """Zero the gap/observation counters but keep the last-seen sequence.
+
+        Used at the day boundary after a warm-up replay: continuity across
+        midnight must still be checked, but observations made while warming
+        belong to the previous day.
+        """
+        self.gaps = 0
+        self.observations = 0
+
     def observe(self, seq: int) -> bool:
         """Record ``seq``; True when contiguous (or first), False on a gap."""
         self.observations += 1
@@ -134,6 +144,22 @@ class BookBuilder:
         self._bids.clear()
         self._asks.clear()
         self._dirty()
+
+    def reset_counters(self) -> None:
+        """Zero every scoring counter while keeping book state and validity.
+
+        Used at the day boundary after a warm-up replay: the warmed book is
+        the target day's starting condition, but events applied while warming
+        belong to the previous day and must not be scored against this one.
+        """
+        self.events_applied = 0
+        self.snapshots_applied = 0
+        self.ignored_while_invalid = 0
+        self.seq_gaps = 0
+        self.checksum_failures = 0
+        self.checksums_verified = 0
+        self.crossed_events = 0
+        self.locked_events = 0
 
     def _load_snapshot(self, event: BookEvent) -> None:
         self._bids = {lv.price: lv.qty for lv in event.bids if lv.qty > 0}

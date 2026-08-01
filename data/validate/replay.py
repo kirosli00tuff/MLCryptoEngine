@@ -3,14 +3,22 @@
 This is the only replay implementation in the codebase: `make validate` both
 rebuilds the processed book snapshots (idempotently, via the store layer) and
 computes the quality metrics that decide whether Phase A passes.
+
+Memory is bounded regardless of day size: events stream through the current
+book state plus running aggregates, and snapshot rows stream to Parquet as
+they are emitted. Nothing per-message is retained — a full day at tens of
+millions of messages replays in a few hundred MB of RSS. (The original
+implementation materialized every emitted row per symbol and was OOM-killed
+at 12.8 GB replaying the first real full day.)
 """
 
 from __future__ import annotations
 
+import time
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from pathlib import Path
 
 import orjson
 from pydantic import BaseModel, Field
@@ -23,7 +31,7 @@ from data.book.types import BookEvent
 from data.config import AppConfig
 from data.recorder.gaps import GapRecord, merge_windows, read_gaps
 from data.recorder.reader import iter_day_records
-from data.store import write_book_day
+from data.store import BookDayWriter
 from data.validate.integrity import (
     CHECKSUM,
     IntegrityReport,
@@ -32,6 +40,7 @@ from data.validate.integrity import (
     uncertified_reason,
 )
 from data.validate.stats import ArrivalHistogram, ArrivalStats
+from data.validate.warmup import warm_up
 
 
 class GapAccountingError(RuntimeError):
@@ -45,6 +54,9 @@ DAY_NS = 86_400 * NS_PER_S
 GAP_SLACK_BEFORE_NS = 1 * NS_PER_S
 GAP_SLACK_AFTER_NS = 5 * NS_PER_S
 FULL_DAY_THRESHOLD = 0.999
+# A full-day replay runs for many minutes; without periodic progress a working
+# process is indistinguishable from a hung one.
+PROGRESS_EVERY_MSGS = 1_000_000
 
 
 class SymbolReport(BaseModel):
@@ -95,6 +107,9 @@ class DayReport(BaseModel):
     channel_counts: dict[str, int]
     first_ns: int | None
     last_ns: int | None
+    # Receive timestamp of the previous-day snapshot the replay warmed up
+    # from; None when the day replayed cold (no usable prior-day snapshot).
+    warmup_start_ns: int | None = None
     feed_gaps: int
     feed_gap_ms: int
     gaps_partially_outside_span: int
@@ -235,6 +250,62 @@ def _explained(ts: int, gaps: list[GapRecord]) -> bool:
     )
 
 
+class _AnomalyLedger:
+    """Unexplained-anomaly counting in bounded memory.
+
+    The final unexplained count must be judged against the gaps that touch the
+    recorded span, and the span is only known once the replay finishes — but
+    retaining every anomaly timestamp until then is exactly the unbounded
+    pattern that OOM-killed the first full-day validation. Instead: a
+    timestamp nowhere near *any* logged gap window (a superset of the
+    span-scoped list) is unexplained no matter what the span turns out to be,
+    so it is counted immediately and discarded. Only timestamps within slack
+    of some gap window are kept for re-evaluation against the span-scoped
+    list. Semantics are identical to evaluating everything at the end; memory
+    is bounded by anomalies adjacent to gap windows, which any credible
+    venue-day has few of.
+    """
+
+    def __init__(self, candidate_gaps: list[GapRecord]) -> None:
+        self._candidates = candidate_gaps
+        self._definitely_unexplained = 0
+        self._near_gap_ns: list[int] = []
+
+    def mark(self, ts: int) -> None:
+        if _explained(ts, self._candidates):
+            self._near_gap_ns.append(ts)
+        else:
+            self._definitely_unexplained += 1
+
+    def unexplained(self, span_gaps: list[GapRecord]) -> int:
+        return self._definitely_unexplained + sum(
+            1 for ts in self._near_gap_ns if not _explained(ts, span_gaps)
+        )
+
+
+def _rss_mb() -> float | None:
+    """Current resident set size, or None where /proc is unavailable."""
+    try:
+        with Path("/proc/self/status").open(encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _log_progress(venue: str, date: str, msgs: int, recv_ns: int, started: float) -> None:
+    position = datetime.fromtimestamp(recv_ns / NS_PER_S, tz=UTC).strftime("%H:%M:%S")
+    elapsed = time.monotonic() - started
+    rss = _rss_mb()
+    rss_part = f" · rss {rss:.0f} MB" if rss is not None else ""
+    print(
+        f"  {venue} {date}: {msgs:,} msgs · at {position}Z · {elapsed:.0f}s elapsed{rss_part}",
+        flush=True,
+    )
+
+
 def _snapshot_tob(event: BookEvent) -> tuple[Decimal | None, Decimal | None]:
     best_bid = max((lv.price for lv in event.bids if lv.qty > 0), default=None)
     best_ask = min((lv.price for lv in event.asks if lv.qty > 0), default=None)
@@ -250,13 +321,21 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
     seq_applies = vcfg.sequence_numbers
     checksum_applies = vcfg.snapshot.checksum
 
+    # Gap records are loaded up front so anomalies can be triaged as they
+    # occur (see _AnomalyLedger) instead of retaining every timestamp.
+    all_gaps = read_gaps(cfg.raw_dir, venue)
+
     builders: dict[str, BookBuilder] = {}
     emitters: dict[str, SnapshotEmitter] = {}
-    rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    writers: dict[str, BookDayWriter] = {}
     last_event_ns: dict[str, int] = {}
     valid_ns: dict[str, int] = defaultdict(int)
-    anomaly_ns: dict[str, dict[str, list[int]]] = defaultdict(
-        lambda: {"crossed": [], "seq": [], "checksum": []}
+    ledgers: dict[str, dict[str, _AnomalyLedger]] = defaultdict(
+        lambda: {
+            "crossed": _AnomalyLedger(all_gaps),
+            "seq": _AnomalyLedger(all_gaps),
+            "checksum": _AnomalyLedger(all_gaps),
+        }
     )
     snap_compares: dict[str, int] = defaultdict(int)
     snap_mismatches: dict[str, int] = defaultdict(int)
@@ -280,10 +359,30 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
             emitters[symbol] = SnapshotEmitter(
                 builders[symbol], cfg.book.interval_snapshot_ms, cfg.book.snapshot_depth
             )
+            writers[symbol] = BookDayWriter(cfg.processed_dir, venue, symbol, date)
         return builders[symbol]
 
+    day_start_ns, day_end_ns = _day_bounds_ns(date)
+    parse_fn = parse_coinbase if venue == "coinbase" else parse_kraken
+    warmup = warm_up(
+        cfg.raw_dir, venue, date, vcfg.symbols, parse_fn, builder_for, tracker, seq_applies
+    )
+    if warmup.start_ns is not None:
+        # The warmed book is the day's starting state; the events that built
+        # it are the previous day's and must not be scored against this one.
+        for symbol, warmed in builders.items():
+            warmed.reset_counters()
+            if warmed.valid:
+                # Live at midnight — coverage counts from the day's first
+                # instant, not from its first event.
+                last_event_ns[symbol] = day_start_ns
+        tracker.reset_counts()
+
+    started = time.monotonic()
     for recv_ns, raw in iter_day_records(cfg.raw_dir, venue, date):
         msgs_total += 1
+        if msgs_total % PROGRESS_EVERY_MSGS == 0:
+            _log_progress(venue, date, msgs_total, recv_ns, started)
         if first_ns is None:
             first_ns = recv_ns
         last_ns = recv_ns
@@ -311,7 +410,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
 
         for event in events:
             builder = builder_for(event.symbol)
-            marks = anomaly_ns[event.symbol]
+            ledger = ledgers[event.symbol]
 
             if event.is_snapshot and builder.valid:
                 snap_compares[event.symbol] += 1
@@ -329,17 +428,15 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
             crossed_before = builder.crossed_events
             result = builder.apply(event, seq_ok=seq_ok)
             if builder.crossed_events > crossed_before:
-                marks["crossed"].append(recv_ns)
+                ledger["crossed"].mark(recv_ns)
             if result is ApplyResult.SEQ_GAP:
-                marks["seq"].append(recv_ns)
+                ledger["seq"].mark(recv_ns)
             elif result is ApplyResult.CHECKSUM_FAILED:
-                marks["checksum"].append(recv_ns)
+                ledger["checksum"].mark(recv_ns)
 
-            rows[event.symbol].extend(emitters[event.symbol].on_event(recv_ns, event.seq))
+            writers[event.symbol].append(emitters[event.symbol].on_event(recv_ns, event.seq))
 
-    day_start_ns, day_end_ns = _day_bounds_ns(date)
     span = (first_ns, last_ns) if first_ns is not None and last_ns is not None else None
-    all_gaps = read_gaps(cfg.raw_dir, venue)
     accounts = account_gaps(all_gaps, span, (day_start_ns, day_end_ns))
     # Gaps that touch the recorded span are the only trustworthy exclusions from
     # the coverage denominator, and the only ones that can explain an anomaly.
@@ -348,11 +445,9 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
 
     symbol_reports: list[SymbolReport] = []
     for symbol, builder in sorted(builders.items()):
-        written = 0
-        if rows[symbol]:
-            write_book_day(cfg.processed_dir, venue, symbol, date, rows[symbol])
-            written = len(rows[symbol])
-        marks = anomaly_ns[symbol]
+        writers[symbol].close()
+        written = writers[symbol].rows_written
+        ledger = ledgers[symbol]
         covered = valid_ns[symbol]
         denominator_excl = max(DAY_NS - gap_ns_in_day, 1)
         best_bid, best_ask = builder.best_bid, builder.best_ask
@@ -364,14 +459,10 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         symbol_reports.append(
             SymbolReport(
                 seq_gaps=builder.seq_gaps if seq_applies else None,
-                seq_gaps_unexplained=(
-                    sum(1 for t in marks["seq"] if not _explained(t, gaps)) if seq_applies else None
-                ),
+                seq_gaps_unexplained=(ledger["seq"].unexplained(gaps) if seq_applies else None),
                 checksum_failures=builder.checksum_failures if checksum_applies else None,
                 checksum_failures_unexplained=(
-                    sum(1 for t in marks["checksum"] if not _explained(t, gaps))
-                    if checksum_applies
-                    else None
+                    ledger["checksum"].unexplained(gaps) if checksum_applies else None
                 ),
                 checksums_verified=builder.checksums_verified if checksum_applies else None,
                 last_mid=float(builder.mid) if builder.valid and builder.mid is not None else None,
@@ -382,7 +473,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
                 events_applied=builder.events_applied,
                 snapshots=builder.snapshots_applied,
                 crossed_total=builder.crossed_events,
-                crossed_unexplained=sum(1 for t in marks["crossed"] if not _explained(t, gaps)),
+                crossed_unexplained=ledger["crossed"].unexplained(gaps),
                 locked_total=builder.locked_events,
                 valid_coverage_day_pct=round(100 * covered / DAY_NS, 3),
                 valid_coverage_excl_gaps_pct=round(100 * covered / denominator_excl, 3),
@@ -445,6 +536,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         channel_counts=dict(channel_counts),
         first_ns=first_ns,
         last_ns=last_ns,
+        warmup_start_ns=warmup.start_ns,
         feed_gaps=accounts.gaps_in_span,
         feed_gap_ms=accounts.gap_ms_in_span,
         gaps_partially_outside_span=accounts.gaps_partially_outside_span,
