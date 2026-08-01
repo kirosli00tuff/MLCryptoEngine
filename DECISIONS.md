@@ -175,3 +175,49 @@ Validation cost includes replaying the previous day's tail (bounded by one
 day, typically minutes). Coverage begins at midnight for warmed books, so the
 coverage number finally measures the data, not the replay's ignorance of the
 prior session.
+
+---
+
+## ADR-007: Recorder downtime is a recorded gap kind, distinct from feed gaps
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** gaps.jsonl records disconnects the recorder observed *while
+running*; it is structurally blind to periods where the process was not
+running at all — systemd restarts, crashes, OOM kills, reboots, manual stops.
+The 2026-08-01 outage (01:06:40Z→07:11:59Z, six hours) left no record on
+either venue. Unlogged downtime is more dangerous than logged downtime
+precisely because every downstream consumer trusts the gap log as the
+complete map of missing data: validation subtracts only logged gaps from
+coverage, and Phase B will exclude feature windows only inside logged gap
+periods. A logged hole is excluded and explained; an unlogged one silently
+poisons whatever is computed across it — a long outage surfaces as an
+unexplained coverage failure at best, and a two-second restart rounds away
+entirely while leaving a discontinuity a microstructure feature window can
+span without any flag. The causes also differ and must not be conflated: a
+feed gap is the venue dropping us; a downtime gap is us not being there.
+
+**Decision.** The recorder writes session lifecycle markers per venue
+(`sessions.jsonl`): `start` on startup before connecting, `end` on graceful
+shutdown; dry-run writes none (same rule Stage 1.5 set for gap records).
+Validation derives downtime gaps from the marker sequence — end→next start is
+a clean `downtime` gap; a start following a start with no end between it
+means the previous process terminated uncleanly, so the gap is measured from
+the last observed activity (the final raw message on disk) to the new start
+and marked `unclean`, never silently treated as clean. Derived gaps are
+ordinary `GapRecord`s (`kind` field: `feed` | `downtime` | `unclean`) and go
+through the same span clamping, unioning, and anomaly-explanation machinery
+as feed gaps; reports state each cause separately plus the union that
+coverage excludes. Coverage's numerator subtracts credited time that overlaps
+any gap window, so a book left "valid" across an absence cannot count the
+hole as covered — numerator and denominator agree on what a gap is. Known
+downtime that predates the feature is backfilled from the recorder's own log
+timestamps, as sidecar records only.
+
+**Consequences.** Every future stop, restart, crash, or reboot is either
+self-recorded or visibly unclean — there is no third state. Validation
+explains downtime instead of failing mysteriously, and Phase B can exclude
+downtime windows from feature computation with the same confidence as feed
+gaps. The marker protocol adds one file per venue and two writes per process
+lifetime; the honest cost is that unclean terminations depend on raw data for
+their start bound, which is exactly the evidence that survives a crash.

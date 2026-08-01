@@ -228,3 +228,43 @@ both venues.
     informational, not a pass/fail criterion.
   - Phase A checkbox intentionally left unchecked — both venue-days meet the
     stated criteria, but checking the box is the operator's call.
+
+- 2026-08-01 — Stage 1.8: process lifecycle gaps. Recorder downtime is now a
+  recorded, explained gap kind instead of an invisible hole.
+  - **Problem.** gaps.jsonl only records disconnects the recorder observed
+    while running; systemd restarts, crashes, OOM kills, reboots, and manual
+    stops left no record. Tonight's real case: down 01:06:40Z→07:11:59Z with
+    nothing in either venue's gaps.jsonl. Validation subtracts only logged
+    gaps, and Phase B will exclude feature windows only inside logged gaps —
+    so a long unlogged outage read as an unexplained coverage failure and a
+    two-second restart left a spannable discontinuity nothing flagged.
+  - **Fix.** Session markers (`sessions.jsonl` per venue, written by the
+    recorder: `start` on startup before connecting, `end` in the graceful
+    SIGTERM path; dry-run writes none, same rule as gap records). Validation
+    derives downtime gaps from the marker sequence: end→start = clean
+    `downtime` gap; start→start with no end between = the previous process
+    died uncleanly, gap measured from last observed activity (final raw
+    message on disk) and marked `unclean`, never silently treated as clean.
+    Derived gaps flow through the same span clamping, unioning, and anomaly
+    explanation as feed gaps; report.md now shows feed gaps, recorder
+    downtime, and unclean terminations separately plus the unioned total that
+    coverage excludes. 9 new tests (85 total).
+  - **Coverage numerator fixed while proving it.** The known 100.01% artifact
+    became a 34-point lie on 2026-08-01: books left "valid" across the 6-hour
+    downtime credited the hole as covered (41.6% claimed). Credited intervals
+    now subtract their overlap with the gap-window union, so numerator and
+    denominator agree on what a gap is. 2026-07-31 remains PASS (coverage
+    prints ≤100.00% now); the artifact noted in the Stage 1.7 entry is closed.
+  - **Backfill.** Markers written for what logs document (recorder's own
+    structlog timestamps): end 01:06:40.445906Z, start 07:11:59.279027Z, end
+    07:12:53.345944Z, start 07:12:53.681722Z, and end 07:26:17.581971Z for
+    the old-code process stopped by tonight's deliberate restart (it predates
+    the feature, so it could not write its own). Sidecar records only; raw
+    captured data untouched.
+  - **Live confirmation.** `systemctl --user restart mlce-recorder` at
+    07:26:17Z: the new code wrote its start marker (07:26:17.909Z) unprompted,
+    and validation derives three clean downtime gaps per venue — 21,918,833 ms
+    (the outage), 335 ms and 327 ms (the two restarts). 2026-08-01 now
+    validates with `recorder downtime: 3 (21919496 ms)` explained and honest
+    coverage of 7.95% (coinbase) / 8.07% (kraken) outside gaps — a partial-day
+    FAIL on the full-day criterion, which is expected and not a data problem.
