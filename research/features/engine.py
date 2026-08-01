@@ -18,6 +18,7 @@ from collections import deque
 from itertools import pairwise
 
 from research.features import book as bookfeat
+from research.features.capabilities import supported_features
 from research.features.cross_venue import CrossVenueTracker
 from research.features.rolling import WindowSum
 from research.features.signing import sign_trade
@@ -84,6 +85,11 @@ class FeatureEngine:
         self.venue = venue
         self.symbol = symbol
         self._cross = cross
+        # Capability matrix consultation happens here, once: features the
+        # venue's feed cannot support are nulled in every compute() output
+        # rather than computed as garbage (e.g. OFI from snapshot deltas).
+        # Raises for undeclared venues — defaults closed.
+        self._unsupported = frozenset(FEATURE_COLUMNS) - supported_features(venue)
         self._prev_book: BookState | None = None
         self._last_mid: float | None = None
         self._ofi_best = {1: WindowSum(NS_PER_S), 5: WindowSum(5 * NS_PER_S)}
@@ -227,6 +233,8 @@ class FeatureEngine:
             out["xv_diff_z"] = self._cross.diff_zscore(t_ns)
             for offset, corr in self._cross.leadlag().items():
                 out[_XV_COLUMN_BY_OFFSET[offset]] = corr
+        for name in self._unsupported:
+            out[name] = None
         return out
 
     def _interarrival_ms(self, t_ns: int) -> tuple[float | None, float | None]:

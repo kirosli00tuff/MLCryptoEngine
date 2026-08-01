@@ -20,11 +20,19 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import orjson
 from pydantic import BaseModel, Field
 
-from data.book import BookBuilder, SequenceTracker, SnapshotEmitter, parse_coinbase, parse_kraken
+from data.book import (
+    BookBuilder,
+    SequenceTracker,
+    SnapshotEmitter,
+    parse_coinbase,
+    parse_hyperliquid,
+    parse_kraken,
+)
 from data.book.builder import ApplyResult
 from data.book.coinbase_parse import envelope_sequence
 from data.book.kraken_checksum import checksum_fn_for
@@ -43,7 +51,7 @@ from data.validate.integrity import (
     uncertified_reason,
 )
 from data.validate.stats import ArrivalHistogram, ArrivalStats
-from data.validate.warmup import warm_up
+from data.validate.warmup import WarmupResult, warm_up
 
 
 class GapAccountingError(RuntimeError):
@@ -60,6 +68,19 @@ FULL_DAY_THRESHOLD = 0.999
 # A full-day replay runs for many minutes; without periodic progress a working
 # process is indistinguishable from a hung one.
 PROGRESS_EVERY_MSGS = 1_000_000
+# Snapshot-stream cadence scoring (Hyperliquid): the l2Book minimum push
+# interval is ~0.5 s; an interval above STALE is counted as materially above
+# block cadence (observed quiet-market intervals reach ~5 s), and an
+# unexplained interval above SILENT fails the day — a snapshot stream silent
+# for a minute outside logged gaps is missing data, not a quiet market.
+CADENCE_STALE_MS = 10_000
+CADENCE_SILENT_FAIL_MS = 60_000
+
+PARSE_FNS = {
+    "kraken": parse_kraken,
+    "coinbase": parse_coinbase,
+    "hyperliquid": parse_hyperliquid,
+}
 
 
 class SymbolReport(BaseModel):
@@ -83,6 +104,14 @@ class SymbolReport(BaseModel):
     snapshot_compares: int
     snapshot_mismatches: int
     rows_written: int
+    # Snapshot-cadence scoring, populated only for snapshot-stream venues
+    # (None elsewhere — the Stage 1.6 rule: not-applicable is never 0).
+    snap_intervals: int | None = None
+    snap_interval_p50_ms: float | None = None
+    snap_interval_p95_ms: float | None = None
+    snap_interval_max_ms: float | None = None
+    snap_stale: int | None = None
+    snap_stale_unexplained: int | None = None
     # Book state at the end of the replay — real, but only as fresh as the
     # last `make validate` run; consumers must label it that way.
     last_mid: float | None = None
@@ -126,6 +155,9 @@ class DayReport(BaseModel):
     # Receive timestamp of the previous-day snapshot the replay warmed up
     # from; None when the day replayed cold (no usable prior-day snapshot).
     warmup_start_ns: int | None = None
+    # True for venues whose book feed is a full-snapshot stream: warm start is
+    # structurally unnecessary and the report says so instead of warning.
+    snapshot_stream: bool = False
     # Per-cause gap reporting: feed gaps (the venue dropped us) vs recorder
     # downtime (we were not there) vs unclean terminations (we died without a
     # shutdown record). Coverage excludes the union of all kinds.
@@ -354,7 +386,7 @@ def _snapshot_tob(event: BookEvent) -> tuple[Decimal | None, Decimal | None]:
 
 def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
     """Replay, score, and persist one venue-day. Raises on unsupported venues."""
-    if venue not in ("kraken", "coinbase"):
+    if venue not in PARSE_FNS:
         raise ValueError(f"No replay support for venue '{venue}'")
     vcfg = cfg.venues[venue]
     mechanisms = mechanisms_for(vcfg)
@@ -405,6 +437,12 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
     )
     snap_compares: dict[str, int] = defaultdict(int)
     snap_mismatches: dict[str, int] = defaultdict(int)
+    # Snapshot-cadence tracking (snapshot-stream venues only). Interval lists
+    # are bounded by day-length / block cadence, not by message count.
+    snap_prev_ns: dict[str, int] = {}
+    snap_intervals_ms: dict[str, list[float]] = defaultdict(list)
+    snap_stale_windows: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    snap_silent_counts: dict[str, int] = defaultdict(int)
 
     tracker = SequenceTracker()
     channel_counts: Counter[str] = Counter()
@@ -429,10 +467,15 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         return builders[symbol]
 
     day_start_ns, day_end_ns = _day_bounds_ns(date)
-    parse_fn = parse_coinbase if venue == "coinbase" else parse_kraken
-    warmup = warm_up(
-        cfg.raw_dir, venue, date, vcfg.symbols, parse_fn, builder_for, tracker, seq_applies
-    )
+    parse_fn = PARSE_FNS[venue]
+    if vcfg.snapshot_stream:
+        # Every message is a full book; the day's first snapshot arrives
+        # within a block interval of midnight, so warm start buys nothing.
+        warmup = WarmupResult(None, 0)
+    else:
+        warmup = warm_up(
+            cfg.raw_dir, venue, date, vcfg.symbols, parse_fn, builder_for, tracker, seq_applies
+        )
     if warmup.start_ns is not None:
         # The warmed book is the day's starting state; the events that built
         # it are the previous day's and must not be scored against this one.
@@ -463,20 +506,26 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         channel = message.get("channel") or message.get("method") or message.get("type")
         channel_counts[str(channel or "unknown")] += 1
 
-        if venue == "coinbase":
-            # Gated on config, not on the venue name: a feed we have not
-            # declared as sequence-numbered is never scored on sequence
-            # continuity, so it cannot bank an unearned clean check.
-            seq = envelope_sequence(message) if seq_applies else None
-            seq_ok = tracker.observe(seq) if seq is not None else True
-            events = parse_coinbase(message, recv_ns)
-        else:
-            seq_ok = True
-            events = parse_kraken(message, recv_ns)
+        # Gated on config, not on the venue name: a feed we have not declared
+        # as sequence-numbered is never scored on sequence continuity, so it
+        # cannot bank an unearned clean check. Venues without envelope
+        # sequence numbers simply yield None here.
+        seq = envelope_sequence(message) if seq_applies else None
+        seq_ok = tracker.observe(seq) if seq is not None else True
+        events = parse_fn(message, recv_ns)
 
         for event in events:
             builder = builder_for(event.symbol)
             ledger = ledgers[event.symbol]
+
+            if vcfg.snapshot_stream and event.is_snapshot:
+                prev_snap = snap_prev_ns.get(event.symbol)
+                if prev_snap is not None:
+                    interval_ms = (recv_ns - prev_snap) / 1e6
+                    snap_intervals_ms[event.symbol].append(interval_ms)
+                    if interval_ms > CADENCE_STALE_MS:
+                        snap_stale_windows[event.symbol].append((prev_snap, recv_ns))
+                snap_prev_ns[event.symbol] = recv_ns
 
             if event.is_snapshot and builder.valid:
                 snap_compares[event.symbol] += 1
@@ -522,6 +571,27 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
             if builder.valid and best_bid is not None and best_ask is not None
             else None
         )
+        snap_kwargs: dict[str, Any] = {}
+        if vcfg.snapshot_stream:
+            ordered = sorted(snap_intervals_ms[symbol])
+            stale = snap_stale_windows[symbol]
+            # A stale interval overlapping a logged gap window (feed gap or
+            # recorder downtime) is explained; the rest are the venue going
+            # quiet on its own.
+            unexplained = [(s, e) for s, e in stale if not any(g.overlaps_ns(s, e) for g in gaps)]
+            snap_silent_counts[symbol] = sum(
+                1 for s, e in unexplained if (e - s) / 1e6 > CADENCE_SILENT_FAIL_MS
+            )
+            snap_kwargs = {
+                "snap_intervals": len(ordered),
+                "snap_interval_p50_ms": ordered[len(ordered) // 2] if ordered else None,
+                "snap_interval_p95_ms": (
+                    ordered[min(int(len(ordered) * 0.95), len(ordered) - 1)] if ordered else None
+                ),
+                "snap_interval_max_ms": ordered[-1] if ordered else None,
+                "snap_stale": len(stale),
+                "snap_stale_unexplained": len(unexplained),
+            }
         symbol_reports.append(
             SymbolReport(
                 seq_gaps=builder.seq_gaps if seq_applies else None,
@@ -546,6 +616,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
                 snapshot_compares=snap_compares[symbol],
                 snapshot_mismatches=snap_mismatches[symbol],
                 rows_written=written,
+                **snap_kwargs,
             )
         )
 
@@ -554,6 +625,9 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         sequence_checks=tracker.observations if seq_applies else None,
         checksum_checks=(
             sum(b.checksums_verified for b in builders.values()) if checksum_applies else None
+        ),
+        snapshot_checks=(
+            sum(b.snapshots_applied for b in builders.values()) if vcfg.snapshot_stream else None
         ),
     )
 
@@ -594,6 +668,12 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
                 f"{prefix}coverage outside gaps {report.valid_coverage_excl_gaps_pct:.2f}% "
                 f"< {FULL_DAY_THRESHOLD:.1%}"
             )
+        if snap_silent_counts.get(report.symbol):
+            failure_reasons.append(
+                f"{prefix}{snap_silent_counts[report.symbol]} unexplained snapshot silence(s) "
+                f"longer than {CADENCE_SILENT_FAIL_MS / 1000:.0f}s — a snapshot stream this "
+                "quiet outside logged gaps is missing data, not a quiet market"
+            )
 
     return DayReport(
         venue=venue,
@@ -603,6 +683,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         first_ns=first_ns,
         last_ns=last_ns,
         warmup_start_ns=warmup.start_ns,
+        snapshot_stream=vcfg.snapshot_stream,
         feed_gaps=accounts.feed_gaps_in_span,
         feed_gap_ms=accounts.feed_gap_ms_in_span,
         downtime_gaps=accounts.downtime_gaps_in_span,

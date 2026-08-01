@@ -33,11 +33,20 @@ DICTIONARY_COLUMNS = ["venue", "symbol", "kind"]
 DEFAULT_FLUSH_ROWS = 50_000
 _INPROGRESS_SUFFIX = ".inprogress"
 
+# Clock semantics: ``ts_ns`` is the capture clock of the row's source —
+# the recorder's local receive time for source="recorder", Databento's
+# capture-server hardware receive time for source="databento". These are
+# different clocks on different machines: rows from different sources must
+# NEVER be ordered against each other on ts_ns. ``exchange_ns`` (book rows:
+# vendor data only; recorder feeds don't carry a usable per-event exchange
+# time) is what the venue claims and is reference-only.
 BOOK_SNAPSHOT_SCHEMA = pa.schema(
     [
         pa.field("venue", pa.string()),
         pa.field("symbol", pa.string()),
         pa.field("ts_ns", pa.int64()),
+        pa.field("exchange_ns", pa.int64()),
+        pa.field("source", pa.string()),
         pa.field("kind", pa.string()),
         pa.field("valid", pa.bool_()),
         pa.field("crossed", pa.bool_()),
@@ -174,6 +183,7 @@ TRADE_SCHEMA = pa.schema(
         pa.field("qty", pa.float64()),
         pa.field("venue_side", pa.string()),
         pa.field("trade_id", pa.string()),
+        pa.field("source", pa.string()),
     ]
 )
 

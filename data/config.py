@@ -79,6 +79,11 @@ class VenueConfig(BaseModel):
     # is reported as "sequence check not applicable" rather than credited with
     # zero sequence gaps, so a missing declaration can never look like a pass.
     sequence_numbers: bool = False
+    # Is the book feed a full-snapshot stream (each message replaces the book)
+    # rather than incremental updates? Snapshot-stream venues are scored on
+    # snapshot cadence instead of sequence/checksum integrity, and warm-start
+    # replay is skipped because every message already carries the whole book.
+    snapshot_stream: bool = False
 
     @field_validator("fee_tiers")
     @classmethod

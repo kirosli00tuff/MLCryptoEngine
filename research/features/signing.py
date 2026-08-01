@@ -20,6 +20,12 @@ from __future__ import annotations
 SIGNING_METHOD: dict[str, str] = {
     "kraken": "venue_flag",
     "coinbase": "tick_rule",
+    # Hyperliquid trades carry the taker direction ("B"/"A", normalized to
+    # buy/sell by the parser) — documented aggressor flag, used directly.
+    "hyperliquid": "venue_flag",
+    # Databento GLBX.MDP3 trades carry the aggressor side ('A'sk/'B'id,
+    # normalized by the adapter); used directly.
+    "cme": "venue_flag",
 }
 
 

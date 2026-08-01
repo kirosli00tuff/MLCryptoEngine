@@ -1,0 +1,85 @@
+"""Capability matrix: unsupported features raise, and the engine nulls them."""
+
+from __future__ import annotations
+
+import pytest
+
+from research.features.capabilities import (
+    ALL_FEATURES,
+    BBO_AND_TRADE_FEATURES,
+    DEPTH_FEATURES,
+    UnsupportedFeatureError,
+    require_supported,
+    supported_features,
+)
+from research.features.engine import FEATURE_COLUMNS, FeatureEngine
+from research.stream.events import BookState, StreamEvent, Trade
+
+BASE_NS = 1_785_412_800 * 1_000_000_000
+
+
+def test_matrix_stays_in_exact_correspondence_with_the_feature_library() -> None:
+    assert frozenset(FEATURE_COLUMNS) == ALL_FEATURES, (
+        "capability matrix and FEATURE_COLUMNS drifted — every feature must be classified"
+    )
+    assert not (DEPTH_FEATURES & BBO_AND_TRADE_FEATURES)
+
+
+def test_requesting_an_unsupported_feature_raises_rather_than_returning() -> None:
+    require_supported("hyperliquid", "spread_bps")  # supported: no raise
+    with pytest.raises(UnsupportedFeatureError, match="not supported"):
+        require_supported("hyperliquid", "ofi_best_1s")
+    with pytest.raises(UnsupportedFeatureError, match="not supported"):
+        require_supported("hyperliquid", "qimb_best")
+    with pytest.raises(UnsupportedFeatureError, match="no declared capability"):
+        require_supported("binance", "spread_bps")
+    with pytest.raises(UnsupportedFeatureError, match="unknown feature"):
+        require_supported("kraken", "made_up_feature")
+    with pytest.raises(UnsupportedFeatureError):
+        supported_features("undeclared_venue")
+
+
+def _book_event(venue: str, ts_ns: int) -> StreamEvent:
+    book = BookState(
+        best_bid=100.0,
+        bid_qty=2.0,
+        best_ask=101.0,
+        ask_qty=1.0,
+        mid=100.5,
+        microprice=100.33,
+        bid_prices=(100.0, 99.0),
+        bid_qtys=(2.0, 3.0),
+        ask_prices=(101.0, 102.0),
+        ask_qtys=(1.0, 4.0),
+        valid=True,
+    )
+    return StreamEvent(venue, "BTC", ts_ns, None, book, None)
+
+
+def test_engine_nulls_unsupported_features_instead_of_computing_garbage() -> None:
+    hyperliquid = FeatureEngine("hyperliquid", "BTC")
+    kraken = FeatureEngine("kraken", "BTC")
+    for i in range(3):
+        ts = BASE_NS + i * 1_000_000_000
+        hyperliquid.on_event(_book_event("hyperliquid", ts))
+        kraken.on_event(_book_event("kraken", ts))
+        trade = StreamEvent("x", "BTC", ts + 1, ts, None, Trade(100.5, 1.0, "buy"))
+        hyperliquid.on_event(trade)
+        kraken.on_event(trade)
+
+    t = BASE_NS + 10_000_000_000
+    hl_features = hyperliquid.compute(t)
+    kraken_features = kraken.compute(t)
+
+    for name in DEPTH_FEATURES:
+        assert hl_features[name] is None, f"{name} must be nulled on a snapshot-stream venue"
+    assert hl_features["spread_bps"] is not None
+    assert hl_features["micro_minus_mid"] is not None
+    assert hl_features["signed_vol_30s"] is not None
+    assert kraken_features["qimb_best"] is not None, "full-L2 venues keep the full library"
+    assert kraken_features["dwp_minus_mid"] is not None
+
+
+def test_undeclared_venue_cannot_even_construct_an_engine() -> None:
+    with pytest.raises(UnsupportedFeatureError):
+        FeatureEngine("undeclared_venue", "BTC")

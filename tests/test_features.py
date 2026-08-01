@@ -71,7 +71,12 @@ def test_invalid_inputs_produce_none_never_zero() -> None:
 
 
 def test_signing_uses_venue_flag_on_kraken_and_tick_rule_on_coinbase() -> None:
-    assert SIGNING_METHOD == {"kraken": "venue_flag", "coinbase": "tick_rule"}
+    assert SIGNING_METHOD == {
+        "kraken": "venue_flag",
+        "coinbase": "tick_rule",
+        "hyperliquid": "venue_flag",
+        "cme": "venue_flag",
+    }
     assert sign_trade("kraken", "buy", 100.0, None, 0) == 1
     assert sign_trade("kraken", "sell", 100.0, None, 0) == -1
     # Coinbase ignores its ambiguous flag: uptick > 0, zero-tick carries.

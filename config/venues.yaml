@@ -76,3 +76,73 @@ venues:
       - { volume_usd_30d: 75000000,  maker_bps: 3,  taker_bps: 12 }
       - { volume_usd_30d: 250000000, maker_bps: 0,  taker_bps: 8 }
       - { volume_usd_30d: 400000000, maker_bps: 0,  taker_bps: 5 }
+
+  hyperliquid:
+    name: Hyperliquid
+    ws_url: wss://api.hyperliquid.xyz/ws
+    rest_status_url: https://api.hyperliquid.xyz/info
+    # Coin names discovered from the info endpoint ({"type":"meta"}) on
+    # 2026-08-01: 232 perp assets; BTC (szDecimals 5, maxLeverage 40) and ETH
+    # (szDecimals 4, maxLeverage 25) confirmed present under exactly these names.
+    symbols: [BTC, ETH]
+    # l2Book delivers 20 levels per side, full snapshot per push.
+    book_depth: 20
+    # The feed provides neither sequence numbers nor checksums; both render
+    # n/a in validation (Stage 1.6 rule). Scoring comes from snapshot cadence.
+    sequence_numbers: false
+    snapshot_stream: true
+    snapshot:
+      on_subscribe: true
+      checksum: false
+      notes: >-
+        l2Book is a full-snapshot stream pushed per block (minimum interval
+        roughly 0.5 s), not incremental updates; observed BTC inter-snapshot
+        intervals of 0.37-5.4 s on 2026-08-01. On reconnect the resubscribe
+        acknowledgement is followed immediately by a fresh snapshot — use it,
+        never request a separate one.
+    aws_region: ap-northeast-1
+    # Perp schedule verified 2026-08-01 (hiperwire.io/explainers/
+    # hyperliquid-trading-fees-explained, supa.is/article/
+    # hyperliquid-trading-fees-2026): base tier 0.015% maker / 0.045% taker.
+    # CAUTION: Hyperliquid tiers are 14-day weighted volume (spot counts
+    # double) with HYPE-staking discounts, not the 30-day USD tiers this
+    # schema models; only the base tier is recorded here. Verify before any
+    # Phase C use of non-base tiers.
+    fee_tiers:
+      - { volume_usd_30d: 0, maker_bps: 1.5, taker_bps: 4.5 }
+
+  cme:
+    name: CME micro futures (via Databento GLBX.MDP3)
+    # Not a recorder venue: data arrives through the Databento vendor adapter
+    # (data/databento/), never this URL. Recorded for completeness — the
+    # Databento live gateway for GLBX.MDP3.
+    ws_url: wss://glbx-mdp3.lsg.databento.com
+    rest_status_url: https://hist.databento.com/v0/metadata.list_datasets
+    symbols: [MES, MBT]
+    # Databento MBP-10: top 10 price levels per side.
+    book_depth: 10
+    # MDP3 carries per-instrument sequence numbers; the adapter verifies
+    # monotonic continuity on ingest. No book checksum exists; crossed-book
+    # detection and sequence continuity are the mechanisms.
+    sequence_numbers: true
+    snapshot_stream: false
+    snapshot:
+      on_subscribe: false
+      checksum: false
+      notes: >-
+        Historical ingest reconstructs from Databento MBP-10 depth records with
+        nanosecond hardware timestamps. ts_recv is Databento's capture-server
+        clock and ts_event is the exchange clock — neither is this project's
+        recorder clock, and they must never be ordered against it.
+    # CME matching engine is in Aurora, IL; nearest AWS region for Phase D.
+    aws_region: us-east-2
+    # Futures fees are per-contract dollars, not bps — this schema cannot
+    # express that, so the entry records a conservative bps approximation
+    # dated 2026-08-01 from Claude's knowledge (CME exchange+clearing plus a
+    # retail broker, e.g. IBKR): MBT ~US$2.85/side on ~US$6.3k notional
+    # ~= 4.5 bps; MES ~US$0.62/side on ~US$32k notional ~= 0.2 bps. The WORSE
+    # (MBT) figure is recorded venue-wide so nothing downstream understates
+    # costs. Phase C must model per-contract dollar fees properly and verify
+    # against cmegroup.com and the broker schedule before consuming this.
+    fee_tiers:
+      - { volume_usd_30d: 0, maker_bps: 4.5, taker_bps: 4.5 }

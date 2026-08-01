@@ -42,11 +42,14 @@ def _integrity_line(report: DayReport) -> str:
     the mechanism is named here rather than left implicit.
     """
     integrity = report.integrity
-    return (
+    line = (
         f"Integrity mechanism: **{integrity.mechanism}** · "
         f"{_volume('sequence numbers', integrity.sequence_checks)} · "
         f"{_volume('book checksums', integrity.checksum_checks)}"
     )
+    if integrity.snapshot_checks is not None:
+        line += f" · book snapshots: {integrity.snapshot_checks:,} applied"
+    return line
 
 
 def _symbol_table(report: DayReport) -> list[str]:
@@ -113,6 +116,12 @@ def render_section(runs: list[DayReport]) -> str:
                 f"\nWarm start: previous-day tail replayed from {warm_stamp}Z so books "
                 "are live at midnight (state only — nothing before the day is scored)."
             )
+        elif report.snapshot_stream:
+            lines.append(
+                "\nSnapshot stream: every l2Book message is a full book, so warm "
+                "start is structurally unnecessary; this venue is scored on "
+                "snapshot cadence."
+            )
         else:
             lines.append(
                 "\n⚠ Cold start: no usable previous-day snapshot; books are invalid "
@@ -140,6 +149,19 @@ def render_section(runs: list[DayReport]) -> str:
         lines.append("")
         lines.extend(_symbol_table(report))
         lines.append("")
+        for s in report.symbols:
+            if s.snap_intervals is None:
+                continue
+            lines.append(
+                f"Snapshot cadence {s.symbol}: {s.snap_intervals:,} intervals · "
+                f"p50 {s.snap_interval_p50_ms:.0f} ms · p95 {s.snap_interval_p95_ms:.0f} ms · "
+                f"max {s.snap_interval_max_ms:.0f} ms · stale >{10}s: {s.snap_stale} "
+                f"({s.snap_stale_unexplained} unexplained)"
+                if s.snap_intervals
+                else f"Snapshot cadence {s.symbol}: no intervals observed"
+            )
+        if any(s.snap_intervals is not None for s in report.symbols):
+            lines.append("")
         lines.extend(_arrival_table(report))
         lines.append("")
     return "\n".join(lines)

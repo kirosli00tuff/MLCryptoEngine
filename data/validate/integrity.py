@@ -24,6 +24,10 @@ from data.config import VenueConfig
 
 SEQUENCE = "envelope sequence numbers"
 CHECKSUM = "CRC32 book checksums"
+# For snapshot-stream venues (Hyperliquid): no sequence numbers, no checksums
+# — both render n/a — and the venue is scored on the cadence of its full-book
+# snapshots instead. The comparison volume is the number of snapshots applied.
+SNAPSHOT_CADENCE = "snapshot cadence"
 
 
 class IntegrityReport(BaseModel):
@@ -37,6 +41,7 @@ class IntegrityReport(BaseModel):
     mechanism: str
     sequence_checks: int | None = None
     checksum_checks: int | None = None
+    snapshot_checks: int | None = None
 
 
 def mechanisms_for(vcfg: VenueConfig) -> list[str]:
@@ -46,6 +51,8 @@ def mechanisms_for(vcfg: VenueConfig) -> list[str]:
         names.append(SEQUENCE)
     if vcfg.snapshot.checksum:
         names.append(CHECKSUM)
+    if vcfg.snapshot_stream:
+        names.append(SNAPSHOT_CADENCE)
     return names
 
 
@@ -77,5 +84,10 @@ def uncertified_reason(venue: str, mechanisms: list[str], report: IntegrityRepor
         return (
             f"{venue}: declares {CHECKSUM} but 0 were verified — a zero checksum-failure "
             "count here is evidence of absence, not of integrity"
+        )
+    if report.snapshot_checks == 0:
+        return (
+            f"{venue}: declares {SNAPSHOT_CADENCE} but 0 snapshots were applied — "
+            "an empty snapshot stream cannot certify anything"
         )
     return None

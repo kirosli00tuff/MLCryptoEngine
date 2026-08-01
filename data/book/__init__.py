@@ -3,6 +3,7 @@
 from data.book.builder import ApplyResult, BookBuilder, SequenceTracker
 from data.book.coinbase_parse import parse_coinbase
 from data.book.emit import SnapshotEmitter
+from data.book.hyperliquid_parse import parse_hyperliquid
 from data.book.kraken_parse import parse_kraken
 from data.book.types import BookEvent, Level, Side
 
@@ -15,5 +16,6 @@ __all__ = [
     "Side",
     "SnapshotEmitter",
     "parse_coinbase",
+    "parse_hyperliquid",
     "parse_kraken",
 ]

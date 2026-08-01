@@ -35,6 +35,10 @@ class SnapshotEmitter:
             "venue": b.venue,
             "symbol": b.symbol,
             "ts_ns": ts_ns,
+            # Recorder-produced rows: ts_ns is our local receive clock; the
+            # feeds carry no usable per-event exchange timestamp.
+            "exchange_ns": None,
+            "source": "recorder",
             "kind": kind,
             "valid": b.valid,
             "crossed": b.is_crossed,

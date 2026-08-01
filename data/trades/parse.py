@@ -24,6 +24,7 @@ from typing import Any
 
 VENUE_KRAKEN = "kraken"
 VENUE_COINBASE = "coinbase"
+VENUE_HYPERLIQUID = "hyperliquid"
 
 TradeRow = dict[str, Any]
 
@@ -71,6 +72,7 @@ def parse_kraken_trades(message: dict[str, Any], recv_ns: int) -> list[TradeRow]
                 "qty": qty,
                 "venue_side": str(side) if side is not None else None,
                 "trade_id": str(trade_id) if trade_id is not None else None,
+                "source": "recorder",
             }
         )
     return rows
@@ -110,12 +112,56 @@ def parse_coinbase_trades(message: dict[str, Any], recv_ns: int) -> list[TradeRo
                     "qty": qty,
                     "venue_side": str(side) if side is not None else None,
                     "trade_id": str(trade_id) if trade_id is not None else None,
+                    "source": "recorder",
                 }
             )
+    return rows
+
+
+def parse_hyperliquid_trades(message: dict[str, Any], recv_ns: int) -> list[TradeRow]:
+    """Trade rows in a raw Hyperliquid trades message; empty otherwise.
+
+    The venue's ``side`` is the taker direction ("B" buy / "A" sell) and is
+    normalized to "buy"/"sell" so downstream signing can use the flag
+    directly. ``time`` is exchange milliseconds → ``exchange_ns``; ordering
+    still uses the recorder's ``recv_ns``.
+    """
+    if message.get("channel") != "trades":
+        return []
+    data = message.get("data")
+    if not isinstance(data, list):
+        return []
+    rows: list[TradeRow] = []
+    for item in data:
+        if not isinstance(item, dict) or "coin" not in item:
+            continue
+        try:
+            price = float(item["px"])
+            qty = float(item["sz"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        side_flag = item.get("side")
+        side = {"B": "buy", "A": "sell"}.get(str(side_flag)) if side_flag is not None else None
+        time_ms = item.get("time")
+        trade_id = item.get("tid")
+        rows.append(
+            {
+                "venue": VENUE_HYPERLIQUID,
+                "symbol": str(item["coin"]),
+                "ts_ns": recv_ns,
+                "exchange_ns": int(time_ms) * 1_000_000 if isinstance(time_ms, int) else None,
+                "price": price,
+                "qty": qty,
+                "venue_side": side,
+                "trade_id": str(trade_id) if trade_id is not None else None,
+                "source": "recorder",
+            }
+        )
     return rows
 
 
 PARSERS = {
     VENUE_KRAKEN: parse_kraken_trades,
     VENUE_COINBASE: parse_coinbase_trades,
+    VENUE_HYPERLIQUID: parse_hyperliquid_trades,
 }

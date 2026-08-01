@@ -344,3 +344,63 @@ both venues.
     strengthens, not weakens, the conclusion that nothing at these horizons
     is tradeable at retail spot fees. venues.yaml base tier corrected;
     non-base tiers still carry pre-restructure values pending verification.
+
+- 2026-08-01 — Stage C.1: venue expansion for data collection only — CME micro
+  futures via Databento and Hyperliquid perps. No trading logic, no order
+  placement, no credentials with trade permission.
+  - **Hyperliquid discovery (live, before hardcoding):** the info endpoint
+    ({"type":"meta"}) reports 232 perp assets; BTC (szDecimals 5, maxLeverage
+    40) and ETH (szDecimals 4, maxLeverage 25) exist under exactly those
+    names. Live WS capture (committed as
+    tests/fixtures/hyperliquid_messages.ndjson, one real message set per
+    channel): l2Book is a full 20-level-per-side snapshot per push — observed
+    BTC inter-snapshot intervals 0.37–5.4 s in a quiet window; bbo fires only
+    on top-of-book change (px/sz/n, no depth); trades carry the taker side
+    (B/A) with exchange ms time, tid, tx hash; activeAssetCtx carries
+    funding/OI/mark/oracle/mid; the resubscribe ack is followed immediately
+    by a fresh snapshot, which is the reconnect recovery path — no separate
+    snapshot request exists or is needed.
+  - **Hyperliquid recorder** (data/recorder/hyperliquid.py): four channels ×
+    BTC/ETH through the existing reconnect/gap machinery; registered in
+    RECORDER_TYPES but **deliberately not activated** — starting it requires
+    restarting the systemd unit, which briefly interrupts Kraken/Coinbase
+    (the restart gap would be self-recorded per ADR-007). Activation is the
+    operator's call: `systemctl --user restart mlce-recorder`.
+  - **Validation extended:** hyperliquid replays through validate_venue_day;
+    integrity reports sequence numbers AND checksums as n/a (never 0) and the
+    mechanism is **snapshot cadence** — inter-snapshot interval distribution
+    (count/p50/p95/max per symbol), stale intervals >10 s with gap-window
+    explanation, and a hard failure only for unexplained silence >60 s;
+    coverage scoring unchanged. Warm-start replay is skipped (every message
+    is a full book) and report.md says so instead of warning about cold start.
+  - **Databento adapter** (data/databento/): GLBX.MDP3 for MES/MBT, MBP-10 →
+    canonical book rows, trades → canonical trade rows, both stamped
+    source="databento" with ts_ns = Databento capture-hardware clock and
+    exchange_ns = CME exchange clock — the canonical schemas now carry
+    source/exchange_ns columns and document that rows from different sources
+    must never be ordered against each other on ts_ns. Ingest verifies
+    per-instrument sequence monotonic continuity and marks checksums/cadence
+    n/a. Raw DBN files live immutably under data/vendor/databento/
+    (gitignored; store refuses overwrite). **No live pull yet:** fetch
+    requires DATABENTO_API_KEY from the environment (free signup credit
+    covers adapter validation); the mapping is validated against synthetic
+    records in tests/test_databento.py until the operator provisions a key.
+  - **Feature capability matrix** (research/features/capabilities.py, a
+    module not prose): hyperliquid supports spread/microprice/BBO- and
+    trade-derived features and NOT ofi/queue-imbalance/depth/slope;
+    kraken/coinbase/cme support the full library; undeclared venues raise.
+    FeatureEngine consults it at construction and nulls unsupported features;
+    require_supported() raises rather than returning a value (tested).
+  - **Fees:** hyperliquid base tier 1.5/4.5 bps maker/taker (verified
+    2026-08-01, sources in venues.yaml comment; tiers are 14-day-weighted
+    volume, not this schema's 30-day model — only base tier recorded). CME
+    recorded as a conservative 4.5 bps venue-wide approximation of
+    per-contract dollar fees (MBT-worst-case, dated comment; Phase C must
+    model dollar fees properly). All three original schedules have now
+    changed or been found stale at least once — hence ADR-012.
+  - Tests: 138 total (14 new — HL channel parsing from committed real
+    fixtures, cadence scoring incl. the silence failure, reconnect+gap with
+    resubscribe-snapshot recovery, Databento mapping round-trips with clock
+    provenance, sequence audit, capability matrix enforcement). make lint /
+    make typecheck / make test clean. Existing recorder confirmed alive
+    (heartbeats: kraken 3,136,023 / coinbase 1,486,994 msgs this session).

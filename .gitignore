@@ -25,3 +25,4 @@ __pycache__/
 target/
 node_modules/
 desktop/dist/
+data/vendor/

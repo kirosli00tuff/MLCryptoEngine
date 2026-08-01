@@ -17,7 +17,9 @@ from data.config import (
 def test_real_config_loads_both_venues() -> None:
     cfg = load_config()
 
-    assert set(cfg.venues) == {"kraken", "coinbase"}
+    assert set(cfg.venues) == {"kraken", "coinbase", "hyperliquid", "cme"}
+    assert cfg.venues["hyperliquid"].snapshot_stream is True
+    assert cfg.venues["kraken"].snapshot_stream is False
     kraken = cfg.venues["kraken"]
     assert kraken.ws_url.startswith("wss://")
     assert kraken.book_depth == 100

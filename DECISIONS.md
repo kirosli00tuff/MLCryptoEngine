@@ -309,3 +309,99 @@ inspectable feature importances, and native NaN handling for genuinely-missing
 features. The ceiling on model capacity is accepted: if a real edge exists at
 these horizons, trees on good features should show a trace of it, and a trace
 is all a few days of data could support anyway.
+
+---
+
+## ADR-011: Venue expansion — CME micro futures (Databento) and Hyperliquid, collection only
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** Phase B showed negative expectancy at every horizon on Kraken and
+Coinbase because retail spot fees (80–120 bps round trip at base tier) dwarf
+single-digit-bps microstructure edges. Two venue classes have structurally
+lower costs and remain legally available to a Canadian resident: CME micro
+futures via a broker (per-contract dollar fees, ADR-001 already names them)
+and Hyperliquid perps (1.5/4.5 bps base maker/taker). Neither is recorded
+yet; nothing can be concluded without data.
+
+**Decision.** Stage C.1 adds both venues for data collection only — no
+trading logic, no order placement, no credentials with trade permission. CME
+arrives through a Databento GLBX.MDP3 vendor adapter (MES, MBT; MBP-10 +
+trades mapped into the canonical format; raw DBN files immutable under
+data/vendor/databento/; source column and vendor clocks recorded explicitly,
+never ordered against recorder clocks). Hyperliquid arrives through a fourth
+live recorder (l2Book/bbo/trades/activeAssetCtx for BTC and ETH, coin names
+discovered from the info endpoint, not assumed) using the existing
+reconnect/gap machinery; the resubscribe snapshot is the reconnect recovery.
+Validation scores each venue on what its feed actually provides: Databento on
+adapter-verified sequence continuity (checksums/cadence n/a), Hyperliquid on
+snapshot cadence (sequence/checksums n/a, never 0).
+
+**Consequences.** Research and backtest components for these venues are
+deliberately out of scope until collection is validated. The recorder unit
+must be restarted to activate Hyperliquid capture — the operator's call,
+since it briefly interrupts the running Kraken/Coinbase collection (the gap
+self-records per ADR-007). Databento ingestion awaits an operator-provisioned
+API key from the environment; free signup credit covers adapter validation.
+
+---
+
+## ADR-012: Fee schedules are perishable — dated sources or they are wrong
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** Every fee schedule this project has recorded has now changed or
+been found stale at least once: Kraken restructured on 2026-07-09 to
+0.40%/0.80% at base tier while venues.yaml still carried 0.25%/0.40% — making
+the Phase B Kraken results optimistic by ~30 bps per round trip — and the
+Hyperliquid and CME schedules use tier and unit models (14-day weighted
+volume; per-contract dollars) that this config's 30-day-bps schema cannot
+even express exactly. In a project whose Phase B conclusion is literally
+"fees decide everything", a silently stale fee table is the most dangerous
+number in the repo.
+
+**Decision.** Every figure in venues.yaml carries a dated comment recording
+where it came from and what was NOT verified. Schema-model mismatches are
+stated in the comment rather than papered over (Hyperliquid: base tier only;
+CME: conservative worst-case bps approximation of dollar fees, with the real
+model deferred to Phase C). Any stage that consumes fees re-verifies the base
+tier against the venue's published schedule before trusting results, and
+corrections land as their own commits with the impact quantified in
+progress.md.
+
+**Consequences.** Fee corrections are auditable history rather than silent
+edits. Phase C must implement per-contract dollar fee modeling for CME before
+any backtest touches it, and must re-verify all four schedules — the config
+is a dated snapshot, never an authority.
+
+---
+
+## ADR-013: Snapshot streams are not incremental books — and what that rules out
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** Hyperliquid's l2Book pushes a complete 20-level book per block
+with a minimum interval of roughly 0.5 s (observed 0.37–5.4 s), bbo carries
+no depth, and no sequence numbers or checksums exist. Differencing successive
+snapshots looks like it yields order-flow events, but it aliases everything
+that happened between pushes: order flow imbalance, queue imbalance, depth
+deltas, and book slope computed that way are fabrications at these horizons —
+plausible-looking numbers with no microstructure meaning.
+
+**Decision.** The distinction is enforced in code, not prose. The venue is
+declared ``snapshot_stream: true`` in config; validation scores it on
+snapshot cadence (interval distribution, stale intervals >10 s explained
+against gap windows, unexplained silence >60 s fails) instead of
+sequence/checksum integrity, and skips warm-start replay because every
+message is a full book. The feature capability matrix
+(research/features/capabilities.py) rules out OFI, queue imbalance, depth
+ladders, and book slope for this venue; the feature engine nulls them and
+``require_supported`` raises on explicit request. bbo is deliberately never
+merged into book state — touch-only updates inside a snapshot stream would
+fabricate pseudo-incremental depth.
+
+**Consequences.** Hyperliquid research is limited to spread, microprice,
+BBO-derived, trade-derived, and cross-venue features — honestly labeled as
+such in every downstream artifact. If depth-resolution work on this venue
+ever matters, it needs a different data source (e.g. an order-flow
+reconstruction from the chain), not a reinterpretation of this feed.
