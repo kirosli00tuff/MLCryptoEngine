@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -145,6 +145,21 @@ class BookSettings(BaseModel):
     snapshot_depth: int = Field(default=10, gt=0)
 
 
+class BudgetSettings(BaseModel):
+    """Hard spend ceiling for metered vendor data.
+
+    Databento bills per request. ``vendor_usd_cap`` is a cumulative ceiling
+    across a stage, enforced against an on-disk ledger so it survives a
+    restart — a per-request check alone would let many small requests walk
+    past the cap. ``refuse_without_estimate`` keeps the gate closed when a
+    price cannot be obtained: an unpriceable request is never cheap by
+    default.
+    """
+
+    vendor_usd_cap: float = Field(default=25.0, ge=0)
+    refuse_without_estimate: bool = True
+
+
 class AppConfig(BaseSettings):
     """Full application configuration: YAML defaults overlaid by environment."""
 
@@ -152,6 +167,12 @@ class AppConfig(BaseSettings):
         env_prefix="MLCE_",
         env_nested_delimiter="__",
         extra="forbid",
+        # .env is gitignored and holds read-only vendor keys only (CLAUDE.md
+        # rule 4). Loading it here means every entry point gets credentials
+        # the same way, and a missing one fails at startup with a clear
+        # message rather than deep inside a vendor client call.
+        env_file=".env",
+        env_file_encoding="utf-8",
     )
 
     data_root: Path = Path("data")
@@ -163,6 +184,10 @@ class AppConfig(BaseSettings):
     book: BookSettings = BookSettings()
     required_secrets: list[str] = Field(default_factory=list)
     venues: dict[str, VenueConfig] = Field(default_factory=dict)
+    # Read-only market-data vendor key (CLAUDE.md rule 4). SecretStr so it
+    # cannot leak through a repr, a log line, or a pydantic dump.
+    databento_api_key: SecretStr | None = None
+    budget: BudgetSettings = BudgetSettings()
 
     @classmethod
     def settings_customise_sources(
@@ -189,6 +214,17 @@ class AppConfig(BaseSettings):
         missing = [name for name in self.required_secrets if not os.environ.get(name)]
         if missing:
             raise MissingSecretError(missing)
+
+    def require_databento_key(self) -> str:
+        """The Databento key, or a clear startup failure naming the variable.
+
+        Read-only vendor credential (CLAUDE.md rule 4): it can buy and
+        download market data and nothing else. Callers get the plain string
+        only at the moment they construct the vendor client.
+        """
+        if self.databento_api_key is None or not self.databento_api_key.get_secret_value():
+            raise MissingSecretError(["MLCE_DATABENTO_API_KEY"])
+        return self.databento_api_key.get_secret_value()
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

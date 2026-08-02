@@ -93,7 +93,22 @@ tests/           Pytest suite; tests/fixtures/ holds small recorded exchange mes
    per-venue latency distribution to feed into hftbacktest. Backtests using a constant
    latency assumption systematically overstate performance: they miss the tail of slow
    round trips, which is exactly where queue position is lost and fills degrade.
-4. **Credentials are never persisted by the desktop app.** No API key or secret is
+4. **Market-data vendor keys are permitted; trading credentials are not.**
+   Rule 2 forbids any API key with trade or withdraw permission, and rule 5
+   forbids the desktop app persisting any credential at all. Neither forbids
+   a read-only market-data vendor key. A vendor key that can only purchase
+   and download historical data (Databento) is permitted, provided it lives
+   in a gitignored `.env`, is loaded through the config layer as a
+   `SecretStr`, never appears in tracked files, logs, or commit history, and
+   is never handed to the desktop app. Do not over-apply the rule and refuse
+   legitimate vendor data access; do not under-apply it and accept a key
+   carrying order-placement scope. The test is capability, not vendor:
+   *could this key move money or place an order?* If yes it is forbidden in
+   every stage before D, and forbidden in the desktop app always. A vendor
+   key that spends money on data is additionally subject to the cost gate
+   (ADR-017) — permitted does not mean unmetered.
+
+5. **Credentials are never persisted by the desktop app.** No API key or secret is
    ever written to a JSON file or any other plaintext store, in the repo or outside
    it. When Phase D needs credentials they come from the OS keyring or environment
    variables — never a file. See DECISIONS.md ADR-004.

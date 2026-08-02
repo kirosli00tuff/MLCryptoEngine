@@ -626,3 +626,111 @@ both venues.
     date=2026-07-31/` (gitignored); `fetch_day` refuses to overwrite, so a
     re-run cannot silently re-bill.
   - 155 tests; make lint / make typecheck / make test clean.
+
+- 2026-08-02 — Stage C.3 (base tasks): Databento connectivity, symbology
+  resolution, cost gate, and validation of the purchased day.
+  - **Credential security, checked before anything else.** `.env` is
+    gitignored (`.gitignore:2`) and untracked; the key value appears in no
+    tracked file and nowhere in git history (checked against every commit);
+    `.env.example` lists `MLCE_DATABENTO_API_KEY` with no value. All three
+    conditions already held — nothing to fix. The key now loads through the
+    pydantic-settings config layer as a `SecretStr` (repr redacts to
+    `**********`) and the `os.environ` path was deleted, so there is exactly
+    one credential path and it fails at startup with a named variable.
+    CLAUDE.md rule 4 records the distinction: a read-only market-data vendor
+    key is permitted; anything that can place an order or move money is not.
+  - **Task 1 — connectivity, metadata-only, zero cost.** 29 datasets visible
+    under entitlements; **GLBX.MDP3 accessible**; 14 schemas (`mbo, mbp-1,
+    mbp-10, tbbo, trades, bbo-1s, bbo-1m, ohlcv-1s/1m/1h/1d, definition,
+    statistics, status`); range **2010-06-06 → 2026-08-02**; condition for
+    2026-07-31 reports `available`.
+  - **Task 2 — symbology resolved, not assumed.** `continuous → raw_symbol`
+    is rejected (422 `symbology_invalid_request`); the supported pair is
+    **`continuous → instrument_id`**, and `end_date` must be strictly after
+    `start_date` (equal dates give 422 `data_date_range_start_on_or_after_end`).
+    Resolved for 2026-07-31 with `stype_in="continuous"`:
+    **`MES.c.0` → instrument_id 42003239 = raw `MESU6`** and
+    **`MBT.c.0` → instrument_id 42101132 = raw `MBTN6`**. Cross-checked
+    against `parent → instrument_id` (`MES.FUT`/`MBT.FUT`), which lists both
+    ids under exactly those raw symbols, and against the symbology block
+    Databento embeds in the purchased DBN files.
+  - **Symbology finding that qualifies the amendment's MBT conclusion.**
+    `MBTN6` is the **July 2026** contract and CME Micro Bitcoin futures
+    expire the **last Friday of the contract month — 2026-07-31, the day
+    measured**. The MBT sparsity numbers were therefore taken on an expiring
+    contract, after open interest had rolled to August. `MESU6` is the
+    September quarterly (expires 2026-09-18) and is unaffected. ADR-016 is
+    amended: its MBT conclusion is provisional pending re-measurement on a
+    non-expiry day. Budget was deliberately left unspent rather than buying
+    a second day, per the stage instruction.
+  - **Task 3 — cost gate (`data/databento/budget.py`).** Prices every
+    request through the free metadata endpoints, checks it against
+    `budget.vendor_usd_cap` (config/default.yaml, default 25 USD) minus
+    cumulative spend from an append-only ledger at
+    `data/vendor/spend_ledger.jsonl`, and commits the charge *before*
+    issuing the request so a crash cannot lose spend. Unpriceable requests
+    are refused rather than assumed cheap. `fetch_day` performs the gate
+    itself, so no caller can bypass it by forgetting. 7 tests including the
+    required refusal test and one proving many small requests cannot walk
+    past a cap none individually breaches.
+  - **Process failure, recorded.** The four downloads were issued *before*
+    the gate existed, under the amended task list which omitted it —
+    **$3.2054 spent ungated**. The ledger was seeded with those real charges
+    rather than started at zero, so the cap reflects reality:
+    **$3.2054 spent, $21.7946 remaining of $25.00, 4 requests.** A guardrail
+    that arrives after the action it guards is documentation, not a
+    guardrail (ADR-017).
+  - **Task 5 — validation through a vendor-aware harness**
+    (`data/databento/validate.py`). Ordering clock is **`ts_recv`**,
+    Databento's capture-server hardware timestamp, because it is the one
+    clock stamped by a single machine and monotone with respect to arrival;
+    **`ts_event`** (CME matching-engine clock) is kept as reference only and
+    never ordered on, and neither is ever ordered against recorder-clock
+    rows (ADR-011). Integrity: MDP3 sequence continuity is verified and
+    counted; **book checksums and snapshot cadence report `None`/"n/a", not
+    zero** (Stage 1.6 rule).
+  - **Scheduled closures handled explicitly** (`data/databento/session.py`):
+    the daily 16:00-17:00 US/Central maintenance halt and the Friday-16:00
+    to Sunday-17:00 weekly close are expected absence, converted through
+    `zoneinfo` so DST does not silently shift them by an hour. For Friday
+    2026-07-31 that leaves **21.00 h of scheduled-open time**, and coverage
+    is measured against that rather than 24 h. Writing this surfaced a real
+    bug: overlapping closure windows were summed without merging, so the
+    Friday close and Sunday's own halt double-counted an hour — the same
+    double-counting class as the Stage 1.5 gap accounting, fixed by reusing
+    `merge_windows`. 5 tests.
+  - **A flaw in my own coverage metric, found and fixed.** The first
+    implementation counted first-to-last span minus closures, which reported
+    **100% coverage for MBT while it sat on a 13-minute hole**. Coverage now
+    means "fresh data existed": unexplained silences over 60 s are excluded
+    from covered time and reported separately, so the metric cannot flatter
+    a feed with holes in it. The fix changed MBT's verdict from PASS to
+    FAIL, which is the correct answer.
+  - **Validation verdict, 2026-07-31 mbp-10, against 21.00 h scheduled open:**
+    - **`MES.c.0` (MESU6) — PASS.** 14,989,106 events · sequence checks
+      14,989,106 with **0 regressions** · checksums n/a · snapshot cadence
+      n/a · **0 out-of-order** on the ordering clock · 0 exchange-clock
+      regressions · **0 crossed, 0 locked** · **coverage 100.000%** · zero
+      unexplained quiet windows. This is the stage deliverable: one
+      validated day.
+    - **`MBT.c.0` (MBTN6) — FAIL, for a fully explained reason.** 380,358
+      events, sequence-clean (0 regressions), 0 out-of-order, 0 crossed —
+      but **coverage 71.494%**, with **5.986 h of scheduled-open time lost
+      to unexplained silence** across 4 windows: **20,479 s (5.69 h) from
+      15:18:41Z**, plus 803 s, 160 s and 109 s clustered at 15:00-15:05Z.
+    - **The cause is expiry, not thin liquidity.** MBTN6 expired on
+      2026-07-31; CME Bitcoin futures settle against the CF Bitcoin
+      Reference Rate at 16:00 London (15:00 UTC in BST). The book stutters
+      at 15:00-15:05Z and stops entirely at 15:18:41Z, running dead until
+      the Friday close at 21:00Z. **The contract ceased trading mid-session
+      because it expired.** The FAIL is the harness correctly refusing to
+      certify a day where 29% of open time has no data.
+    - This is decisive for ADR-016: the earlier "MBT is too sparse for
+      short-horizon research" reading is **not a valid characterisation of
+      MBT's normal liquidity** — it measured a contract dying. Re-measure on
+      a mid-life contract (e.g. MBTQ6 well before its August expiry) before
+      drawing any conclusion about MBT. The per-contract capability entry
+      stays as the conservative default meanwhile.
+  - **Budget deliberately left unspent:** $21.7946 of $25 remains. Buying a
+    second MBT day to settle the expiry question was the obvious temptation
+    and is explicitly out of scope for this stage.

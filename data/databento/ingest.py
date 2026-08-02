@@ -8,17 +8,20 @@ through the same bounded writers as the recorder path.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from data.config import AppConfig
 from data.databento.adapter import VENUE, SequenceAudit, map_mbp10, map_trade
+from data.databento.budget import check_affordable, commit
 from data.store import BookDayWriter, TradesDayWriter
 
 VENDOR_SUBDIR = Path("vendor") / "databento"
 DATASET = "GLBX.MDP3"
+# Continuous front-month symbology: see progress.md Stage C.3 symbology
+# discovery. Resolved from the vendor's own symbology API, not assumed.
+STYPE_CONTINUOUS = "continuous"
 
 
 @dataclass
@@ -133,25 +136,9 @@ def ingest_dbn(
     return report
 
 
-API_KEY_ENV = "MLCE_DATABENTO_API_KEY"
-_LEGACY_API_KEY_ENV = "DATABENTO_API_KEY"
-
-
-def require_api_key() -> str:
-    """The Databento key comes only from the environment, never from source.
-
-    Primary name follows this project's ``MLCE_`` env convention; the bare
-    vendor name is accepted as a fallback. ``.env`` is gitignored and read by
-    the operator's shell — nothing here writes or logs the value.
-    """
-    key = os.environ.get(API_KEY_ENV) or os.environ.get(_LEGACY_API_KEY_ENV) or ""
-    if not key:
-        raise RuntimeError(
-            f"{API_KEY_ENV} is not set. Sign up at databento.com (free signup "
-            "credit covers adapter validation), put the key in .env (gitignored) "
-            "or export it, and re-run. Keys never enter the repo."
-        )
-    return key
+# The key is loaded through the pydantic-settings config layer
+# (AppConfig.require_databento_key), never read from os.environ here: one
+# path for credentials means one place that fails clearly when it is missing.
 
 
 def vendor_path(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
@@ -160,21 +147,24 @@ def vendor_path(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
     return vendor_dir(cfg) / "GLBX.MDP3" / f"date={date}" / f"{safe}.{schema}.dbn.zst"
 
 
-def estimate_cost(date: str, symbol: str, schema: str) -> tuple[float, int]:
+def estimate_cost(cfg: AppConfig, date: str, symbol: str, schema: str) -> tuple[float, int]:
     """(USD cost estimate, billable bytes) for one request — costs nothing.
 
-    Always call before :func:`fetch_day`: the estimate is what makes a spend
+    Verified against the databento-python client actually installed here:
+    ``metadata.get_cost`` and ``metadata.get_billable_size`` both exist and
+    take the same request parameters as ``timeseries.get_range``. Always
+    called before :func:`fetch_day`; the estimate is what makes a spend
     decision reviewable, and comparing it against the delivered file is what
     catches a request that ballooned.
     """
     import databento  # lazy
 
-    client = databento.Historical(require_api_key())
+    client = databento.Historical(cfg.require_databento_key())
     end = _next_day(date)
     cost = client.metadata.get_cost(
         dataset=DATASET,
         symbols=[symbol],
-        stype_in="continuous",
+        stype_in=STYPE_CONTINUOUS,
         schema=schema,
         start=date,
         end=end,
@@ -182,7 +172,7 @@ def estimate_cost(date: str, symbol: str, schema: str) -> tuple[float, int]:
     billable = client.metadata.get_billable_size(
         dataset=DATASET,
         symbols=[symbol],
-        stype_in="continuous",
+        stype_in=STYPE_CONTINUOUS,
         schema=schema,
         start=date,
         end=end,
@@ -191,23 +181,43 @@ def estimate_cost(date: str, symbol: str, schema: str) -> tuple[float, int]:
 
 
 def fetch_day(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
-    """Fetch one contract-day-schema of GLBX.MDP3 into the immutable vendor tree.
+    """Price, gate, commit, then fetch one contract-day-schema of GLBX.MDP3.
 
-    One file per (symbol, schema) so cost and event-rate accounting stay
-    per-contract. Continuous front-month symbology (``.c.0``). Refuses to
-    overwrite: vendor raw is immutable and re-downloading costs money.
+    The only sanctioned download path. Every request is priced first, checked
+    against the cumulative on-disk budget, and committed to the ledger
+    *before* the bytes are requested — so a crash mid-download can never
+    leave money spent that the ledger does not know about. Refuses to
+    overwrite: vendor raw is immutable and re-downloading costs money again.
     """
     import databento  # lazy
 
     target = vendor_path(cfg, date, symbol, schema)
     if target.exists():
         raise FileExistsError(f"{target} already exists — vendor raw is immutable")
+
+    estimate, billable = estimate_cost(cfg, date, symbol, schema)
+    headroom = check_affordable(cfg, estimate)
+    commit(
+        cfg,
+        dataset=DATASET,
+        symbol=symbol,
+        schema=schema,
+        date=date,
+        usd=estimate,
+        billable_bytes=billable,
+    )
+    print(
+        f"  priced {symbol} {schema} {date}: ${estimate:.4f} "
+        f"({billable:,} billable bytes) · ${headroom:.4f} budget left after",
+        flush=True,
+    )
+
     target.parent.mkdir(parents=True, exist_ok=True)
-    client = databento.Historical(require_api_key())
+    client = databento.Historical(cfg.require_databento_key())
     data = client.timeseries.get_range(
         dataset=DATASET,
         symbols=[symbol],
-        stype_in="continuous",
+        stype_in=STYPE_CONTINUOUS,
         schema=schema,
         start=date,
         end=_next_day(date),

@@ -551,6 +551,27 @@ sidecar records because vendor data carries no reconnect log. Buying five
 years of MBT for the price of six weeks of MES would buy five years of data
 that cannot answer the question.
 
+**Amended 2026-08-02 (Stage C.3) — this ADR's MBT evidence is contaminated
+and its conclusion is withdrawn pending re-measurement.** Validation of the
+same file confirmed the mechanism: MBT's book stops updating entirely at
+15:18:41Z and stays dead until the Friday close, losing 5.99 h of a 21 h
+session (coverage 71.5%). MBTN6 expired that day — CME Bitcoin futures
+settle against the CF Bitcoin Reference Rate at 16:00 London — so the
+measurement captured a contract ceasing to exist, not a thin market. Details
+below.** Resolving
+`MBT.c.0` through the vendor symbology API returned instrument_id 42101132 =
+raw symbol **MBTN6**, the July 2026 contract, which expired on **2026-07-31
+— the very day measured**. CME Micro Bitcoin futures expire the last Friday
+of the contract month, so the sparsity figures above were taken on an
+expiring contract after open interest had already rolled to August. `MES.c.0`
+resolved to MESU6 (September quarterly, expiring 2026-09-18) and is
+unaffected. The "MBT is too sparse for short-horizon research" conclusion
+must be re-measured on a non-expiry day before it is treated as settled; the
+per-contract capability entry stands as the conservative default until then.
+The general rule the ADR establishes — measured resolution outranks price —
+is unaffected, and this episode strengthens it: the measurement itself has
+to be taken on a representative day.
+
 **Consequences.** MES is the CME contract worth backfilling despite costing
 47x more per day; a year of MES history is ~$791, a real but affordable
 decision to make deliberately rather than by accident. MBT remains worth
@@ -559,3 +580,60 @@ own capability entry now says exactly that. Any future contract added to
 this venue needs its own measurement pass before it can be credited with
 anything — price is not evidence of resolution, and here it understated the
 gap by a factor of five.
+
+---
+
+## ADR-017: Metered vendor data passes a cost gate; vendor keys are not trading keys
+
+**Date:** 2026-08-02 · **Status:** accepted
+
+**Context.** Databento bills per request against a prepaid balance, and the
+client will happily issue a request that costs a hundred dollars as readily
+as one that costs a cent — a mistyped date range, a schema swapped from
+`trades` to `mbo`, or a symbol resolving to a whole parent family is enough.
+Nothing in the vendor SDK asks for confirmation. Meanwhile the project's
+Stage 1 credential rules were written for exchange keys that can move money,
+and read literally they would either ban a read-only data key outright or,
+read loosely, wave through anything a vendor issues.
+
+Both problems are about the same thing: an action with real-world cost or
+risk needs an explicit, checkable barrier rather than care.
+
+**Decision.** Two barriers.
+
+*Cost gate.* Every metered request is priced before it is issued, via the
+vendor's own free metadata endpoints (`metadata.get_cost` and
+`metadata.get_billable_size`, verified present on the installed client). The
+estimate is checked against `budget.vendor_usd_cap` (config, default 25 USD)
+minus cumulative spend read from an **append-only on-disk ledger**
+(`data/vendor/spend_ledger.jsonl`), so the ceiling survives restarts and a
+hundred individually-trivial requests cannot walk past a cap none of them
+breaches. The charge is committed to the ledger *before* the bytes are
+requested: recording afterwards would leave a crash window in which money
+was spent and the ledger did not know. An unpriceable request is refused,
+never assumed cheap. `fetch_day` is the only sanctioned download path and it
+performs all of this itself, so a caller cannot bypass the gate by
+forgetting.
+
+*Credential distinction* (now CLAUDE.md rule 4). A read-only market-data
+vendor key is permitted; a key that can place an order or move money is not,
+in any stage before D, and never in the desktop app. The test is capability,
+not vendor. The key lives in a gitignored `.env`, loads through the
+pydantic-settings config layer as a `SecretStr` (so a repr or log line
+cannot leak it), and `os.environ` reads were deleted so there is exactly one
+credential path that fails clearly when it is missing.
+
+**Consequences.** Buying data is a deliberate, logged act with a receipt.
+The ledger doubles as the cost record that makes backfill decisions
+arithmetic rather than guesswork (ADR-016). Raising the cap is a config edit
+someone has to make on purpose. The honest cost: the gate cannot prevent a
+charge the vendor's own estimate understates, so estimate-versus-actual is
+compared after every download — on the Stage C.3 purchase they matched to
+the cent, since Databento bills exactly the billable size it quotes.
+
+**Recorded failure.** The four Stage C.3 downloads were issued *before* this
+gate existed, under an amended task list that omitted it — $3.2054 spent
+ungated. The ledger was seeded with those actual charges rather than started
+at zero, so the cap reflects real spend. The lesson is the ordering one:
+a guardrail that arrives after the action it guards is documentation, not a
+guardrail.

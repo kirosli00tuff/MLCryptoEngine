@@ -38,6 +38,15 @@ book:
   # Depth levels persisted in depth snapshots.
   snapshot_depth: 10
 
+# Hard spend ceiling for metered vendor data (Databento bills per request).
+# The cap is CUMULATIVE and enforced against data/vendor/spend_ledger.jsonl,
+# so it survives a restart — a per-request check alone would let many small
+# requests walk past it. Raising this is a deliberate operator decision.
+budget:
+  vendor_usd_cap: 25.0
+  # An unpriceable request is never assumed cheap: with no estimate, refuse.
+  refuse_without_estimate: true
+
 # Names of environment variables that MUST be present and non-empty at startup.
 # Stage 1 uses public data only, so this list is empty. Phase D adds read-only
 # API keys here so a misconfigured VPS fails at boot, not mid-session.
