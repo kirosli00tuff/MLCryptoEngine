@@ -121,11 +121,28 @@ SUB_100MS_FEATURES: frozenset[str] = frozenset({"xv_leadlag_m100", "xv_leadlag_p
 # these obliges the event stream to actually carry its bbo updates.
 BBO_DEPENDENT_FEATURES: frozenset[str] = BBO_AND_TRADE_FEATURES - SUB_100MS_FEATURES
 
+# Trade-window features whose window is short enough that a thin contract
+# leaves them empty by construction. MBT trades a median of 10.3 s apart
+# (measured 2026-07-31), so a 1 s or 5 s trade window holds no trade in the
+# large majority of samples: the feature would be a constant zero dressed as
+# a measurement.
+SHORT_TRADE_WINDOW_FEATURES: frozenset[str] = frozenset(
+    {
+        "signed_vol_1s",
+        "signed_vol_5s",
+        "trade_count_5s",
+        "vwap_minus_mid_5s",
+    }
+)
+
 CAPABILITIES: dict[str, frozenset[str]] = {
     # Incremental L2 feeds: full library.
     "kraken": ALL_FEATURES,
     "coinbase": ALL_FEATURES,
-    # Databento MBP-10 is true incremental depth: full library.
+    # Databento MBP-10 is true incremental depth. Venue-level default; the
+    # contracts differ by ~39x in event rate, so both are pinned explicitly
+    # in CONTRACT_CAPABILITIES below and this entry is only a fallback for
+    # an unmeasured CME contract.
     "cme": ALL_FEATURES,
     # Snapshot stream: spread, microprice (bbo carries size — verified from
     # recorded data), and BBO/trade-derived features, minus anything binned
@@ -133,13 +150,54 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "hyperliquid": BBO_AND_TRADE_FEATURES - SUB_100MS_FEATURES,
 }
 
+# Per-contract overrides. A venue is not always homogeneous: CME MES and MBT
+# share a feed, a schema and a clock, and differ by 39x in book rate and
+# 319x in trade count. One capability entry for "cme" would credit MBT with
+# MES's resolution. Measured 2026-07-31, continuous front month:
+#   MES  14,989,106 book updates (198.3/s), p50 0.084 ms, p90 7.8 ms;
+#        455,192 trades, p50 interval 26.3 ms  -> full library.
+#   MBT     380,358 book updates (5.0/s),  p50 1.273 ms, p90 307 ms;
+#          1,426 trades, p50 interval 10,292 ms (10.3 s), longest quiet
+#          spell 5.7 h -> short trade windows are empty by construction.
+CONTRACT_CAPABILITIES: dict[tuple[str, str], frozenset[str]] = {
+    ("cme", "MES"): ALL_FEATURES,
+    ("cme", "MBT"): ALL_FEATURES - SHORT_TRADE_WINDOW_FEATURES,
+}
+
 # Venues whose credited features depend on a channel the parser must supply.
 # Maps venue -> the channel that must be present in its event stream.
 REQUIRED_CHANNELS: dict[str, str] = {"hyperliquid": "bbo"}
 
 
-def supported_features(venue: str) -> frozenset[str]:
-    """The features this venue's feed can support; raises for undeclared venues."""
+def contract_key(symbol: str) -> str:
+    """Contract root of an instrument symbol: ``MESU6``/``MES.c.0`` -> ``MES``.
+
+    Continuous symbology, outright months, and the plain root all resolve to
+    the same capability entry, so a roll cannot silently change what a
+    contract is credited with.
+    """
+    root = symbol.split(".", 1)[0]
+    # Strip a trailing CME month/year code (e.g. U6, Z25) if present.
+    while root and root[-1].isdigit():
+        root = root[:-1]
+    if len(root) > 3 and root[-1].isalpha():
+        root = root[:-1]
+    return root
+
+
+def supported_features(venue: str, symbol: str | None = None) -> frozenset[str]:
+    """Features this venue — and, where it matters, this contract — supports.
+
+    A per-contract entry always wins over the venue default: CME MES and MBT
+    share a feed but differ by 39x in event rate, so one venue-wide answer
+    would credit the thin contract with the liquid one's resolution. Venues
+    absent from the matrix raise; a contract absent from
+    :data:`CONTRACT_CAPABILITIES` falls back to its venue.
+    """
+    if symbol is not None:
+        specific = CONTRACT_CAPABILITIES.get((venue, contract_key(symbol)))
+        if specific is not None:
+            return specific
     try:
         return CAPABILITIES[venue]
     except KeyError:
@@ -170,13 +228,14 @@ def assert_stream_supports(venue: str, channels_in_stream: frozenset[str]) -> No
         )
 
 
-def require_supported(venue: str, feature: str) -> None:
-    """Raise unless ``feature`` is computable from ``venue``'s feed."""
+def require_supported(venue: str, feature: str, symbol: str | None = None) -> None:
+    """Raise unless ``feature`` is computable from this venue/contract's feed."""
     if feature not in ALL_FEATURES:
         raise UnsupportedFeatureError(f"unknown feature '{feature}'")
-    if feature not in supported_features(venue):
+    if feature not in supported_features(venue, symbol):
+        where = f"venue '{venue}'" if symbol is None else f"{venue} contract '{symbol}'"
         raise UnsupportedFeatureError(
-            f"feature '{feature}' is not supported on venue '{venue}': its feed "
+            f"feature '{feature}' is not supported on {where}: its feed "
             "cannot provide the inputs at meaningful resolution (see the "
             "capability matrix in research/features/capabilities.py)"
         )

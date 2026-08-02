@@ -89,7 +89,9 @@ class FeatureEngine:
         # venue's feed cannot support are nulled in every compute() output
         # rather than computed as garbage (e.g. OFI from snapshot deltas).
         # Raises for undeclared venues — defaults closed.
-        self._unsupported = frozenset(FEATURE_COLUMNS) - supported_features(venue)
+        # Per-contract where the matrix declares one (CME MES vs MBT differ by
+        # 39x in event rate), venue-wide otherwise.
+        self._unsupported = frozenset(FEATURE_COLUMNS) - supported_features(venue, symbol)
         # Venues with a dedicated BBO channel take their touch and mid from
         # it; their book feed is depth-only and much slower.
         self._prefers_bbo_mid = venue in REQUIRED_CHANNELS

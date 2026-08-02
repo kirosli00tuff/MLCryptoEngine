@@ -18,6 +18,7 @@ from data.databento.adapter import VENUE, SequenceAudit, map_mbp10, map_trade
 from data.store import BookDayWriter, TradesDayWriter
 
 VENDOR_SUBDIR = Path("vendor") / "databento"
+DATASET = "GLBX.MDP3"
 
 
 @dataclass
@@ -132,43 +133,91 @@ def ingest_dbn(
     return report
 
 
+API_KEY_ENV = "MLCE_DATABENTO_API_KEY"
+_LEGACY_API_KEY_ENV = "DATABENTO_API_KEY"
+
+
 def require_api_key() -> str:
-    """The Databento key comes only from the environment — never from a file."""
-    key = os.environ.get("DATABENTO_API_KEY", "")
+    """The Databento key comes only from the environment, never from source.
+
+    Primary name follows this project's ``MLCE_`` env convention; the bare
+    vendor name is accepted as a fallback. ``.env`` is gitignored and read by
+    the operator's shell — nothing here writes or logs the value.
+    """
+    key = os.environ.get(API_KEY_ENV) or os.environ.get(_LEGACY_API_KEY_ENV) or ""
     if not key:
         raise RuntimeError(
-            "DATABENTO_API_KEY is not set. Sign up at databento.com (free credit "
-            "covers adapter validation), export the key, and re-run. Keys are "
-            "never stored in the repo or any config file."
+            f"{API_KEY_ENV} is not set. Sign up at databento.com (free signup "
+            "credit covers adapter validation), put the key in .env (gitignored) "
+            "or export it, and re-run. Keys never enter the repo."
         )
     return key
 
 
-def fetch_day(
-    cfg: AppConfig,
-    date: str,
-    symbols: tuple[str, ...] = ("MES.c.0", "MBT.c.0"),
-    schema: str = "mbp-10",
-) -> Path:
-    """Fetch one day of GLBX.MDP3 into the immutable vendor tree.
+def vendor_path(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
+    """Immutable vendor location for one contract-day-schema DBN file."""
+    safe = symbol.replace(".", "_")
+    return vendor_dir(cfg) / "GLBX.MDP3" / f"date={date}" / f"{safe}.{schema}.dbn.zst"
 
-    Continuous front-month symbology (``.c.0``) for MES and MBT. Costs
-    Databento credit; the free signup credit covers adapter validation.
+
+def estimate_cost(date: str, symbol: str, schema: str) -> tuple[float, int]:
+    """(USD cost estimate, billable bytes) for one request — costs nothing.
+
+    Always call before :func:`fetch_day`: the estimate is what makes a spend
+    decision reviewable, and comparing it against the delivered file is what
+    catches a request that ballooned.
     """
     import databento  # lazy
 
     client = databento.Historical(require_api_key())
-    target = vendor_dir(cfg) / "GLBX.MDP3" / f"date={date}" / f"{schema}.dbn.zst"
-    if target.exists():
-        raise FileExistsError(f"{target} already exists — vendor raw is immutable")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    data = client.timeseries.get_range(
-        dataset="GLBX.MDP3",
-        symbols=list(symbols),
+    end = _next_day(date)
+    cost = client.metadata.get_cost(
+        dataset=DATASET,
+        symbols=[symbol],
         stype_in="continuous",
         schema=schema,
         start=date,
-        end=None,
+        end=end,
+    )
+    billable = client.metadata.get_billable_size(
+        dataset=DATASET,
+        symbols=[symbol],
+        stype_in="continuous",
+        schema=schema,
+        start=date,
+        end=end,
+    )
+    return float(cost), int(billable)
+
+
+def fetch_day(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
+    """Fetch one contract-day-schema of GLBX.MDP3 into the immutable vendor tree.
+
+    One file per (symbol, schema) so cost and event-rate accounting stay
+    per-contract. Continuous front-month symbology (``.c.0``). Refuses to
+    overwrite: vendor raw is immutable and re-downloading costs money.
+    """
+    import databento  # lazy
+
+    target = vendor_path(cfg, date, symbol, schema)
+    if target.exists():
+        raise FileExistsError(f"{target} already exists — vendor raw is immutable")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    client = databento.Historical(require_api_key())
+    data = client.timeseries.get_range(
+        dataset=DATASET,
+        symbols=[symbol],
+        stype_in="continuous",
+        schema=schema,
+        start=date,
+        end=_next_day(date),
     )
     data.to_file(target)
     return target
+
+
+def _next_day(date: str) -> str:
+    from datetime import UTC, datetime, timedelta
+
+    day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=UTC)
+    return (day + timedelta(days=1)).strftime("%Y-%m-%d")

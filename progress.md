@@ -544,3 +544,85 @@ both venues.
   - No Hyperliquid results computed: only partial days exist.
   - 147 tests (7 new); make lint / make typecheck / make test clean; all
     three recorders confirmed alive.
+
+- 2026-08-02 — Stage C.3: bought one CME trading day (MES + MBT), measured
+  both contracts, and split the capability matrix per contract.
+  **MBT is not a microstructure instrument. MES is.**
+  - **Spend: $3.2053 of the $25 cap**, four requests on 2026-07-31
+    (continuous front month, `stype_in="continuous"`). Estimate vs actual:
+    Databento bills on *billable size*, and every delivered file matched its
+    quoted billable size exactly, so the pre-request quote equalled the
+    charge to the cent. Per request — estimate / billable bytes / on-disk
+    zstd / wall time:
+    MES mbp-10 $2.5686 / 5,515,991,008 / 369,879,307 (14.9x) / 727 s ·
+    MES trades $0.5698 / 21,849,216 / 8,368,475 (2.6x) / 6 s ·
+    MBT mbp-10 $0.0652 / 139,971,744 / 13,241,389 (10.6x) / 15 s ·
+    MBT trades $0.0018 / 68,448 / 29,684 (2.3x) / 6 s.
+    **391 MB on disk for one contract-day across four requests.**
+  - **The stage prompt's cost premise was wrong, and it mattered.** Quoted
+    estimates were MES 2.597/0.605 and MBT 0.402/0.016 for a ~$3.62 total;
+    actual MES came in slightly cheaper and **MBT priced ~6x below the
+    estimate**. More importantly the prompt reasoned that "MBT costs roughly
+    eight times less than MES per day, which implies roughly eight times
+    fewer billable events". The real ratio is **39x on book data**
+    (5.52 GB vs 0.14 GB billable) and **319x on trades** (21.8 MB vs 68 KB).
+    Sizing the sparsity gap at 8x would have badly understated it.
+  - **Measured event rates, 2026-07-31, 21.00 h span each:**
+    - **MES: 14,989,106 book updates (198.3/s)**, inter-update p50
+      **0.084 ms**, p90 7.78 ms, p99 110.4 ms, max 2,841 ms.
+      **455,192 trades**, inter-trade p50 **26.3 ms**, p90 420 ms,
+      mean 177.7 ms, max 21.7 s.
+    - **MBT: 380,358 book updates (5.0/s)**, inter-update p50 **1.273 ms**,
+      p90 **307.1 ms**, p99 2,394.6 ms, **max 20,478,692 ms = 5.69 hours
+      with no book update at all**. **1,426 trades in the entire session**,
+      inter-trade p50 **10,292 ms (10.3 s)**, p90 98.0 s, mean 40.8 s,
+      max 1,116,786 ms (18.6 min).
+  - **Share of intervals falling below each label horizon** (how often a
+    fresh observation exists inside the window) — book / trades:
+    100 ms: MES 98.86% / 72.33%, MBT 81.02% / 17.59% ·
+    500 ms: MES 99.94% / 91.40%, MBT 92.69% / 26.76% ·
+    1 s: MES 99.99% / 95.84%, MBT 96.10% / 29.87% ·
+    5 s: MES 100.00% / 99.82%, MBT 99.80% / 40.56% ·
+    30 s: MES 100% / 100%, MBT 100% / 72.63% ·
+    60 s: MBT trades 83.40% · 300 s: 97.27% · 900 s: 99.62%.
+  - **Measurability verdict, same reasoning that moved Hyperliquid features
+    into SUB_100MS_FEATURES (median update interval vs window width):**
+    - **MES — every horizon in the set, 100 ms through 900 s, is
+      measurable.** At p50 0.084 ms the book delivers ~1,187 updates inside
+      a 100 ms window, and trades arrive every 26 ms. This is a genuine
+      microstructure instrument at the full horizon range.
+    - **MBT — book-derived features are measurable from 500 ms upward;
+      trade-derived features are not measurable below 30 s, and short
+      trade-window features are not measurable at all.** Median 10.3 s
+      between trades means a 1 s window is empty in ~90% of samples and a
+      5 s window in ~59%: `signed_vol_1s`, `signed_vol_5s`,
+      `trade_count_5s` and `vwap_minus_mid_5s` would be constant zeros
+      dressed as measurements. Saying it plainly, as instructed: **MBT is
+      too sparse for short-horizon microstructure research.** Its book
+      p90 of 307 ms also means ~19% of 100 ms label windows contain no
+      book update, and the 5.7-hour dead spell is a hole no gap sidecar
+      records (vendor data has no reconnect log) — anything computed
+      across it would be stale by construction.
+  - **Capability matrix restructured per contract.** A venue is not always
+    homogeneous: MES and MBT share a feed, schema and clock yet differ 39x
+    in book rate. `CONTRACT_CAPABILITIES[(venue, contract_root)]` now
+    overrides the venue entry, with `contract_key()` normalising `MES.c.0`,
+    `MESU6` and `MES` to one entry so a roll cannot silently change what a
+    contract is credited with. MES gets the full library; MBT loses
+    `SHORT_TRADE_WINDOW_FEATURES`. Unmeasured CME contracts fall back to the
+    venue entry rather than inventing capabilities. 8 new tests.
+  - **Cost per day, for future backfill decisions** (measured, not
+    estimated): **MES $3.1384/day** (mbp-10 + trades), **MBT $0.0670/day**.
+    Extrapolated over ~252 trading days: **MES ~$791/yr, MBT ~$17/yr**;
+    book-only, MES ~$647/yr and MBT ~$16/yr. The prompt's ~$105/yr MBT
+    figure assumed the 8x ratio; at the measured 39x it is ~6x cheaper
+    still. See ADR-016.
+  - **Databento credit balance is not retrievable:** the Python client's
+    metadata API exposes `get_cost`, `get_billable_size`,
+    `get_record_count`, `get_dataset_range`, `get_dataset_condition` and
+    the `list_*` calls, but no account-balance method. Spend is tracked
+    from per-request costs instead — $3.2053 to date.
+  - Raw DBN stored immutably under `data/vendor/databento/GLBX.MDP3/
+    date=2026-07-31/` (gitignored); `fetch_day` refuses to overwrite, so a
+    re-run cannot silently re-bill.
+  - 155 tests; make lint / make typecheck / make test clean.

@@ -500,3 +500,62 @@ cost-aware net labels. Samples stay pending in the extraction buffer for up
 to 900 s, well inside the hard cap that bounds that buffer. Extending
 horizons again means only appending to the set: everything downstream reads
 the maximum from one place.
+
+---
+
+## ADR-016: Capability entries are per contract, and resolution outranks price
+
+**Date:** 2026-08-02 · **Status:** accepted
+
+**Context.** Phase B showed retail spot fees exceeding the available edge at
+every horizon, which is the case for CME micro futures: per-contract dollar
+fees on MES are roughly 0.2 bps of notional against 80-160 bps on spot. The
+open question was which micro contract to buy history for. MBT (Micro
+Bitcoin) is far cheaper per day than MES (Micro E-mini S&P) and trades the
+asset class the rest of this project already records, which makes it the
+tempting choice on price and on thematic fit.
+
+One purchased trading day (2026-07-31, $3.2053 total, continuous front
+month) settles it against measurement rather than intuition:
+
+- **MES**: 14,989,106 book updates (198.3/s), inter-update p50 0.084 ms,
+  p90 7.8 ms; 455,192 trades at a 26.3 ms median interval.
+- **MBT**: 380,358 book updates (5.0/s), p50 1.273 ms but p90 307 ms and a
+  single 5.69-hour spell with no book update at all; **1,426 trades in the
+  whole session**, median 10.3 s apart, p90 98 s.
+
+The two contracts share a venue, a feed, a schema and a clock, and differ by
+39x in book rate and 319x in trade count. A single `cme` capability entry
+would credit MBT with MES's resolution — the same class of error as
+crediting a snapshot stream with incremental depth (ADR-013).
+
+**Decision.** Capability entries are keyed by (venue, contract root), with
+`CONTRACT_CAPABILITIES` overriding the venue default and `contract_key()`
+normalising continuous, outright and root symbology so a roll cannot change
+what a contract is credited with. MES receives the full library. MBT loses
+`SHORT_TRADE_WINDOW_FEATURES` (`signed_vol_1s`, `signed_vol_5s`,
+`trade_count_5s`, `vwap_minus_mid_5s`), which at a 10.3 s median trade
+interval would be constant zeros presented as measurements. Contracts not
+yet measured fall back to their venue entry rather than being granted
+capabilities by assumption.
+
+And the rule the numbers force: **when choosing what history to buy,
+measured resolution outranks price.** Measured cost per day is MES $3.1384
+and MBT $0.0670 — about **$791/yr versus $17/yr** over ~252 trading days,
+so MBT is roughly 47x cheaper (the ~$105/yr figure this stage started from
+assumed an 8x event-rate gap; the measured gap is 39x, so MBT is cheaper
+still). It is also unusable for the short-horizon research this project
+exists to do: no trade-derived feature below 30 s, a fifth of 100 ms label
+windows containing no book update, and a 5.7-hour daily hole that no gap
+sidecar records because vendor data carries no reconnect log. Buying five
+years of MBT for the price of six weeks of MES would buy five years of data
+that cannot answer the question.
+
+**Consequences.** MES is the CME contract worth backfilling despite costing
+47x more per day; a year of MES history is ~$791, a real but affordable
+decision to make deliberately rather than by accident. MBT remains worth
+collecting cheaply for cross-asset and longer-horizon work (>=30 s), and its
+own capability entry now says exactly that. Any future contract added to
+this venue needs its own measurement pass before it can be credited with
+anything — price is not evidence of resolution, and here it understated the
+gap by a factor of five.

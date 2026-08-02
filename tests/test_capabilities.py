@@ -8,10 +8,13 @@ from data.book import emitted_channels
 from research.features.capabilities import (
     ALL_FEATURES,
     BBO_AND_TRADE_FEATURES,
+    CAPABILITIES,
     DEPTH_FEATURES,
+    SHORT_TRADE_WINDOW_FEATURES,
     SUB_100MS_FEATURES,
     UnsupportedFeatureError,
     assert_stream_supports,
+    contract_key,
     require_supported,
     supported_features,
 )
@@ -192,6 +195,69 @@ def test_bbo_drives_touch_features_and_the_slow_book_never_overrides_it() -> Non
     after_book = engine.compute(ts + 3_000_000)
     assert after_book["spread_abs"] == 0.5, "the slow book must not override the touch"
     assert after_book["micro_minus_mid"] == from_bbo["micro_minus_mid"]
+
+
+def test_cme_contracts_get_separate_capability_entries_from_measurement() -> None:
+    """MES and MBT share a venue, feed, schema and clock but differ by 39x in
+    book rate and 319x in trade count (measured 2026-07-31), so one venue-wide
+    entry would credit the thin contract with the liquid one's resolution."""
+    mes = supported_features("cme", "MES")
+    mbt = supported_features("cme", "MBT")
+
+    assert mes == ALL_FEATURES, "MES: 198 book updates/s, 26 ms median trade gap"
+    assert mbt < mes, "MBT must be credited with strictly less than MES"
+    assert (mes - mbt) >= SHORT_TRADE_WINDOW_FEATURES
+    # MBT trades a median of 10.3 s apart: a 1 s or 5 s trade window is empty
+    # in most samples, so those features would be a constant zero.
+    for feature in SHORT_TRADE_WINDOW_FEATURES:
+        with pytest.raises(UnsupportedFeatureError, match="not supported"):
+            require_supported("cme", feature, symbol="MBT")
+        require_supported("cme", feature, symbol="MES")
+    # Book-derived features survive on MBT: p50 book interval is 1.3 ms.
+    for feature in ("spread_bps", "micro_minus_mid", "qimb_best", "rvol_30s"):
+        require_supported("cme", feature, symbol="MBT")
+
+
+def test_contract_key_normalizes_symbology_so_rolls_do_not_change_capabilities() -> None:
+    assert contract_key("MES.c.0") == "MES"
+    assert contract_key("MBT.c.0") == "MBT"
+    assert contract_key("MESU6") == "MES"
+    assert contract_key("MBTZ25") == "MBT"
+    assert contract_key("MES") == "MES"
+    # All resolve to the same capability set.
+    assert supported_features("cme", "MBT.c.0") == supported_features("cme", "MBTZ25")
+
+
+def test_venue_lookup_still_works_and_unmeasured_contracts_fall_back() -> None:
+    # No symbol: venue default.
+    assert supported_features("cme") == ALL_FEATURES
+    # A CME contract we have not measured falls back to the venue entry
+    # rather than inventing capabilities for it.
+    assert supported_features("cme", "MNQ") == CAPABILITIES["cme"]
+    # Non-CME venues are unaffected by the per-contract mechanism.
+    assert supported_features("kraken", "BTC/USD") == supported_features("kraken")
+
+
+def test_engine_applies_the_contract_entry_not_the_venue_entry() -> None:
+    mbt = FeatureEngine("cme", "MBT")
+    mes = FeatureEngine("cme", "MES")
+    for i in range(3):
+        ts = BASE_NS + i * 1_000_000_000
+        for engine in (mbt, mes):
+            engine.on_event(_book_event("cme", ts))
+            engine.on_event(StreamEvent("cme", "x", ts + 1, ts, None, Trade(100.5, 1.0, "buy")))
+
+    # Compute inside the 5 s trade window so the short-window features are
+    # genuinely populated on MES — otherwise both contracts would show None
+    # and the test would pass for the wrong reason.
+    t = BASE_NS + 3_000_000_000
+    mbt_features = mbt.compute(t)
+    mes_features = mes.compute(t)
+
+    for name in SHORT_TRADE_WINDOW_FEATURES:
+        assert mbt_features[name] is None, f"{name} must be nulled on the thin contract"
+        assert mes_features[name] is not None, f"{name} must survive on MES"
+    assert mbt_features["signed_vol_30s"] is not None, "the 30 s window still holds trades"
 
 
 def test_undeclared_venue_cannot_even_construct_an_engine() -> None:
