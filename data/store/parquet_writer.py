@@ -62,6 +62,10 @@ BOOK_SNAPSHOT_SCHEMA = pa.schema(
         pa.field("ask_prices", pa.list_(pa.float64())),
         pa.field("ask_qtys", pa.list_(pa.float64())),
         pa.field("seq", pa.int64()),
+        # Resting order count at each touch, where the venue reports it
+        # (Hyperliquid bbo does). Null on venues and row kinds that do not.
+        pa.field("bid_n", pa.int64()),
+        pa.field("ask_n", pa.int64()),
     ]
 )
 

@@ -101,6 +101,9 @@ def map_mbp10(record: dict[str, Any], symbol: str) -> dict[str, Any]:
         "ask_prices": ask_prices,
         "ask_qtys": ask_qtys,
         "seq": int(record["sequence"]) if record.get("sequence") is not None else None,
+        # MBP-10 reports aggregate size per level, not resting order counts.
+        "bid_n": None,
+        "ask_n": None,
     }
 
 

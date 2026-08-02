@@ -29,8 +29,10 @@ from data.book import (
     BookBuilder,
     SequenceTracker,
     SnapshotEmitter,
+    bbo_row,
     parse_coinbase,
     parse_hyperliquid,
+    parse_hyperliquid_bbo,
     parse_kraken,
 )
 from data.book.builder import ApplyResult
@@ -81,6 +83,9 @@ PARSE_FNS = {
     "coinbase": parse_coinbase,
     "hyperliquid": parse_hyperliquid,
 }
+# Venues whose feed carries a separate top-of-book channel, mapped alongside
+# (never merged into) book state. These rows land as kind="bbo".
+BBO_PARSE_FNS = {"hyperliquid": parse_hyperliquid_bbo}
 
 
 class SymbolReport(BaseModel):
@@ -106,6 +111,8 @@ class SymbolReport(BaseModel):
     rows_written: int
     # Snapshot-cadence scoring, populated only for snapshot-stream venues
     # (None elsewhere — the Stage 1.6 rule: not-applicable is never 0).
+    # ``bbo_updates`` counts top-of-book rows written alongside the book.
+    bbo_updates: int | None = None
     snap_intervals: int | None = None
     snap_interval_p50_ms: float | None = None
     snap_interval_p95_ms: float | None = None
@@ -468,6 +475,8 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
 
     day_start_ns, day_end_ns = _day_bounds_ns(date)
     parse_fn = PARSE_FNS[venue]
+    bbo_parse_fn = BBO_PARSE_FNS.get(venue)
+    bbo_counts: dict[str, int] = defaultdict(int)
     if vcfg.snapshot_stream:
         # Every message is a full book; the day's first snapshot arrives
         # within a block interval of midnight, so warm start buys nothing.
@@ -513,6 +522,15 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
         seq = envelope_sequence(message) if seq_applies else None
         seq_ok = tracker.observe(seq) if seq is not None else True
         events = parse_fn(message, recv_ns)
+
+        # Top-of-book updates are written straight through as kind="bbo":
+        # they never touch the book builder, so they cannot fabricate depth,
+        # and they carry the only sub-second view this venue has.
+        if bbo_parse_fn is not None:
+            for bbo_event in bbo_parse_fn(message, recv_ns):
+                builder_for(bbo_event.symbol)  # ensure a writer exists
+                writers[bbo_event.symbol].append([bbo_row(bbo_event)])
+                bbo_counts[bbo_event.symbol] += 1
 
         for event in events:
             builder = builder_for(event.symbol)
@@ -583,6 +601,7 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
                 1 for s, e in unexplained if (e - s) / 1e6 > CADENCE_SILENT_FAIL_MS
             )
             snap_kwargs = {
+                "bbo_updates": bbo_counts[symbol],
                 "snap_intervals": len(ordered),
                 "snap_interval_p50_ms": ordered[len(ordered) // 2] if ordered else None,
                 "snap_interval_p95_ms": (

@@ -45,8 +45,30 @@ class Trade:
 
 
 @dataclass(frozen=True, slots=True)
+class Bbo:
+    """A top-of-book update: both touches, with resting order counts.
+
+    Distinct from :class:`BookState` on purpose (ADR-013). A BBO update is
+    an accurate, fast view of the touch and says nothing about depth; a
+    BookState is a depth view that may be far staler. On Hyperliquid the
+    two differ by more than an order of magnitude in cadence (123 ms vs
+    5,387 ms measured), so conflating them would silently substitute
+    5-second-old prices into sub-second features.
+    """
+
+    best_bid: float
+    bid_qty: float
+    best_ask: float
+    ask_qty: float
+    mid: float | None
+    microprice: float | None
+    bid_n: int | None = None
+    ask_n: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class StreamEvent:
-    """One event on the merged timeline: exactly one of ``book``/``trade`` set.
+    """One event on the merged timeline: exactly one payload slot is set.
 
     ``is_warmup`` marks previous-day tail events used only to warm feature
     state; they are never sampled, labeled, or trained on.
@@ -59,3 +81,4 @@ class StreamEvent:
     book: BookState | None
     trade: Trade | None
     is_warmup: bool = False
+    bbo: Bbo | None = None

@@ -11,8 +11,48 @@ from __future__ import annotations
 from typing import Any
 
 from data.book.builder import BookBuilder
+from data.book.types import BboEvent
 
 NS_PER_MS = 1_000_000
+
+
+def bbo_row(event: BboEvent) -> dict[str, Any]:
+    """One top-of-book update as a ``kind="bbo"`` row.
+
+    Depth arrays hold exactly the touch — one level per side — because that
+    is all a BBO update knows. Consumers distinguish these from ``event``
+    rows by ``kind`` and never read them as depth (ADR-013); the capability
+    matrix enforces which features may use them.
+    """
+    bid_price = float(event.bid_price)
+    ask_price = float(event.ask_price)
+    bid_qty = float(event.bid_qty)
+    ask_qty = float(event.ask_qty)
+    total = bid_qty + ask_qty
+    return {
+        "venue": event.venue,
+        "symbol": event.symbol,
+        "ts_ns": event.recv_ns,
+        "exchange_ns": None,
+        "source": "recorder",
+        "kind": "bbo",
+        "valid": True,
+        "crossed": bid_price > ask_price,
+        "locked": bid_price == ask_price,
+        "best_bid": bid_price,
+        "bid_qty": bid_qty,
+        "best_ask": ask_price,
+        "ask_qty": ask_qty,
+        "mid": (bid_price + ask_price) / 2,
+        "microprice": ((bid_qty * ask_price + ask_qty * bid_price) / total if total > 0 else None),
+        "bid_prices": [bid_price],
+        "bid_qtys": [bid_qty],
+        "ask_prices": [ask_price],
+        "ask_qtys": [ask_qty],
+        "seq": None,
+        "bid_n": event.bid_n,
+        "ask_n": event.ask_n,
+    }
 
 
 class SnapshotEmitter:
@@ -54,6 +94,9 @@ class SnapshotEmitter:
             "ask_prices": [float(lv.price) for lv in ask_levels],
             "ask_qtys": [float(lv.qty) for lv in ask_levels],
             "seq": seq,
+            # Depth feeds report aggregate size, not order counts.
+            "bid_n": None,
+            "ask_n": None,
         }
 
     def on_event(self, ts_ns: int, seq: int | None = None) -> list[dict[str, Any]]:

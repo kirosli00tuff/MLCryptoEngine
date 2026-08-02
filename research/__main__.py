@@ -14,6 +14,7 @@ import subprocess
 import sys
 
 from data.config import REPO_ROOT, load_config
+from data.recorder.reader import available_dates
 from data.store import trade_partition_dir
 from data.store.parquet_writer import PART_NAME
 from data.trades.extract import extract_trades_day
@@ -54,8 +55,18 @@ def main() -> int:
     args = parser.parse_args()
 
     cfg = load_config()
-    venues = args.venues if args.venues else sorted(set(cfg.venues) & set(PARSERS))
+    requested = args.venues if args.venues else sorted(set(cfg.venues) & set(PARSERS))
     dates: list[str] = args.dates
+
+    # A venue with no recorded data for these dates is skipped, not run: an
+    # empty result block reads like a failed experiment when it is really an
+    # absent one. Named explicitly so the omission is visible.
+    venues = [v for v in requested if set(dates) & set(available_dates(cfg.raw_dir, v))]
+    for venue in sorted(set(requested) - set(venues)):
+        print(f"skipping {venue}: no recorded data for {', '.join(dates)}", flush=True)
+    if not venues:
+        print("no venue has recorded data for the requested dates")
+        return 1
 
     results: dict[str, object] = {}
     for venue in venues:

@@ -765,3 +765,123 @@ Valid samples: 191,243
 Predictability decay (AUC by horizon): 100 ms: 0.852 · 500 ms: 0.812 · 1000 ms: 0.790 · 5000 ms: 0.709 · 30000 ms: 0.579
 
 Top feature importances (fold-averaged): depth_ask_1 0.12 · depth_bid_1 0.06 · slope_ask 0.06 · depth_ask_2 0.05 · xv_diff_z 0.04 · slope_bid 0.04 · spread_bps 0.04 · dwp_minus_mid 0.04 · depth_bid_2 0.04 · ofi_best_1s 0.03
+
+## Phase B research run — 2026-08-02 01:05 UTC
+
+**Caveat, read first: these results rest on 1 day(s) of data spanning ~1 volatility regime(s). They validate the pipeline; they are NOT evidence of edge. Microstructure relationships shift with regime, session, and venue conditions — a signal fitted on one day is fitted on that day's regime.**
+
+Data range: 2026-07-31 · sampling: event bars, every 50 book updates · features: 42 · labels: fixed-horizon [100, 500, 1000, 5000, 30000, 60000, 300000, 900000] ms + triple-barrier (pt/sl 2.0x rvol_30s, 30 s time limit) · cost assumptions: coinbase: maker 40.0 bps, taker 60.0 bps per leg (tier 0) + spread / hyperliquid: maker 1.5 bps, taker 4.5 bps per leg (tier 0) + spread / kraken: maker 40.0 bps, taker 80.0 bps per leg (tier 0) + spread · trade signing: {'kraken': 'venue_flag', 'coinbase': 'tick_rule', 'hyperliquid': 'venue_flag', 'cme': 'venue_flag'}
+
+Venues in this run: kraken, coinbase. **hyperliquid was skipped — it has no
+recorded data for 2026-07-31** (its recorder was activated 2026-08-01), and an
+absent venue is reported as absent rather than as an empty result.
+
+Leakage suite: PASS (...                                                                      [100%])
+
+### coinbase BTC-USD
+
+Valid samples: 30,172
+
+| horizon | n | AUC | cost mode | model EV bps | model hit | regressor EV bps | last-sign EV bps | zero EV bps |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 30172 | 0.886 | maker | -80.00 | 0.063 | -79.99 | -79.99 | n/a |
+| 100 ms | 30172 | 0.886 | taker | -120.01 | 0.063 | -120.00 | -120.01 | n/a |
+| 500 ms | 30172 | 0.829 | maker | -79.99 | 0.126 | -79.96 | -79.98 | n/a |
+| 500 ms | 30172 | 0.829 | taker | -120.00 | 0.126 | -119.98 | -120.00 | n/a |
+| 1000 ms | 30172 | 0.786 | maker | -79.98 | 0.173 | -79.93 | -79.97 | n/a |
+| 1000 ms | 30172 | 0.786 | taker | -120.00 | 0.173 | -119.95 | -119.99 | n/a |
+| 5000 ms | 30170 | 0.684 | maker | -79.90 | 0.362 | -79.84 | -79.95 | n/a |
+| 5000 ms | 30170 | 0.684 | taker | -119.91 | 0.362 | -119.86 | -119.97 | n/a |
+| 30000 ms | 30161 | 0.551 | maker | -79.82 | 0.512 | -79.85 | -79.91 | n/a |
+| 30000 ms | 30161 | 0.551 | taker | -119.84 | 0.512 | -119.87 | -119.92 | n/a |
+| 60000 ms | 30150 | 0.534 | maker | -79.81 | 0.516 | -79.85 | -79.83 | n/a |
+| 60000 ms | 30150 | 0.534 | taker | -119.83 | 0.516 | -119.87 | -119.85 | n/a |
+| 300000 ms | 30061 | 0.550 | maker | -79.44 | 0.540 | -79.42 | -79.42 | n/a |
+| 300000 ms | 30061 | 0.550 | taker | -119.46 | 0.540 | -119.44 | -119.44 | n/a |
+| 900000 ms | 29838 | 0.596 | maker | -76.69 | 0.566 | -76.77 | -77.91 | n/a |
+| 900000 ms | 29838 | 0.596 | taker | -116.71 | 0.566 | -116.79 | -117.92 | n/a |
+
+Predictability decay (AUC by horizon): 100 ms: 0.886 · 500 ms: 0.829 · 1000 ms: 0.786 · 5000 ms: 0.684 · 30000 ms: 0.551 · 60000 ms: 0.534 · 300000 ms: 0.550 · 900000 ms: 0.596
+
+Top feature importances (fold-averaged): time_since_trade_ms 0.04 · signed_vol_1s 0.04 · depth_ask_1 0.04 · xv_leadlag_p500 0.03 · xv_leadlag_m500 0.03 · xv_leadlag_p100 0.03 · xv_leadlag_m100 0.03 · slope_ask 0.03 · spread_bps 0.03 · depth_bid_2 0.03
+
+### coinbase ETH-USD
+
+Valid samples: 27,642
+
+| horizon | n | AUC | cost mode | model EV bps | model hit | regressor EV bps | last-sign EV bps | zero EV bps |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 27642 | 0.816 | maker | -80.00 | 0.115 | -79.98 | -79.99 | n/a |
+| 100 ms | 27642 | 0.816 | taker | -120.12 | 0.115 | -120.10 | -120.12 | n/a |
+| 500 ms | 27642 | 0.759 | maker | -79.99 | 0.205 | -79.94 | -79.98 | n/a |
+| 500 ms | 27642 | 0.759 | taker | -120.12 | 0.205 | -120.07 | -120.11 | n/a |
+| 1000 ms | 27642 | 0.724 | maker | -79.97 | 0.265 | -79.92 | -79.97 | n/a |
+| 1000 ms | 27642 | 0.724 | taker | -120.10 | 0.265 | -120.05 | -120.10 | n/a |
+| 5000 ms | 27640 | 0.623 | maker | -79.88 | 0.436 | -79.84 | -79.95 | n/a |
+| 5000 ms | 27640 | 0.623 | taker | -120.01 | 0.436 | -119.97 | -120.07 | n/a |
+| 30000 ms | 27632 | 0.523 | maker | -79.87 | 0.505 | -79.83 | -79.97 | n/a |
+| 30000 ms | 27632 | 0.523 | taker | -120.00 | 0.505 | -119.96 | -120.10 | n/a |
+| 60000 ms | 27623 | 0.532 | maker | -79.74 | 0.519 | -79.77 | -79.96 | n/a |
+| 60000 ms | 27623 | 0.532 | taker | -119.87 | 0.519 | -119.90 | -120.09 | n/a |
+| 300000 ms | 27546 | 0.545 | maker | -79.23 | 0.539 | -79.23 | -80.28 | n/a |
+| 300000 ms | 27546 | 0.545 | taker | -119.35 | 0.539 | -119.36 | -120.40 | n/a |
+| 900000 ms | 27351 | 0.558 | maker | -77.36 | 0.559 | -77.48 | -80.86 | n/a |
+| 900000 ms | 27351 | 0.558 | taker | -117.48 | 0.559 | -117.61 | -120.99 | n/a |
+
+Predictability decay (AUC by horizon): 100 ms: 0.816 · 500 ms: 0.759 · 1000 ms: 0.724 · 5000 ms: 0.623 · 30000 ms: 0.523 · 60000 ms: 0.532 · 300000 ms: 0.545 · 900000 ms: 0.558
+
+Top feature importances (fold-averaged): time_since_trade_ms 0.04 · depth_ask_1 0.04 · spread_bps 0.03 · xv_leadlag_p500 0.03 · xv_mid_diff_bps 0.03 · vwap_minus_mid_5s 0.03 · slope_ask 0.03 · ofi_best_1s 0.03 · xv_leadlag_m100 0.03 · signed_vol_1s 0.03
+
+### kraken BTC/USD
+
+Valid samples: 144,738
+
+| horizon | n | AUC | cost mode | model EV bps | model hit | regressor EV bps | last-sign EV bps | zero EV bps |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 144738 | 0.941 | maker | -79.97 | 0.096 | -79.93 | -79.96 | n/a |
+| 100 ms | 144738 | 0.941 | taker | -160.03 | 0.096 | -160.00 | -160.03 | n/a |
+| 500 ms | 144738 | 0.901 | maker | -79.93 | 0.149 | -79.84 | -79.93 | n/a |
+| 500 ms | 144738 | 0.901 | taker | -159.99 | 0.149 | -159.90 | -159.99 | n/a |
+| 1000 ms | 144738 | 0.879 | maker | -79.89 | 0.184 | -79.78 | -79.90 | n/a |
+| 1000 ms | 144738 | 0.879 | taker | -159.96 | 0.184 | -159.84 | -159.97 | n/a |
+| 5000 ms | 144730 | 0.813 | maker | -79.67 | 0.345 | -79.53 | -79.82 | n/a |
+| 5000 ms | 144730 | 0.813 | taker | -159.73 | 0.345 | -159.60 | -159.89 | n/a |
+| 30000 ms | 144709 | 0.666 | maker | -79.35 | 0.522 | -79.46 | -79.86 | n/a |
+| 30000 ms | 144709 | 0.666 | taker | -159.41 | 0.522 | -159.52 | -159.93 | n/a |
+| 60000 ms | 144699 | 0.603 | maker | -79.20 | 0.545 | -79.57 | -79.97 | n/a |
+| 60000 ms | 144699 | 0.603 | taker | -159.26 | 0.545 | -159.63 | -160.04 | n/a |
+| 300000 ms | 144470 | 0.499 | maker | -80.50 | 0.504 | -80.97 | -80.89 | n/a |
+| 300000 ms | 144470 | 0.499 | taker | -160.56 | 0.504 | -161.03 | -160.95 | n/a |
+| 900000 ms | 143713 | 0.539 | maker | -79.09 | 0.554 | -80.55 | -83.03 | n/a |
+| 900000 ms | 143713 | 0.539 | taker | -159.16 | 0.554 | -160.62 | -163.09 | n/a |
+
+Predictability decay (AUC by horizon): 100 ms: 0.941 · 500 ms: 0.901 · 1000 ms: 0.879 · 5000 ms: 0.813 · 30000 ms: 0.666 · 60000 ms: 0.603 · 300000 ms: 0.499 · 900000 ms: 0.539
+
+Top feature importances (fold-averaged): depth_ask_1 0.06 · time_since_trade_ms 0.05 · xv_diff_z 0.05 · spread_bps 0.04 · slope_ask 0.04 · xv_mid_diff_bps 0.04 · ofi_best_1s 0.03 · rvol_1s 0.03 · slope_bid 0.03 · dwp_minus_mid 0.03
+
+### kraken ETH/USD
+
+Valid samples: 179,719
+
+| horizon | n | AUC | cost mode | model EV bps | model hit | regressor EV bps | last-sign EV bps | zero EV bps |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 179719 | 0.851 | maker | -79.96 | 0.270 | -79.91 | -79.95 | n/a |
+| 100 ms | 179719 | 0.851 | taker | -160.30 | 0.270 | -160.25 | -160.30 | n/a |
+| 500 ms | 179719 | 0.810 | maker | -79.89 | 0.360 | -79.80 | -79.89 | n/a |
+| 500 ms | 179719 | 0.810 | taker | -160.23 | 0.360 | -160.15 | -160.24 | n/a |
+| 1000 ms | 179719 | 0.790 | maker | -79.81 | 0.416 | -79.73 | -79.85 | n/a |
+| 1000 ms | 179719 | 0.790 | taker | -160.15 | 0.416 | -160.07 | -160.19 | n/a |
+| 5000 ms | 179707 | 0.707 | maker | -79.63 | 0.500 | -79.58 | -79.74 | n/a |
+| 5000 ms | 179707 | 0.707 | taker | -159.97 | 0.500 | -159.92 | -160.09 | n/a |
+| 30000 ms | 179671 | 0.571 | maker | -79.66 | 0.518 | -79.73 | -79.75 | n/a |
+| 30000 ms | 179671 | 0.571 | taker | -160.01 | 0.518 | -160.07 | -160.10 | n/a |
+| 60000 ms | 179659 | 0.538 | maker | -79.75 | 0.517 | -79.78 | -79.79 | n/a |
+| 60000 ms | 179659 | 0.538 | taker | -160.09 | 0.517 | -160.12 | -160.14 | n/a |
+| 300000 ms | 179493 | 0.528 | maker | -78.94 | 0.540 | -79.11 | -80.14 | n/a |
+| 300000 ms | 179493 | 0.528 | taker | -159.29 | 0.540 | -159.45 | -160.49 | n/a |
+| 900000 ms | 178751 | 0.552 | maker | -76.06 | 0.575 | -75.88 | -81.04 | n/a |
+| 900000 ms | 178751 | 0.552 | taker | -156.40 | 0.575 | -156.22 | -161.39 | n/a |
+
+Predictability decay (AUC by horizon): 100 ms: 0.851 · 500 ms: 0.810 · 1000 ms: 0.790 · 5000 ms: 0.707 · 30000 ms: 0.571 · 60000 ms: 0.538 · 300000 ms: 0.528 · 900000 ms: 0.552
+
+Top feature importances (fold-averaged): depth_ask_1 0.11 · depth_bid_1 0.06 · slope_ask 0.06 · depth_ask_2 0.05 · slope_bid 0.04 · xv_diff_z 0.04 · spread_bps 0.04 · depth_bid_2 0.04 · dwp_minus_mid 0.04 · ofi_best_1s 0.03

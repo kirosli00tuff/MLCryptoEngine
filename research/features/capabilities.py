@@ -25,10 +25,12 @@ supported on Hyperliquid even from bbo.
 
 ``BBO_DEPENDENT_FEATURES`` is the load-bearing caveat: every feature
 Hyperliquid is credited with needs the bbo channel in the event stream.
-``data/book/hyperliquid_parse.py`` currently maps **only l2Book**, so until
-bbo is plumbed through, these features would be computed at 5.4 s
-resolution. :func:`assert_stream_supports` exists so that plumbing gap
-fails loudly instead of silently producing 5-second-stale microprice.
+:func:`assert_stream_supports` checks that against the channels the venue's
+parser actually emits (``data.book.emitted_channels``), so the requirement
+can never decay into a docstring promise. As of Stage C.2 the Hyperliquid
+parser emits both l2Book and bbo and the check passes; before that it
+raised, which is what kept 5.4-second-stale microprice out of the feature
+set.
 
 Venues absent from the matrix raise too — an undeclared venue is never
 credited with capabilities, the same defaults-closed rule the integrity
@@ -53,7 +55,6 @@ DEPTH_FEATURES: frozenset[str] = frozenset(
         "ofi_best_5s",
         "ofi_deep_1s",
         "ofi_deep_5s",
-        "qimb_best",
         "depth_bid_1",
         "depth_bid_2",
         "depth_bid_3",
@@ -75,6 +76,13 @@ DEPTH_FEATURES: frozenset[str] = frozenset(
 # any feed with a best bid/offer, a mid, and a trade stream.
 BBO_AND_TRADE_FEATURES: frozenset[str] = frozenset(
     {
+        # Queue imbalance and microprice consume the identical inputs — best
+        # price and size on both sides — so they classify together. Stage
+        # C.1 had queue imbalance under DEPTH by analogy with the depth
+        # ladder; the Stage C.2 measurement (bbo carries sz) showed that was
+        # wrong, and splitting two features with the same inputs across two
+        # categories cannot be defended.
+        "qimb_best",
         "micro_minus_mid",
         "spread_abs",
         "spread_bps",

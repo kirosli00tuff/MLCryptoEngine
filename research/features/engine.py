@@ -18,11 +18,11 @@ from collections import deque
 from itertools import pairwise
 
 from research.features import book as bookfeat
-from research.features.capabilities import supported_features
+from research.features.capabilities import REQUIRED_CHANNELS, supported_features
 from research.features.cross_venue import CrossVenueTracker
 from research.features.rolling import WindowSum
 from research.features.signing import sign_trade
-from research.stream.events import BookState, StreamEvent
+from research.stream.events import Bbo, BookState, StreamEvent
 
 NS_PER_S = 1_000_000_000
 NS_PER_MS = 1_000_000
@@ -90,6 +90,10 @@ class FeatureEngine:
         # rather than computed as garbage (e.g. OFI from snapshot deltas).
         # Raises for undeclared venues — defaults closed.
         self._unsupported = frozenset(FEATURE_COLUMNS) - supported_features(venue)
+        # Venues with a dedicated BBO channel take their touch and mid from
+        # it; their book feed is depth-only and much slower.
+        self._prefers_bbo_mid = venue in REQUIRED_CHANNELS
+        self._touch: Bbo | None = None
         self._prev_book: BookState | None = None
         self._last_mid: float | None = None
         self._ofi_best = {1: WindowSum(NS_PER_S), 5: WindowSum(5 * NS_PER_S)}
@@ -136,12 +140,41 @@ class FeatureEngine:
 
     def on_event(self, event: StreamEvent) -> float | None:
         """Apply one event; returns the signed trade qty for trade events."""
+        if event.bbo is not None:
+            self._on_bbo(event)
+            return None
         if event.book is not None:
             self._on_book(event)
             return None
         if event.trade is not None:
             return self._on_trade(event)
         return None
+
+    def _on_bbo(self, event: StreamEvent) -> None:
+        """Top-of-book update: the touch, the mid, and everything derived.
+
+        On a venue that has a BBO channel this is the authoritative price
+        view — book snapshots there are far staler (Hyperliquid: 5,387 ms vs
+        123 ms), so :meth:`_on_book` yields the mid series to this method
+        rather than interleaving two different-latency views of the same
+        touch into one return series.
+        """
+        bbo = event.bbo
+        assert bbo is not None
+        self._touch = bbo
+        if bbo.mid is not None and bbo.mid > 0:
+            self._observe_mid(event.local_ns, bbo.mid)
+
+    def _observe_mid(self, ts: int, mid: float) -> None:
+        """Fold one mid observation into returns, realized vol, and cross-venue."""
+        if self._last_mid is not None and self._last_mid > 0:
+            log_ret = math.log(mid / self._last_mid)
+            for window in self._r2.values():
+                window.add(ts, log_ret * log_ret)
+            self._ret_1s.add(ts, log_ret)
+        self._last_mid = mid
+        if self._cross is not None:
+            self._cross.on_mid("primary", ts, mid)
 
     def _on_book(self, event: StreamEvent) -> None:
         book = event.book
@@ -157,15 +190,10 @@ class FeatureEngine:
             if deep is not None:
                 self._ofi_deep[1].add(ts, deep)
                 self._ofi_deep[5].add(ts, deep)
-        if book.valid and book.mid is not None and book.mid > 0:
-            if self._last_mid is not None and self._last_mid > 0:
-                log_ret = math.log(book.mid / self._last_mid)
-                for window in self._r2.values():
-                    window.add(ts, log_ret * log_ret)
-                self._ret_1s.add(ts, log_ret)
-            self._last_mid = book.mid
-            if self._cross is not None:
-                self._cross.on_mid("primary", ts, book.mid)
+        # On BBO venues the book is the slow, depth-only view: it must not
+        # inject stale mids into the return series that bbo already drives.
+        if not self._prefers_bbo_mid and book.valid and book.mid is not None and book.mid > 0:
+            self._observe_mid(ts, book.mid)
         self._prev_book = book
 
     def _on_trade(self, event: StreamEvent) -> float:
@@ -202,11 +230,29 @@ class FeatureEngine:
         out["ofi_best_5s"] = self._ofi_best[5].total(t_ns)
         out["ofi_deep_1s"] = self._ofi_deep[1].total(t_ns)
         out["ofi_deep_5s"] = self._ofi_deep[5].total(t_ns)
+        touch = self._touch
+        if self._prefers_bbo_mid and touch is not None:
+            # Touch-derived features come from the fast BBO channel; depth
+            # features stay unsupported on these venues and are nulled below.
+            out["spread_abs"] = touch.best_ask - touch.best_bid
+            out["spread_bps"] = (
+                1e4 * (touch.best_ask - touch.best_bid) / touch.mid
+                if touch.mid is not None and touch.mid > 0
+                else None
+            )
+            out["micro_minus_mid"] = (
+                touch.microprice - touch.mid
+                if touch.microprice is not None and touch.mid is not None
+                else None
+            )
+            total = touch.bid_qty + touch.ask_qty
+            out["qimb_best"] = (touch.bid_qty - touch.ask_qty) / total if total > 0 else None
         if book is not None and book.valid:
-            out["qimb_best"] = bookfeat.queue_imbalance(book)
-            out["micro_minus_mid"] = bookfeat.microprice_minus_mid(book)
-            out["spread_abs"] = bookfeat.spread(book)
-            out["spread_bps"] = bookfeat.spread_bps(book)
+            if not self._prefers_bbo_mid:
+                out["qimb_best"] = bookfeat.queue_imbalance(book)
+                out["micro_minus_mid"] = bookfeat.microprice_minus_mid(book)
+                out["spread_abs"] = bookfeat.spread(book)
+                out["spread_bps"] = bookfeat.spread_bps(book)
             bids, asks = bookfeat.depth_at_levels(book, LEVELS)
             for i in range(LEVELS):
                 out[f"depth_bid_{i + 1}"] = bids[i]

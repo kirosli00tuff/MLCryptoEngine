@@ -18,7 +18,37 @@ from collections import deque
 from collections.abc import Callable
 
 NS_PER_MS = 1_000_000
-DEFAULT_HORIZONS_MS: tuple[int, ...] = (100, 500, 1_000, 5_000, 30_000)
+# Short horizons probe microstructure; the long tail (1, 5, 15 minutes)
+# exists because Phase B showed every short horizon losing to fees — the
+# question is whether the move grows faster than the fixed round-trip cost
+# as the horizon extends. Extending the set never replaces it: the decay
+# curve has to stay comparable across runs.
+DEFAULT_HORIZONS_MS: tuple[int, ...] = (
+    100,
+    500,
+    1_000,
+    5_000,
+    30_000,
+    60_000,
+    300_000,
+    900_000,
+)
+MAX_HORIZON_MS: int = max(DEFAULT_HORIZONS_MS)
+
+
+def embargo_ns_for(horizons_ms: tuple[int, ...] | list[int]) -> int:
+    """Embargo for a run spanning ``horizons_ms``: the LONGEST label's span.
+
+    Sizing an embargo for anything shorter leaks: a 900 s label computed
+    just before a fold boundary still resolves 900 s into the test block, so
+    an embargo cut for a 30 s label would leave 870 s of overlap — precisely
+    the leak purged CV exists to prevent. Callers evaluating one horizon at
+    a time pass that horizon; callers mixing horizons in a single fit must
+    pass them all.
+    """
+    if not horizons_ms:
+        raise ValueError("embargo needs at least one label horizon")
+    return max(horizons_ms) * NS_PER_MS
 
 
 class FixedHorizonLabeler:

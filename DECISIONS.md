@@ -448,3 +448,55 @@ known, guarded gap rather than a silent one: until it lands, Hyperliquid
 features cannot be computed at all rather than being computed wrongly.
 Documented venue behaviour is treated the same way as documented fee
 schedules (ADR-012) — a dated hint, never an authority.
+
+**Amended 2026-08-01 (Stage C.2):** the plumbing landed — the Hyperliquid
+parser now emits bbo alongside l2Book as a distinct `kind="bbo"` row, and
+`assert_stream_supports` reads the parser's own emitted-channel set, so the
+gate passes because the code changed rather than because a docstring did.
+The same pass corrected one classification: `qimb_best` consumes exactly
+the inputs microprice does (best price and size, both sides), so it moved
+from `DEPTH_FEATURES` to `BBO_AND_TRADE_FEATURES` — two features with
+identical inputs cannot sit in different categories.
+
+---
+
+## ADR-015: Label horizons extend to 15 minutes; embargo scales with the longest one
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** Phase B's first run tested 100 ms to 30 s and found negative
+expected value at every horizon on both spot venues: the mid move at those
+horizons is single-digit basis points while the round trip costs 80–120 bps
+at base-tier retail fees. That result answers "is there a fast edge" but not
+the question it raises — cost per round trip is *fixed*, so expected value
+per trade grows with holding time as long as the move does. The horizon at
+which the move finally exceeds the cost (or the demonstration that it never
+does within a plausible range) is the actual decision-relevant finding, and
+30 s was too short to see it.
+
+The extension is not free. Labels span time, so a 900 s label computed just
+before a fold boundary resolves 900 s into the test block. An embargo sized
+for the old 30 s maximum would leave 870 s of overlap — reintroducing
+exactly the leak purged cross-validation exists to prevent, and doing it
+silently, in the direction that flatters results.
+
+**Decision.** The horizon set extends to 60 s, 300 s, and 900 s while
+keeping every existing horizon, so the decay curve lengthens rather than
+shifts and remains comparable with earlier runs. Embargo sizing becomes a
+function of the run's horizons — `embargo_ns_for(horizons)` returns the
+longest horizon's span — never a constant, and the gap-validity window that
+decides whether a sample is trainable derives from `MAX_HORIZON_MS` rather
+than a hardcoded 30 s. Both are pinned by tests: one asserting the embargo
+scales with the longest horizon in the run, one asserting a long-horizon
+`PurgedKFold` actually removes more training data than a short one, and one
+asserting the triple barrier stays armed for a 15-minute limit instead of
+silently truncating.
+
+**Consequences.** Long-horizon folds train on materially less data — the
+embargo consumes 15 minutes on each side of every test block — which is the
+honest cost of not leaking, and it makes long-horizon results noisier on a
+single day. Sample rows now carry eight forward-return labels and sixteen
+cost-aware net labels. Samples stay pending in the extraction buffer for up
+to 900 s, well inside the hard cap that bounds that buffer. Extending
+horizons again means only appending to the set: everything downstream reads
+the maximum from one place.

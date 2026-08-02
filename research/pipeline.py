@@ -36,7 +36,12 @@ from data.store.parquet_writer import PART_NAME
 from research.features.cross_venue import CrossVenueTracker
 from research.features.engine import FEATURE_COLUMNS, FeatureEngine
 from research.labels.costs import CostModel, cost_model_from_config, net_label
-from research.labels.fixed_horizon import DEFAULT_HORIZONS_MS, FixedHorizonLabeler
+from research.labels.fixed_horizon import (
+    DEFAULT_HORIZONS_MS,
+    MAX_HORIZON_MS,
+    FixedHorizonLabeler,
+    embargo_ns_for,
+)
 from research.labels.triple_barrier import TripleBarrierLabeler
 from research.models.baselines import LastSignBaseline, ZeroBaseline
 from research.models.evaluate import auc, calibration_bins, expected_value_bps, hit_rate
@@ -52,7 +57,11 @@ NS_PER_MS = 1_000_000
 # A sample is invalid if any gap window intersects [t - lookback, t + horizon]:
 # its features would span the hole backwards or its label forwards.
 FEATURE_LOOKBACK_NS = 60 * NS_PER_S
-MAX_LABEL_HORIZON_NS = 30 * NS_PER_S
+# Derived from the horizon set, never a constant: a sample is only valid if
+# no gap window touches the span its LONGEST label depends on. Hardcoding
+# 30 s here silently un-validated every 60 s / 300 s / 900 s label the
+# moment the horizon set grew.
+MAX_LABEL_HORIZON_NS = MAX_HORIZON_MS * NS_PER_MS
 SAMPLES_DATASET = "research_samples"
 PROGRESS_EVERY_EVENTS = 1_000_000
 
@@ -344,9 +353,13 @@ def train_and_evaluate(
         prob = np.full(len(y), np.nan)
         reg_pred = np.full(len(y), np.nan)
         importance_acc: dict[str, float] = {}
-        for train_idx, test_idx in PurgedKFold(n_splits, horizon_ms * NS_PER_MS).split(
-            t_use.tolist()
-        ):
+        # Purge span and embargo both scale with this horizon's own label
+        # window — evaluated one horizon at a time, so embargo_ns_for sees
+        # exactly the horizons this fit depends on.
+        horizon_ns = horizon_ms * NS_PER_MS
+        for train_idx, test_idx in PurgedKFold(
+            n_splits, horizon_ns, embargo_ns=embargo_ns_for((horizon_ms,))
+        ).split(t_use.tolist()):
             if len(set(y01[train_idx].tolist())) < 2:
                 continue
             clf = make_classifier()

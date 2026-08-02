@@ -31,7 +31,7 @@ from data.recorder.sessions import read_sessions
 from data.store import book_partition_dir, trade_partition_dir
 from data.store.parquet_writer import PART_NAME
 from data.validate.downtime import derive_downtime_gaps, last_activity_ns
-from research.stream.events import BookState, StreamEvent, Trade
+from research.stream.events import Bbo, BookState, StreamEvent, Trade
 
 BATCH_ROWS = 32_768
 DEFAULT_WARMUP_S = 120
@@ -63,8 +63,31 @@ def iter_book_events(
     parquet = pq.ParquetFile(path)
     for batch in parquet.iter_batches(batch_size=BATCH_ROWS):
         for row in batch.to_pylist():
-            if row["kind"] != "event" or row["ts_ns"] < min_ns:
+            if row["ts_ns"] < min_ns:
                 continue
+            if row["kind"] == "bbo":
+                yield StreamEvent(
+                    venue=venue,
+                    symbol=symbol,
+                    local_ns=row["ts_ns"],
+                    exchange_ns=None,
+                    book=None,
+                    trade=None,
+                    is_warmup=is_warmup,
+                    bbo=Bbo(
+                        best_bid=row["best_bid"],
+                        bid_qty=row["bid_qty"],
+                        best_ask=row["best_ask"],
+                        ask_qty=row["ask_qty"],
+                        mid=row["mid"],
+                        microprice=row["microprice"],
+                        bid_n=row.get("bid_n"),
+                        ask_n=row.get("ask_n"),
+                    ),
+                )
+                continue
+            if row["kind"] != "event":
+                continue  # "interval" rows are cadence duplicates
             yield StreamEvent(
                 venue=venue,
                 symbol=symbol,

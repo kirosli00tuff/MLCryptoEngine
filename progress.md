@@ -469,3 +469,78 @@ both venues.
     components).
   - 141 tests (3 new); make lint / make typecheck / make test clean; all
     three recorders alive.
+
+- 2026-08-02 — Stage C.2: bbo plumbed into the event stream, horizons
+  extended to 15 minutes, Phase B rerun on corrected Kraken fees.
+  **Headline: expected value never crosses zero at any horizon, on either
+  venue, under either cost assumption.**
+  - **bbo plumbing.** New `BboEvent`/`Bbo` types keep the touch structurally
+    separate from book state (ADR-013): the Hyperliquid parser now emits
+    both channels, bbo lands as `kind="bbo"` rows carrying best price, size
+    and resting order count per side, and the feature engine takes its
+    touch, mid, returns and realized vol from bbo while l2Book supplies
+    depth only. A stale 5.4 s snapshot can no longer overwrite a 123 ms
+    price — pinned by a test. `assert_stream_supports` now reads the
+    parser's own `EMITTED_CHANNELS` rather than a hand-kept list, so the
+    gate tracks the code; tests cover both directions.
+  - **One classification corrected while plumbing:** `qimb_best` consumes
+    exactly the inputs microprice does (best price + size, both sides), so
+    it moved from `DEPTH_FEATURES` to `BBO_AND_TRADE_FEATURES`. Two
+    features with identical inputs cannot live in different categories;
+    Stage C.1 had put it under DEPTH by analogy with the depth ladder.
+  - **Horizons 60 s / 300 s / 900 s added**, every existing horizon kept, so
+    the decay curve extends rather than shifts. The embargo hazard was real
+    and had a second instance: `MAX_LABEL_HORIZON_NS` was hardcoded at 30 s,
+    which would have marked every 900 s label gap-validated when its label
+    window was 30x longer than the window actually checked. Both now derive
+    from the horizon set via `embargo_ns_for()` / `MAX_HORIZON_MS`. Three
+    tests pin it: embargo scales with the longest horizon in the run, a
+    long-horizon `PurgedKFold` genuinely trains on less data than a short
+    one, and the triple barrier stays armed a full 15 minutes.
+  - **Rerun (report.md 2026-08-02 01:05 UTC), kraken + coinbase, both cost
+    modes, 8 horizons.** hyperliquid skipped — no data for 2026-07-31.
+    Kraken now carries the corrected base tier (40/80 bps vs the stale
+    25/40), which is why its numbers moved: maker EV floor went from ~-50 to
+    ~-80 bps and taker from ~-80 to ~-160 bps. Nothing about the conclusion
+    changed except its size.
+  - **Zero-crossing horizon: none. It never crosses within the tested
+    range**, for any venue/symbol/cost combination. Best cases at 900 s:
+    kraken ETH/USD maker -76.1 bps (floor -80), coinbase BTC-USD maker
+    -76.7 (floor -80), coinbase ETH-USD maker -77.4. Read the gap from the
+    floor as the gross edge the model actually captures: **~3.9 bps at 900 s
+    on kraken ETH/USD, ~3.3 bps on coinbase BTC-USD** — against an 80 bps
+    maker round trip. Taker is worse by the full fee difference
+    (kraken -156.4 at best). At 300 s kraken BTC/USD is *negative* against
+    its own floor (-80.5 vs -80.0), i.e. the model there is worse than not
+    trading.
+  - **Shape of the decay, which is the real information.** AUC falls
+    monotonically from 100 ms to ~300 s and then ticks back up: kraken
+    BTC/USD 0.941 -> 0.901 -> 0.879 -> 0.813 -> 0.666 -> 0.603 -> **0.499**
+    -> 0.539; coinbase BTC-USD 0.886 -> ... -> 0.551 -> 0.534 -> 0.550 ->
+    0.596. Direction is highly predictable at 100 ms and indistinguishable
+    from a coin flip by 300 s. The uptick at 900 s rests on one day and
+    about 30 non-overlapping 15-minute windows — noise until more days
+    exist, and it must not be read as edge returning at longer horizons.
+  - **Interpretation, plainly.** Short horizons: real predictability, moves
+    far too small to pay 80-160 bps. Long horizons: moves large enough to
+    matter in principle, but predictability has decayed to nothing, and the
+    captured edge (~4 bps at 900 s) is still an order of magnitude short of
+    the round trip. Retail spot fees do not merely reduce this edge, they
+    exceed it everywhere in the tested range. That is the case for the
+    lower-fee venues Stage C.1 added, not a reason to keep extending
+    horizons on these two.
+  - **Task 4 — what is measurable on Hyperliquid** once its data matures,
+    from its measured cadence (bbo p50 123 ms / p90 404 ms; l2Book p50
+    5,387 ms). Via bbo: **500 ms and longer are measurable** (~4 updates per
+    500 ms window, ~8/s), with 1 s and beyond comfortable. **100 ms is not**
+    — the median inter-update interval (123 ms) exceeds the horizon, so most
+    100 ms labels would resolve against the entry mid itself and collapse
+    toward zero by construction. From l2Book alone only 30 s and longer
+    would have been measurable, which is exactly why bbo had to be plumbed.
+    Trades (BTC p50 0 ms, p90 1,497 ms) are ample for trade-derived features
+    at every horizon. Net: Hyperliquid can test 500 ms -> 900 s, losing only
+    the shortest horizon — and it is the venue whose 1.5/4.5 bps fees make
+    the cost side of this comparison worth running at all.
+  - No Hyperliquid results computed: only partial days exist.
+  - 147 tests (7 new); make lint / make typecheck / make test clean; all
+    three recorders confirmed alive.
