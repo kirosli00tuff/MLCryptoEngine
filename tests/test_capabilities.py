@@ -197,25 +197,33 @@ def test_bbo_drives_touch_features_and_the_slow_book_never_overrides_it() -> Non
     assert after_book["micro_minus_mid"] == from_bbo["micro_minus_mid"]
 
 
-def test_cme_contracts_get_separate_capability_entries_from_measurement() -> None:
-    """MES and MBT share a venue, feed, schema and clock but differ by 39x in
-    book rate and 319x in trade count (measured 2026-07-31), so one venue-wide
-    entry would credit the thin contract with the liquid one's resolution."""
+def test_cme_contracts_carry_the_full_library_on_mid_life_measurement() -> None:
+    """Re-measured 2026-08-02 on a mid-life front month (2026-07-15, 16 days
+    to MBTN6 expiry). The first measurement landed on MBTN6's expiry day and
+    understated MBT by ~11x; corrected, MES/MBT is 2.49x on book events and
+    MBT book intervals are below 100 ms 96.38% of the time, so the
+    conservative restriction is removed. ADR-018 supersedes ADR-016."""
     mes = supported_features("cme", "MES")
     mbt = supported_features("cme", "MBT")
 
-    assert mes == ALL_FEATURES, "MES: 198 book updates/s, 26 ms median trade gap"
-    assert mbt < mes, "MBT must be credited with strictly less than MES"
-    assert (mes - mbt) >= SHORT_TRADE_WINDOW_FEATURES
-    # MBT trades a median of 10.3 s apart: a 1 s or 5 s trade window is empty
-    # in most samples, so those features would be a constant zero.
+    assert mes == ALL_FEATURES, "MES: 128.6 book updates/s, 50 ms median trade gap"
+    assert mbt == ALL_FEATURES, "MBT mid-life: 51.6 book updates/s, 0.5 ms median book gap"
+    # The short trade windows the expiry-day reading removed are back: MBT
+    # trades a median of 1 s apart, not 10.3 s.
     for feature in SHORT_TRADE_WINDOW_FEATURES:
-        with pytest.raises(UnsupportedFeatureError, match="not supported"):
-            require_supported("cme", feature, symbol="MBT")
+        require_supported("cme", feature, symbol="MBT")
         require_supported("cme", feature, symbol="MES")
-    # Book-derived features survive on MBT: p50 book interval is 1.3 ms.
     for feature in ("spread_bps", "micro_minus_mid", "qimb_best", "rvol_30s"):
         require_supported("cme", feature, symbol="MBT")
+
+
+def test_the_short_trade_window_category_survives_for_future_thin_contracts() -> None:
+    """Removing MBT's restriction must not delete the mechanism: the next
+    genuinely thin contract needs this category still available."""
+    assert SHORT_TRADE_WINDOW_FEATURES <= ALL_FEATURES
+    assert {"signed_vol_1s", "signed_vol_5s", "trade_count_5s"} <= SHORT_TRADE_WINDOW_FEATURES
+    thin = ALL_FEATURES - SHORT_TRADE_WINDOW_FEATURES
+    assert thin < ALL_FEATURES and "spread_bps" in thin
 
 
 def test_contract_key_normalizes_symbology_so_rolls_do_not_change_capabilities() -> None:
@@ -238,7 +246,10 @@ def test_venue_lookup_still_works_and_unmeasured_contracts_fall_back() -> None:
     assert supported_features("kraken", "BTC/USD") == supported_features("kraken")
 
 
-def test_engine_applies_the_contract_entry_not_the_venue_entry() -> None:
+def test_engine_resolves_capabilities_per_contract() -> None:
+    """Both CME contracts now carry the full library, so the engine must
+    populate the short trade windows for each. The per-contract lookup
+    mechanism itself is exercised by the matrix tests above."""
     mbt = FeatureEngine("cme", "MBT")
     mes = FeatureEngine("cme", "MES")
     for i in range(3):
@@ -247,17 +258,12 @@ def test_engine_applies_the_contract_entry_not_the_venue_entry() -> None:
             engine.on_event(_book_event("cme", ts))
             engine.on_event(StreamEvent("cme", "x", ts + 1, ts, None, Trade(100.5, 1.0, "buy")))
 
-    # Compute inside the 5 s trade window so the short-window features are
-    # genuinely populated on MES — otherwise both contracts would show None
-    # and the test would pass for the wrong reason.
+    # Inside the 5 s trade window so the short-window features are populated.
     t = BASE_NS + 3_000_000_000
-    mbt_features = mbt.compute(t)
-    mes_features = mes.compute(t)
-
-    for name in SHORT_TRADE_WINDOW_FEATURES:
-        assert mbt_features[name] is None, f"{name} must be nulled on the thin contract"
-        assert mes_features[name] is not None, f"{name} must survive on MES"
-    assert mbt_features["signed_vol_30s"] is not None, "the 30 s window still holds trades"
+    for features in (mbt.compute(t), mes.compute(t)):
+        for name in SHORT_TRADE_WINDOW_FEATURES:
+            assert features[name] is not None, f"{name} must be populated on both contracts"
+        assert features["qimb_best"] is not None
 
 
 def test_undeclared_venue_cannot_even_construct_an_engine() -> None:

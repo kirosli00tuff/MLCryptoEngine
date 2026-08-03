@@ -637,3 +637,62 @@ ungated. The ledger was seeded with those actual charges rather than started
 at zero, so the cap reflects real spend. The lesson is the ordering one:
 a guardrail that arrives after the action it guards is documentation, not a
 guardrail.
+
+---
+
+## ADR-018: MBT carries the full feature library — supersedes ADR-016
+
+**Date:** 2026-08-02 · **Status:** accepted · **Supersedes:** ADR-016
+
+**Context.** ADR-016 restricted MBT's capability entry after measuring
+380,358 book updates against MES's 14,989,106 — a 39x gap that made MBT look
+unusable for short-horizon work. That measurement was taken on 2026-07-31,
+which was MBTN6's **expiry day**: the contract settled against the CF Bitcoin
+Reference Rate around 15:00 UTC, its book stopped updating entirely at
+15:18:41Z, and 5.99 h of a 21 h session had no data at all. The figure
+described a contract in its final hours.
+
+The confound was not obvious from the data alone. What made it look like a
+liquidity signal was that it *arrived as a price signal*: MBT's day cost
+$0.0652 against MES's $2.5686, and cost is proportional to billable bytes,
+so cheapness read as thinness. Both readings fit the numbers; only symbology
+resolution — `MBT.c.0` -> instrument_id 42101132 -> raw symbol `MBTN6`,
+expiring that Friday — distinguished them.
+
+**Decision.** Re-measured on a mid-life front month: **2026-07-15**, a
+Wednesday with **16 days to MBTN6 expiry** and a full 23.00 h scheduled-open
+session, same date for MES so the comparison is like-for-like. Corrected:
+
+| | MES (MESU6) | MBT (MBTN6) |
+|---|---|---|
+| book updates | 10,649,955 (128.6/s) | **4,275,234 (51.6/s)** |
+| book interval p50 / p90 | 0.1 ms / 50 ms | **0.5 ms / 50 ms** |
+| trades | 360,571 | **15,933** |
+| trade interval p50 / p90 | 50 ms / 500 ms | **1,000 ms / 30,000 ms** |
+| book intervals < 100 ms | 98.28% | **96.38%** |
+
+**MES/MBT is 2.49x on book events, not 39x.** MBT's book updates fall below
+100 ms 96.38% of the time, so every book-derived feature is supported at
+every horizon in the set. Its trade stream is genuinely thinner — 22.6x
+fewer trades, median 1 s apart against MES's 50 ms — but the windows are
+populated, not empty: 55.7% of trade gaps fall under 1 s and 80.2% under
+5 s. A zero in a 1 s signed-volume window on MBT is a true observation of a
+quiet second, not the fabricated zero of a dead contract. **The
+`SHORT_TRADE_WINDOW_FEATURES` restriction on MBT is removed; both contracts
+carry the full library.** The category itself is kept — the next genuinely
+thin contract will need it — and a test pins that it still exists.
+
+**Consequences.** MBT is a viable research instrument, which materially
+changes the backfill economics ADR-016 reasoned about: at $0.7525/day
+mid-life (not the $0.067 the expiry day suggested) MBT is ~$190/yr against
+MES at ~$573/yr on the same session — **~3x cheaper, not 47x**, and usable.
+Choosing between them is now a real decision rather than a foregone one.
+
+**The rule this establishes, beyond MBT:** *a single-day measurement of an
+expiring instrument measures the expiry, not the instrument.* Any contract
+measurement must record its distance to expiry alongside the numbers, and
+any capability decision resting on one session must state which session.
+ADR-016's general principle — measured resolution outranks price — survives
+and is strengthened: here price was precisely the misleading signal, and
+only measurement on a representative day corrected it. ADR-016 is left
+unedited as the record of how that misreading happened.

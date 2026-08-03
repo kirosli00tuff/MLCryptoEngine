@@ -19,18 +19,81 @@ actually provides:
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass, field
 
 from data.config import AppConfig
 from data.databento.adapter import NULL_PRICE
 from data.databento.ingest import record_to_dict, vendor_path
 from data.databento.session import closed_windows_ns, open_ns
+from research.labels.fixed_horizon import DEFAULT_HORIZONS_MS
 
 NS_PER_S = 1_000_000_000
 NS_PER_MS = 1_000_000
 # A quiet stretch longer than this outside a scheduled halt is reported as a
 # coverage anomaly worth a human look, not silently absorbed.
 QUIET_ANOMALY_MS = 60_000
+
+
+class IntervalStats:
+    """Bounded inter-event interval statistics.
+
+    Measurability of a label horizon depends on how often a fresh
+    observation exists inside that window, so the counters are keyed on the
+    label horizons themselves. Percentiles come from a log-spaced histogram
+    rather than a retained list — a 15-million-element float list is exactly
+    the unbounded pattern that OOM-killed Phase A validation.
+    """
+
+    BOUNDS_MS: tuple[float, ...] = (
+        0.01,
+        0.05,
+        0.1,
+        0.5,
+        1.0,
+        5.0,
+        10.0,
+        50.0,
+        100.0,
+        500.0,
+        1_000.0,
+        5_000.0,
+        30_000.0,
+        300_000.0,
+    )
+
+    def __init__(self, horizons_ms: tuple[int, ...] = DEFAULT_HORIZONS_MS) -> None:
+        self.horizons_ms = horizons_ms
+        self.count = 0
+        self.max_ms = 0.0
+        self._buckets = [0] * (len(self.BOUNDS_MS) + 1)
+        self.below_horizon: dict[int, int] = dict.fromkeys(horizons_ms, 0)
+
+    def add(self, delta_ms: float) -> None:
+        self.count += 1
+        if delta_ms > self.max_ms:
+            self.max_ms = delta_ms
+        self._buckets[bisect_left(self.BOUNDS_MS, delta_ms)] += 1
+        for horizon in self.horizons_ms:
+            if delta_ms < horizon:
+                self.below_horizon[horizon] += 1
+
+    def percentile_ms(self, fraction: float) -> float:
+        """Upper bound of the bucket containing the requested percentile."""
+        if self.count == 0:
+            return float("nan")
+        target = fraction * self.count
+        cumulative = 0
+        for index, n in enumerate(self._buckets):
+            cumulative += n
+            if cumulative >= target:
+                return self.BOUNDS_MS[index] if index < len(self.BOUNDS_MS) else self.max_ms
+        return self.max_ms
+
+    def share_below(self, horizon_ms: int) -> float:
+        if self.count == 0:
+            return float("nan")
+        return self.below_horizon.get(horizon_ms, 0) / self.count
 
 
 @dataclass
@@ -63,6 +126,10 @@ class VendorDayReport:
     scheduled_open_ns: int = 0
     quiet_windows: list[tuple[int, int]] = field(default_factory=list)
     failure_reasons: list[str] = field(default_factory=list)
+    # Inter-event interval statistics, accumulated in the same single pass:
+    # a log-spaced histogram plus one counter per label horizon, never a
+    # 15-million-element list.
+    intervals: IntervalStats = field(default_factory=IntervalStats)
 
     @property
     def coverage_pct(self) -> float:
@@ -115,6 +182,7 @@ def validate_vendor_day(
             if recv < prev_recv:
                 report.out_of_order_recv += 1
             else:
+                report.intervals.add((recv - prev_recv) / NS_PER_MS)
                 # Time between consecutive events counts toward coverage only
                 # for the portion when the exchange was scheduled open.
                 span = recv - prev_recv

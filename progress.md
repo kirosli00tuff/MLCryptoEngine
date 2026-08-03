@@ -734,3 +734,80 @@ both venues.
   - **Budget deliberately left unspent:** $21.7946 of $25 remains. Buying a
     second MBT day to settle the expiry question was the obvious temptation
     and is explicitly out of scope for this stage.
+
+- 2026-08-02 — Stage C.4: MBT re-measured on a mid-life contract. **The
+  C.3 sparsity finding was wrong by an order of magnitude and is withdrawn.**
+  - **Contract chosen:** `MBT.c.0` and `MES.c.0` on **2026-07-15**
+    (Wednesday). Symbology resolved `MBT.c.0` -> instrument_id 42101132 ->
+    **MBTN6**, expiring 2026-07-31, so **16 days to expiry** — clear of the
+    two-week bar and clear of the back-month trap (MBTN6 is the front month,
+    not a thin deferred contract; `.c.0` returns the same id on 2026-07-08,
+    07-15 and 07-22). `MES.c.0` -> 42003239 -> **MESU6**, expiring
+    2026-09-18, so 65 days out. Same date for both, 23.00 h scheduled-open
+    (one maintenance halt, no weekend).
+  - **Spend, gated:** priced first, all four requests cleared the cost gate.
+    MES mbp-10 $1.8250 (3,919,183,440 B billable -> 257,740,072 B on disk,
+    15.2x) · MES trades $0.4513 (17,307,408 -> 6,535,166, 2.6x) · MBT
+    mbp-10 $0.7326 (1,573,286,112 -> 133,552,415, 11.8x) · MBT trades
+    $0.0199 (764,784 -> 341,907, 2.2x). **Total $3.0289**; estimate matched
+    billable exactly, as before. Cumulative **$6.2343 of $25.00 spent,
+    $18.7657 remaining, 8 requests**. Note the stage prompt expected "well
+    under one dollar" — actual is 3x that because MES mbp-10 alone is $1.83;
+    the gate cleared it and it sits well inside the cap.
+  - **Validation verdicts (corrected coverage metric, scheduled-closure
+    aware):**
+    - **MBT mbp-10 — PASS.** 4,275,234 book events over 23.00 h
+      (**51.6/s**), sequence checks 4,275,234 with **0 regressions**, 0
+      out-of-order, **0 crossed, 0 locked**, **coverage 100.000%**, zero
+      quiet windows. Checksums and snapshot cadence n/a, not zero.
+    - **MES mbp-10 — FAIL, on one criterion.** 10,649,955 events
+      (**128.6/s**), 0 sequence regressions, 0 out-of-order, coverage
+      100.000%, zero quiet windows — but **193 crossed book events** (plus
+      14 locked) out of 10.6M, i.e. 0.0018%. Reported, not suppressed: the
+      harness is right to refuse certification, and whether transient
+      crossed tops are legitimate in CME MBP-10 (implied vs outright
+      liquidity is the usual explanation) needs a deliberate decision rather
+      than a quietly loosened threshold. **No data was altered and no check
+      was relaxed to make it pass.**
+  - **Measured event rates, both contracts, 2026-07-15:**
+    - **MES**: book p50 **0.1 ms**, p90 50 ms, max 2,700,023 ms; trades
+      360,571, interval p50 **50 ms**, p90 500 ms.
+    - **MBT**: book p50 **0.5 ms**, p90 50 ms, max 126,485 ms; trades
+      15,933, interval p50 **1,000 ms**, p90 30,000 ms.
+  - **Share of intervals below each label horizon (book / trades):**
+    100 ms: MES 98.28% / 69.83%, **MBT 96.38% / 41.28%** ·
+    500 ms: MES 99.84% / 90.42%, MBT 99.28% / 49.38% ·
+    1 s: MES 99.97% / 94.87%, MBT 99.74% / 55.67% ·
+    5 s: MES 100.00% / 99.44%, MBT 99.99% / 80.18% ·
+    30 s: MES 100% / 100%, MBT 100% / 95.86% ·
+    60 s / 300 s / 900 s: MBT trades 98.44% / 99.94% / 100%.
+  - **The ratio C.3 got wrong: MES/MBT = 2.49x on book events** (10,649,955
+    vs 4,275,234) and **22.6x on trades** (360,571 vs 15,933), against the
+    **39.4x / 319x** measured on the expiry day. MBT carries **11.2x more
+    book events and 11.2x more trades** on a mid-life day than on its expiry
+    day, and its median trade interval is **10x faster** (1.0 s vs 10.3 s).
+  - **Capability matrix revised on evidence:** the
+    `SHORT_TRADE_WINDOW_FEATURES` restriction on MBT is **removed** — both
+    CME contracts now carry the full library. MBT's book supports every
+    horizon (96.38% of intervals under 100 ms); its 1 s trade window is
+    thinner than MES's but populated (55.7% of gaps under 1 s), and a zero
+    there is a true quiet second rather than a dead contract's fabricated
+    zero. The category is retained for the next genuinely thin contract,
+    pinned by a test. **ADR-018 supersedes ADR-016**, which is left unedited
+    as the record of how a price signal was misread as a liquidity signal.
+  - **Revised backfill economics:** MBT costs **$0.7525/day** mid-life, not
+    the $0.067 the expiry day implied; MES **$2.2763/day** on the same
+    session. Over ~252 sessions that is roughly **$190/yr MBT vs $573/yr
+    MES — 3x apart, not 47x**, and MBT is usable. Which to backfill is now a
+    real choice.
+  - **Standing rule added to CLAUDE.md** after a third instance of the same
+    defect: any computation over time intervals unions overlapping windows
+    before summing, reusing `merge_windows` rather than reimplementing it,
+    and a new interval calculation is expected to have a test containing at
+    least one overlapping pair. The three instances: Stage 1.5 gap
+    accounting, Stage 1.6 span clamp, Stage C.3 closure windows.
+  - Interval statistics moved out of a scratchpad script into
+    `IntervalStats` in `data/databento/validate.py`, accumulated in the same
+    single pass as validation: a log-spaced histogram plus one counter per
+    label horizon, so 15M intervals cost fixed memory (4 tests, one pinning
+    the bound).

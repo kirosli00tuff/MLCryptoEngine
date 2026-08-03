@@ -145,6 +145,32 @@ tests/           Pytest suite; tests/fixtures/ holds small recorded exchange mes
 - Generated types under desktop/src/lib/generated/ are never edited by hand;
   regenerate with `make types`.
 
+## Time-interval arithmetic: union before summing
+
+**Any computation over time intervals in this project unions overlapping
+windows before summing them.** Never add durations from a list of windows
+that might overlap — reuse `data.recorder.gaps.merge_windows`, do not
+reimplement the arithmetic, and do not hand-roll a "sort and add" that looks
+equivalent.
+
+Three separate defects have come from violating this, each found only after
+it had produced a wrong number in a report:
+
+1. **Stage 1.5** — gap accounting summed every overlapping reconnect record,
+   turning 28 duplicate records into 32 seconds of phantom downtime.
+2. **Stage 1.6** — gap windows were summed at full duration instead of their
+   intersection with the recorded span, counting time before recording began.
+3. **Stage C.3** — CME closure windows were summed without merging, so the
+   Friday weekly close and Sunday's own maintenance halt double-counted an
+   hour of scheduled-closed time.
+
+The pattern is always the same and always plausible-looking: a list of
+windows, a `sum()`, and no union. It never raises; it silently returns a
+number that is too large. A new interval calculation is expected to call
+`merge_windows` and to have a test that includes at least one overlapping
+pair — if the test only uses disjoint windows, it does not exercise the bug
+this rule exists to prevent.
+
 ## Git commit conventions
 
 Conventional commits: `<type>: <description>` where type is one of

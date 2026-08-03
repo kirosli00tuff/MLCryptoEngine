@@ -159,9 +159,22 @@ CAPABILITIES: dict[str, frozenset[str]] = {
 #   MBT     380,358 book updates (5.0/s),  p50 1.273 ms, p90 307 ms;
 #          1,426 trades, p50 interval 10,292 ms (10.3 s), longest quiet
 #          spell 5.7 h -> short trade windows are empty by construction.
+# Re-measured 2026-08-02 on a MID-LIFE front month (2026-07-15, MBTN6 with
+# 16 days to expiry) after the first measurement turned out to have been
+# taken on MBTN6's expiry day. Corrected numbers over 23.00 h scheduled-open:
+#   MES (MESU6)  10,649,955 book updates (128.6/s), p50 0.1 ms, p90 50 ms;
+#                360,571 trades, p50 interval 50 ms.
+#   MBT (MBTN6)   4,275,234 book updates (51.6/s), p50 0.5 ms, p90 50 ms;
+#                 15,933 trades, p50 interval 1,000 ms.
+# MES/MBT is 2.49x on book events, not the 39x the expiry day suggested.
+# MBT book intervals fall below 100 ms 96.38% of the time, so every
+# book-derived feature is supported at every horizon; its trade windows are
+# thinner than MES but populated (55.7% of trade gaps < 1 s, 80.2% < 5 s) —
+# a quiet market, not an absent one, and a zero there is a true observation.
+# Both contracts therefore carry the full library. ADR-018 supersedes ADR-016.
 CONTRACT_CAPABILITIES: dict[tuple[str, str], frozenset[str]] = {
     ("cme", "MES"): ALL_FEATURES,
-    ("cme", "MBT"): ALL_FEATURES - SHORT_TRADE_WINDOW_FEATURES,
+    ("cme", "MBT"): ALL_FEATURES,
 }
 
 # Venues whose credited features depend on a channel the parser must supply.
