@@ -8,6 +8,7 @@ days already on disk.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -126,7 +127,7 @@ def test_stored_mbt_rolls_are_monthly_across_the_backfill_range() -> None:
         pytest.skip("roll boundaries not yet resolved on this machine")
 
     assert "2026-06-27" in [b.date for b in stored], "the MBTN6 roll between the stored days"
-    for earlier, later in zip(stored, stored[1:], strict=False):
+    for earlier, later in pairwise(stored):
         days = (later.ts_ns - earlier.ts_ns) / (86_400 * NS_PER_S)
         assert 20 <= days <= 40, f"{earlier.date} -> {later.date} is {days:.0f} days"
         assert earlier.to_instrument == later.from_instrument, "contiguous splice chain"

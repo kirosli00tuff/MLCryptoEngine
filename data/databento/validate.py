@@ -21,10 +21,11 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from data.config import AppConfig
 from data.databento.adapter import NULL_PRICE
-from data.databento.ingest import record_to_dict, vendor_path
+from data.databento.ingest import range_path, record_to_dict, vendor_path
 from data.databento.rolls import RollBoundary, roll_windows_ns
 from data.databento.session import closed_windows_ns, no_match_windows_ns, open_ns
 from data.recorder.gaps import merge_windows
@@ -298,3 +299,123 @@ def validate_vendor_day(
             f"coverage {report.coverage_pct:.2f}% of scheduled-open time < 99%"
         )
     return report
+
+
+@dataclass
+class _DayState:
+    """Per-day accumulator for a single streaming pass over a range file."""
+
+    closed: list[tuple[int, int]]
+    no_match: list[tuple[int, int]]
+    prev: int | None = None
+    last_seq: int | None = None
+
+
+def validate_vendor_range(
+    cfg: AppConfig,
+    start: str,
+    end: str,
+    symbol: str,
+    schema: str = "mbp-10",
+    rolls: list[RollBoundary] | None = None,
+) -> dict[str, VendorDayReport]:
+    """Score every UTC day inside one stored range file, in a single pass.
+
+    Streams the month once and accumulates per-day reports, so a 44 GB month
+    costs one read and bounded memory. Each day is scored on exactly the
+    criteria :func:`validate_vendor_day` uses — scheduled-open coverage,
+    sequence continuity, crossed/locked split by no-match window, and roll
+    exclusion — so a range verdict and a day verdict never disagree.
+    """
+    import databento  # lazy
+
+    path = range_path(cfg, start, end, symbol, schema)
+    if not path.is_file():
+        raise FileNotFoundError(f"no vendor range file at {path}")
+
+    roll_ex = roll_windows_ns(rolls or [], FEATURE_LOOKBACK_NS, MAX_LABEL_HORIZON_NS)
+    reports: dict[str, VendorDayReport] = {}
+    per_day: dict[str, _DayState] = {}
+
+    store = databento.DBNStore.from_file(path)
+    for rec in store:
+        raw = record_to_dict(rec)
+        recv = int(raw["ts_recv"])
+        date = datetime.fromtimestamp(recv / 1e9, tz=UTC).strftime("%Y-%m-%d")
+        if date not in reports:
+            reports[date] = VendorDayReport(venue="cme", symbol=symbol, date=date, schema=schema)
+            reports[date].scheduled_open_ns = open_ns(date)
+            day_start = _date_to_ns(date)
+            day_end = day_start + 86_400 * NS_PER_S
+            closed = closed_windows_ns(date)
+            in_day = [
+                (max(lo, day_start), min(hi, day_end))
+                for lo, hi in roll_ex
+                if min(hi, day_end) > max(lo, day_start)
+            ]
+            merged = merge_windows(in_day)
+            reports[date].roll_windows = len(merged)
+            reports[date].roll_excluded_open_ns = sum(
+                (hi - lo) - _overlap_ns(lo, hi, closed) for lo, hi in merged
+            )
+            per_day[date] = _DayState(closed=closed, no_match=no_match_windows_ns(date))
+        report = reports[date]
+        state = per_day[date]
+        report.events += 1
+        if report.first_ns is None:
+            report.first_ns = recv
+        report.last_ns = recv
+
+        prev_recv = state.prev
+        if prev_recv is not None:
+            if recv < prev_recv:
+                report.out_of_order_recv += 1
+            else:
+                span = recv - prev_recv
+                report.intervals.add(span / NS_PER_MS)
+                closed_part = _overlap_ns(prev_recv, recv, state.closed)
+                open_part = span - closed_part
+                if span > QUIET_ANOMALY_MS * NS_PER_MS and closed_part < span:
+                    report.quiet_windows.append((prev_recv, recv))
+                    report.quiet_open_ns += open_part
+                else:
+                    report.covered_open_ns += open_part
+        state.prev = recv
+
+        seq = raw.get("sequence")
+        if seq is not None:
+            report.sequence_checks = (report.sequence_checks or 0) + 1
+            last = state.last_seq
+            if last is not None and int(seq) < last:
+                report.sequence_regressions = (report.sequence_regressions or 0) + 1
+            state.last_seq = int(seq)
+
+        levels = raw.get("levels") or []
+        if levels:
+            bid = levels[0].get("bid_px", NULL_PRICE)
+            ask = levels[0].get("ask_px", NULL_PRICE)
+            if bid != NULL_PRICE and ask != NULL_PRICE:
+                if bid > ask:
+                    report.crossed += 1
+                    if any(lo <= recv < hi for lo, hi in state.no_match):
+                        report.crossed_explained += 1
+                elif bid == ask:
+                    report.locked += 1
+
+    for report in reports.values():
+        if report.sequence_regressions is None and report.sequence_checks:
+            report.sequence_regressions = 0
+        unexplained = report.crossed - report.crossed_explained
+        if unexplained:
+            report.failure_reasons.append(
+                f"{unexplained} crossed book events outside any no-match window"
+            )
+        if report.out_of_order_recv:
+            report.failure_reasons.append(
+                f"{report.out_of_order_recv} events out of order on ts_recv"
+            )
+        if report.scheduled_open_ns > 0 and report.coverage_pct < 99.0:
+            report.failure_reasons.append(
+                f"coverage {report.coverage_pct:.2f}% of scheduled-open time < 99%"
+            )
+    return reports

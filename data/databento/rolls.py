@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 
 import orjson
@@ -75,7 +76,7 @@ def resolve_rolls(
     )
     intervals = sorted(response["result"].get(symbol, []), key=lambda e: str(e["d0"]))
     boundaries: list[RollBoundary] = []
-    for previous, current in zip(intervals, intervals[1:], strict=False):
+    for previous, current in pairwise(intervals):
         if str(previous["s"]) == str(current["s"]):
             continue  # contiguous intervals, same instrument: not a roll
         boundaries.append(

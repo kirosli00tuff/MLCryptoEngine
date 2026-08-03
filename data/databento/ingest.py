@@ -180,6 +180,43 @@ def estimate_cost(cfg: AppConfig, date: str, symbol: str, schema: str) -> tuple[
     return float(cost), int(billable)
 
 
+def _download_to_file(
+    client: Any, target: Path, *, symbol: str, schema: str, start: str, end: str
+) -> None:
+    """Stream one vendor response straight to ``target``.
+
+    ``timeseries.get_range`` without ``path`` builds the entire response in
+    memory and only then writes it. That is survivable for a day and fatal
+    for a month: Stage C.7's June MBP-10 fetch (76.3 GB billable) grew to
+    9.1 GB resident and was OOM-killed on a 14 GiB machine, after its cost
+    had already been committed to the ledger. Passing ``path`` streams the
+    body to disk, so peak memory is a chunk rather than the whole month.
+
+    The bytes land on a ``.partial`` sibling and are renamed only once the
+    vendor call has returned. A process killed mid-download therefore leaves
+    an obviously-incomplete ``.partial``, never a truncated file at the real
+    path that a later run would take for a finished download.
+    """
+    partial = target.parent / (target.name + ".partial")
+    partial.unlink(missing_ok=True)
+    try:
+        client.timeseries.get_range(
+            dataset=DATASET,
+            symbols=[symbol],
+            stype_in=STYPE_CONTINUOUS,
+            schema=schema,
+            start=start,
+            end=end,
+            path=partial,
+        )
+    except BaseException:
+        # The charge is already committed; leaving a half-file behind would
+        # only make the next run harder to reason about.
+        partial.unlink(missing_ok=True)
+        raise
+    partial.replace(target)
+
+
 def fetch_day(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
     """Price, gate, commit, then fetch one contract-day-schema of GLBX.MDP3.
 
@@ -214,15 +251,14 @@ def fetch_day(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
 
     target.parent.mkdir(parents=True, exist_ok=True)
     client = databento.Historical(cfg.require_databento_key())
-    data = client.timeseries.get_range(
-        dataset=DATASET,
-        symbols=[symbol],
-        stype_in=STYPE_CONTINUOUS,
+    _download_to_file(
+        client,
+        target,
+        symbol=symbol,
         schema=schema,
         start=date,
         end=_next_day(date),
     )
-    data.to_file(target)
     return target
 
 
@@ -231,3 +267,66 @@ def _next_day(date: str) -> str:
 
     day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=UTC)
     return (day + timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+def range_path(cfg: AppConfig, start: str, end: str, symbol: str, schema: str) -> Path:
+    """Immutable vendor location for one contract-range-schema DBN file."""
+    safe = symbol.replace(".", "_")
+    return vendor_dir(cfg) / DATASET / f"range={start}_{end}" / f"{safe}.{schema}.dbn.zst"
+
+
+def fetch_range(cfg: AppConfig, start: str, end: str, symbol: str, schema: str) -> Path:
+    """Price, gate, commit, then fetch ``[start, end)`` for one contract-schema.
+
+    Same contract as :func:`fetch_day` — priced first, checked against the
+    cumulative on-disk budget, committed before the bytes are requested, and
+    refusing to overwrite. Buying a month per request rather than a day means
+    a failure costs one month, not the whole range.
+    """
+    import databento  # lazy
+
+    target = range_path(cfg, start, end, symbol, schema)
+    if target.exists():
+        raise FileExistsError(f"{target} already exists — vendor raw is immutable")
+
+    client = databento.Historical(cfg.require_databento_key())
+    estimate = float(
+        client.metadata.get_cost(
+            dataset=DATASET,
+            symbols=[symbol],
+            stype_in=STYPE_CONTINUOUS,
+            schema=schema,
+            start=start,
+            end=end,
+        )
+    )
+    billable = int(
+        client.metadata.get_billable_size(
+            dataset=DATASET,
+            symbols=[symbol],
+            stype_in=STYPE_CONTINUOUS,
+            schema=schema,
+            start=start,
+            end=end,
+        )
+    )
+    headroom = check_affordable(cfg, estimate)
+    commit(
+        cfg,
+        dataset=DATASET,
+        symbol=symbol,
+        schema=schema,
+        date=f"{start}..{end}",
+        usd=estimate,
+        billable_bytes=billable,
+        note="C.7 four-month MBT backfill",
+    )
+    print(
+        f"  priced {symbol} {schema} {start}..{end}: ${estimate:.4f} "
+        f"({billable:,} B) · ${headroom:.4f} left after",
+        flush=True,
+    )
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _download_to_file(client, target, symbol=symbol, schema=schema, start=start, end=end)
+    return target

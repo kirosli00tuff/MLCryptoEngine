@@ -822,3 +822,101 @@ while removing an error that would otherwise be invisible and systematic.
 The alternative of trading outright contracts instead of a continuous series
 removes rolls entirely but fragments history at every expiry; that trade-off
 is deferred until there is a reason to make it.
+
+## ADR-021: The backfill is four months, not six — and shipped as two
+
+**Date:** 2026-08-02 · **Status:** accepted
+
+**Context.** Stage C.6 priced a six-month MBT backfill at **$159.66** against
+a ~$95 expectation. The overshoot was not a pricing surprise but a modelling
+error: C.5 had projected from a measured per-day cost multiplied by 21
+trading days a month, an equity convention. CME crypto futures run Sunday
+17:00 CT to Friday 16:00 CT, so a month bills across ~30 calendar days, not
+21. The per-day rate was roughly right; the days-per-month multiplier was
+wrong by 40%.
+
+The cap had just been raised from $25 to $120 for this purchase, and at $120
+it **refused the six-month request**. That refusal was the gate working: it
+caught a real estimation error before the money moved. Six months was
+affordable only by raising the cap a second time, immediately after the cap
+had demonstrated its value by stopping something. Raising a limit *because*
+it fired converts a control into a formality — the number stops meaning
+anything if it yields every time it binds.
+
+**Decision.** Buy **four months (2026-04..07) at $97.08** and leave the cap
+at $120. Four months fits with $16.69 to spare and supports two walk-forward
+folds at 3-month train / 1-month test instead of three. The trades schema
+stays: dropping it saves $4.10 of a $97 purchase and costs every
+trade-derived feature, which is not an economy. Months are bought one at a
+time so a failure costs one month, not the range.
+
+**What actually happened.** April and May were delivered and validated. June
+was priced, committed, and **OOM-killed mid-download** by a defect in our own
+fetch path (ADR-022) after its $35.51 had been charged to the ledger. With
+that charge recorded, $38.66 remained against $57.48 needed, so the range
+could not be finished without raising the cap the decision above exists to
+protect. **The stage stopped at two months rather than raise it.** July was
+never attempted.
+
+**Consequences.** The research range is April–May 2026: 224 million MBP-10
+events over 989 hours of scheduled-open time, two consecutive months of one
+season. That is thinner than the two folds this decision was sized for, and
+the Phase B honesty rule binds harder, not softer, for it. Resuming June and
+July requires first reconciling the June charge against the Databento
+invoice — the client exposes no usage endpoint, so only the portal can say
+whether the killed stream was billed. If it was not, reversing that entry
+makes all four months affordable under the unchanged cap.
+
+**Rejected: raise the cap to ~$170 and buy six months.** The reason the
+number existed was to stop exactly this. A cap that is raised whenever it
+binds is documentation, not a control — the same failure ADR-017 recorded
+when a guardrail arrived after the action it guarded.
+
+## ADR-022: Vendor downloads stream to disk; the ledger records intent, not delivery
+
+**Date:** 2026-08-02 · **Status:** accepted
+
+**Context.** The Databento client's `timeseries.get_range()` returns a
+`DBNStore` that, called without `path`, materialises the **entire** response
+in memory before any of it is written. A day of MBT is ~140 MB and hides
+this. A month is not: Stage C.7's June MBP-10 request (76.3 GB billable)
+reached 9.1 GB resident on a 14 GiB machine and was killed by the kernel —
+`Out of memory: Killed process 4144248 (python3) anon-rss:9105252kB` — after
+its $35.51 had already been committed to the spend ledger. Memory
+consumption scaled with the size of the *purchase*, so the most expensive
+request was the one guaranteed to fail.
+
+Separately, this exposed an ambiguity in the ledger. ADR-017 commits the
+quoted cost **before** the request is issued, deliberately: a gate that
+records spending after the fact cannot prevent it, and a crash between
+request and record would under-count. The cost of that choice is that a
+request which is charged but never delivered leaves the ledger *over*-stating
+spend, with nothing on disk to reconcile against, and the client offers no
+usage endpoint to settle it — `metadata` has `get_cost` and
+`get_billable_size`, both pre-request estimates, and nothing that reports
+what was actually billed.
+
+**Decision.** Two rules.
+
+1. **Every vendor download streams to a path.** `get_range` is always called
+   with `path=`, never buffered and written afterward. Peak memory is a chunk,
+   independent of the size of the range bought. Both `fetch_day` and
+   `fetch_range` route through one helper so the property cannot hold in one
+   place and lapse in the other.
+
+2. **Bytes land on a `.partial` sibling and are renamed only on success.** A
+   process killed mid-download leaves an obviously-incomplete file, never a
+   truncated file at the real path. This matters because the immutability
+   guard is `target.exists()`: a truncated file at the real path would be
+   read as a finished download by every later run, and silently short data is
+   worse than absent data.
+
+**Consequences.** The ledger is explicitly a record of **intent to spend**,
+not of delivered bytes, and must be read that way. It is conservative by
+construction — it can over-count but never under-count — and the direction of
+that error is the safe one for a control whose job is to refuse. Where the
+two diverge, the vendor invoice is authoritative, and reconciliation is a
+manual step because the vendor gives us no programmatic way to do it. A
+charge with no file on disk is therefore a **finding requiring operator
+reconciliation before retry**, never something a script may assume it can
+re-issue: the gate cannot detect a double-spend it has already recorded.

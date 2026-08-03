@@ -963,3 +963,151 @@ both venues.
     number; the gate stayed in force and refused correctly.
   - **Budget: $6.2343 spent of $120.00, $113.7657 remaining. This stage
     bought no data.**
+
+## 2026-08-02 — Stage C.7: four-month MBT backfill, stopped at two months by an OOM in our own fetch path
+
+**Outcome: partial. April and May 2026 are bought and validated. June was
+charged and never delivered; July was never attempted. The range cannot be
+completed under the $120 cap as the ledger now stands, and the cap was not
+raised.**
+
+- **Repricing (Task 1) reproduced C.6 exactly.** MBT.c.0 mbp-10 + trades:
+  2026-04 $21.1582 · 2026-05 $18.4347 · 2026-06 $36.1880 · 2026-07 $21.2955
+  = **$97.0764**, against C.6's $97.08 — a $0.0036 drift across sessions.
+  June is a genuine 73% outlier (76.3 GB billable vs ~44 GB either side),
+  not noise to average away.
+
+- **Estimates against actuals, per month:**
+
+  | month | quoted | charged | delivered | on disk |
+  |---|---|---|---|---|
+  | 2026-04 | $21.1582 | $21.1582 | yes | 3,734,780,651 B + 10,486,479 B |
+  | 2026-05 | $18.4347 | $18.4347 | yes | 3,266,885,235 B + 8,504,784 B |
+  | 2026-06 | $36.1880 | **$35.5144** | **no** | — |
+  | 2026-07 | $21.2955 | $0.0000 | no | — |
+
+  Quoted and charged agree to the cent **because they are the same number**:
+  the gate commits the quote before issuing the request (ADR-017), so the
+  ledger records intent, not a vendor-confirmed charge. This is not an
+  independent reconciliation and must not be read as one. The only true
+  actual is the Databento invoice.
+
+- **Why June died: a defect in `fetch_range`, not a vendor failure.**
+  `client.timeseries.get_range()` without `path` builds the entire response
+  in memory before writing a byte. April (44 GB billable) and May (38.5 GB)
+  fit; June (76.3 GB) grew to **9.1 GB resident and was OOM-killed** at
+  19:55:43 local — `Out of memory: Killed process 4144248 (python3)
+  total-vm:16005712kB, anon-rss:9105252kB` on a 14 GiB machine. The charge
+  had already been committed. Fixed: downloads now stream via `path=` to a
+  `.partial` sibling and are renamed only on success, so a killed process
+  leaves an obviously-incomplete file rather than a truncated one at the
+  real path that a later run would trust. `fetch_day` had the same latent
+  bug and was routed through the same helper. 3 regression tests.
+
+- **The four-month range no longer fits.** Ledger: **$81.3416 spent,
+  $38.6584 remaining** of the $120 cap. Finishing needs $57.4835
+  (June $36.1880 + July $21.2955). Re-running June alone would leave $3.14
+  and the gate would then refuse July. Stopped and reported rather than
+  raising the cap or silently shortening the range.
+  **Whether June was actually billed is not determinable from the client** —
+  `metadata` exposes `get_cost` and `get_billable_size` (pre-request
+  estimates) and no usage endpoint. The stream ran ~19 minutes before the
+  kill. If the Databento portal shows June was *not* billed, reversing that
+  ledger entry restores $74.17 and the full four months fit with $16.69 to
+  spare, no cap change. **Check the portal before any retry** — the gate
+  cannot detect a double-spend it already recorded.
+
+- **Validation (Task 3), every purchased day, MBP-10:**
+
+  | | April | May |
+  |---|---|---|
+  | days scored | 26 | 27 |
+  | PASS / FAIL | 24 / 2 | 26 / 1 |
+  | events | 119,781,838 | 104,643,837 |
+  | scheduled-open | 506.00 h | 483.00 h |
+  | coverage | 97.68% | 98.76% |
+  | sequence checks / regressions | 119,781,838 / **0** | 104,643,837 / **0** |
+  | crossed (explained / unexplained) | 2,334 / **0** | 2,910 / **0** |
+  | locked | 43 | 8 |
+
+  224,425,675 events over 989.00 h scheduled-open, **zero sequence
+  regressions and zero unexplained crossed books** across both months. Every
+  crossing fell inside a scheduled no-match window, as ADR-019 predicted.
+
+- **Roll boundaries: 7 on file, 3 interior to Apr–Jul — and that is correct,
+  not a missing roll.** Splices at 04-26, 05-30, 06-27 sit between four
+  contracts (42185193 → 42013708 → 42012278 → 42101132); the 03-29 and
+  08-01 splices are the range's own edges. N contracts give N−1 interior
+  boundaries, so 4 monthly expiries yield 3. The positive evidence that
+  nothing was dropped is that the chain is contiguous — every
+  `to_instrument` equals the next `from_instrument`. A missing roll would
+  break that chain, which is what `tests/test_rolls.py` asserts.
+
+- **Finding: the roll exclusion is centred on the wrong instant, and
+  excludes none of the damage it exists to exclude.** Both coverage failures
+  are the last Friday of the month — MBT expiry:
+
+  | | 2026-04-24 | 2026-05-29 |
+  |---|---|---|
+  | coverage | 71.46% | 71.60% |
+  | silent | 5.993 h | 5.965 h |
+  | events | 413,952 | 555,756 |
+  | roll windows / excluded | 1 / **0 s** | 1 / **0 s** |
+
+  MBT settles at 16:00 London; CME closes at 16:00 CT = 22:00 London. That
+  gap is **exactly 6 hours**, matching both silences to within two minutes.
+  The `.c.0` series holds the expiring contract through settlement and does
+  not splice until the *next* session, so the C.6 exclusion window — 900 s
+  back, 60 s forward around the splice — lands in already-closed time and
+  removes **0 seconds** of the dead book. Samples on an expiry session would
+  read a settled, motionless book as if it were live. The exclusion must be
+  driven by settlement time, not splice time. Not fixed in this stage; the
+  data is on disk and the fix belongs with the feature build.
+
+- **Finding: 2026-04-03 is Good Friday** — 72.62% coverage with *no* quiet
+  window recorded, i.e. the feed simply ends early rather than going silent
+  mid-session. `data/databento/session.py` models the daily maintenance halt
+  and the weekend but has **no CME holiday calendar**, so every exchange
+  holiday will fail coverage this way.
+
+- **Finding: 2026-05-30 (Saturday) has 0 h scheduled-open and 555,474
+  events, and passes.** Coverage is `nan` on a zero denominator, and a `nan`
+  verdict is not a failure. A day with events but no scheduled-open time
+  should be scrutinised, not waved through — same family as the Stage 1.6
+  bug where the coverage metric flattered a feed with holes in it.
+
+- **Vendor condition flags did not predict validation outcomes.** The two
+  days Databento marked *degraded* — 2026-04-10 and 2026-05-24 — both passed
+  at 100.00% coverage. The six *missing* days were all Saturdays, absent
+  from the file with zero scheduled-open time, as expected. The three real
+  failures were flagged by neither.
+
+- **Exclusion totals: 11.958 h of 989.00 h scheduled-open = 1.21%.** All of
+  it unexplained-silence time (5.993 h + 5.965 h on the two expiry days);
+  roll exclusion contributed **0.0000 h**, for the reason above. Windows are
+  unioned through `merge_windows` before summing, per the standing rule.
+
+- **Per-day billing rate: it does not match C.6's implied $0.8821, and the
+  per-day model is itself wrong.** Delivered months bill **$0.6491/day**
+  ($39.5929 over 61 days) — **26% below** C.6's figure. But the monthly
+  rates are $0.7053 (Apr), $0.5947 (May), $1.2063 (Jun), $0.6870 (Jul): a
+  **2.03× spread**. C.6's constant would have mis-estimated every single
+  month, low on June and high on the rest. Cost tracks market activity, not
+  the calendar. **Future projections must price the actual range through
+  `get_cost` — which is free — rather than multiply any per-day figure.**
+  Billable-to-disk compression was stable at 11.80× (Apr) and 11.79× (May).
+
+- **Range conditions (Task 4): two months, one regime, and the honesty rule
+  applies with more force than before.** Full-session daily events span
+  413,952 to 7,325,851 — 17.7×, though that low is the April expiry day;
+  excluding expiry sessions the range is ~2.06M to 7.33M, about 3.6×. There
+  is a visible step down inside May: 4.5–7.3M/day through 05-22, then
+  2.06–4.15M/day from 05-25 on. April averages ~12% more events per
+  scheduled hour than May. This is April–May 2026 only — it is **not**
+  regime-diverse, and with the range halved it now spans two consecutive
+  months of one season. Any Phase B metric fitted on it carries the standing
+  caveat, leading the section.
+
+- `make lint`, `make typecheck`, `make test` clean — 182 tests pass. Two
+  pre-existing `zip()` lint errors in the C.6 roll code fixed to
+  `itertools.pairwise`. All three crypto recorders untouched and live.
