@@ -896,3 +896,70 @@ both venues.
       multi-month run will silently train across 12 contract changes.
   - **Budget: $6.2343 of $25.00 spent, $18.7657 remaining. This stage bought
     no data.**
+
+- 2026-08-02 — Stage C.6: roll-boundary exclusion built and proven on stored
+  data. **The backfill was NOT purchased: pricing returned $159.66 for six
+  months against a ~$95 expectation, so the stage stopped as instructed.**
+  - **Roll boundaries derived from symbology, never detected from price**
+    (`data/databento/rolls.py`). `symbology.resolve` (continuous ->
+    instrument_id) returns the exact date intervals per instrument, so a roll
+    is a bookkeeping fact rather than a classification problem. Detection
+    from price jumps was rejected because it has two failure modes: it fires
+    on genuine market moves and misses quiet rolls, where adjacent contracts
+    trade within a tick and the splice produces no jump at all. Resolution
+    costs nothing, so it never touches the spend gate.
+  - **Seven MBT rolls resolved over 2026-02-01..2026-08-02**, stored at
+    `data/vendor/databento/rolls/MBT_c_0.jsonl`: 2026-02-01, 03-01, 03-29,
+    04-26, 05-30, **06-27** (42012278 -> 42101132, the MBTN6 splice sitting
+    between the two MBT days already on disk), and 08-01. Monthly cadence
+    confirmed: consecutive boundaries are 20-40 days apart and the
+    to_instrument of each chains into the from_instrument of the next.
+  - **The window orientation was wrong first time, and the correction
+    matters.** A sample at t reads [t - lookback, t + horizon], so it is
+    unsafe exactly when that span contains the roll R, which solves to
+    **t in [R - horizon, R + lookback)** — backward by the *label horizon*,
+    forward by the *feature lookback*, the opposite of the natural reading.
+    The first implementation had it reversed and would have excluded samples
+    *after* the roll while leaving the genuinely dangerous ones (those whose
+    15-minute labels reach forward across the splice) in the training set.
+    Both bounds come from configured values, so extending the horizon set
+    widens the exclusion automatically. Current width: 16 min per roll
+    (15 min back, 1 min forward), ~1.6 h/yr for a monthly roller.
+  - **Enforced through the existing invalidity path**, not a parallel one:
+    roll windows join gap windows, book-invalid periods and halt-period
+    crossings, and are unioned with scheduled closures before any time is
+    summed — the fourth instance of the CLAUDE.md interval rule, with an
+    overlapping-pair test as that rule requires. Validation reports roll
+    exclusions as their own count and duration so a large exclusion is
+    visible rather than absorbed into coverage.
+  - **Proven on data already paid for** (Task 3): the 2026-06-27 boundary
+    lies between the stored MBT days of 07-15 and 07-31; the exclusion
+    covers 06-26 23:45Z -> 06-27 00:01Z; a sample 10 min before the roll is
+    excluded (its label crosses), one 20 min before is not (its label
+    resolves first). 6 regression tests from the real roll.
+  - **Purchase stopped — pricing, per month, MBT mbp-10 + trades:**
+    2026-02 $32.6706 · 2026-03 $29.9141 · 2026-04 $21.1582 · 2026-05
+    $18.4347 · 2026-06 $36.1880 · 2026-07 $21.2955 · **total $159.6612**
+    (mbp-10 $155.5590, trades only $4.1022 — essentially all of the cost is
+    depth). That is **68% above the ~$95 expectation** and exceeds even the
+    raised cap's remaining $113.77, so nothing was downloaded.
+  - **Why the C.5 estimate was wrong: the per-day rate was right, the
+    days-per-month multiplier was not.** C.5 projected $0.7525/day x ~21
+    sessions/month x 6 = ~$95, using an equity-style 21 trading days. The
+    six-month range actually bills across ~181 calendar days — CME crypto
+    futures run Sunday 17:00 CT to Friday 16:00 CT, so nearly every calendar
+    day carries data. Implied rate is $0.8821/day, only 17% above the
+    measured single-day figure; the 68% overshoot is almost entirely the
+    session-count assumption. **A per-day cost is not a per-month cost until
+    you know how many days a month bills.**
+  - **Options, for a deliberate decision rather than an automatic one:**
+    4 months (2026-04..07) prices at **$97.08** and fits the current cap
+    with $16.69 to spare, giving 2 walk-forward folds at 3-month train /
+    1-month test rather than 3. Six months needs the cap raised to ~$170.
+    Dropping the trades schema saves only $4.10 and would cost every
+    trade-derived feature, so it is not a real economy.
+  - Cap raised deliberately from 25.0 to **120.0** in config/default.yaml
+    with a dated comment recording that the purchase was refused at that
+    number; the gate stayed in force and refused correctly.
+  - **Budget: $6.2343 spent of $120.00, $113.7657 remaining. This stage
+    bought no data.**

@@ -43,7 +43,14 @@ book:
 # so it survives a restart — a per-request check alone would let many small
 # requests walk past it. Raising this is a deliberate operator decision.
 budget:
-  vendor_usd_cap: 25.0
+  # Raised 2026-08-02 (Stage C.6) from 25.0 to 120.0 for the MBT backfill.
+  # The backfill was NOT purchased: pricing the range returned $159.66 for
+  # six months, which exceeds both the ~$95 expectation and this cap, so the
+  # gate refused and the stage stopped. The cap stays at 120.0 so a reduced
+  # 4-month purchase (~$97) can proceed without another change; raise it
+  # deliberately if the full six months is ever wanted. Every request is
+  # still priced before it is issued.
+  vendor_usd_cap: 120.0
   # An unpriceable request is never assumed cheap: with no estimate, refuse.
   refuse_without_estimate: true
 

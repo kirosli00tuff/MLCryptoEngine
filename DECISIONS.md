@@ -764,3 +764,61 @@ while the validation still reports it. The honest limitation: mbp-10 is a
 derived aggregation, and only the `mbo` schema could confirm the halt-period
 book at order granularity — worth buying if crossings ever appear *outside* a
 no-match window, and not worth buying now.
+
+---
+
+## ADR-020: Roll boundaries are an exclusion class, derived from symbology
+
+**Date:** 2026-08-02 · **Status:** accepted
+
+**Context.** A continuous futures series is a splice. `MBT.c.0` maps to one
+instrument on one date and a different one the next, so the price series
+carries a discontinuity at each roll that is a *contract change*, not a
+market move. A feature lookback or label horizon spanning that point mixes
+two instruments and yields a return that never happened. MBT rolls monthly,
+so a twelve-month backfill contains twelve of them.
+
+Two ways to find rolls. **Detect** them from price jumps, or **derive** them
+from the vendor's symbology. Detection is a classifier with two failure
+modes: it fires on genuine market moves (a real 2% gap looks like a roll)
+and misses quiet rolls (adjacent contracts often trade within a tick of each
+other, so the roll produces no jump at all). Derivation has neither: the
+symbology API states exactly which instrument the series maps to over each
+date interval, so a roll is a bookkeeping fact with an exact timestamp, and
+resolving it costs nothing.
+
+**Decision.** Roll boundaries are derived from `symbology.resolve`
+(`continuous -> instrument_id`), stored as an append-only record alongside
+the data (`data/vendor/databento/rolls/<symbol>.jsonl`, carrying the date,
+splice timestamp, and both instrument ids) so they survive into every
+downstream run rather than being re-derived inconsistently.
+
+Exclusion joins the **existing** invalidity path — the one already serving
+gap windows, book-invalid periods and halt-period crossings — rather than
+forming a parallel mechanism, and the windows are unioned with the others
+before any time is summed (the CLAUDE.md interval rule; this is its fourth
+instance). Roll exclusions are reported as their own count and duration in
+validation output, so an unexpectedly large exclusion is visible rather than
+absorbed into a coverage percentage.
+
+**The window orientation is the subtle part, and the intuitive answer is
+backwards.** A sample at `t` reads `[t - lookback, t + horizon]`, so it is
+unsafe exactly when that span contains the roll `R`:
+
+    t - lookback < R <= t + horizon   <=>   R - horizon <= t < R + lookback
+
+The exclusion on *sample time* therefore runs backward by the **label
+horizon** and forward by the **feature lookback** — not the reverse. It is
+the label reaching forward across the splice that endangers most samples;
+the lookback only endangers the few immediately after. Both bounds come from
+the configured values, so extending the horizon set widens the exclusion
+automatically (same discipline as the embargo, ADR-015).
+
+**Consequences.** Any continuous series added later needs its boundaries
+resolved before its first feature run, and the resolution is free. The
+exclusion is narrow — 16 minutes per roll at current settings, about 1.6
+hours a year for a monthly-rolling contract — so it costs almost no data
+while removing an error that would otherwise be invisible and systematic.
+The alternative of trading outright contracts instead of a continuous series
+removes rolls entirely but fragments history at every expiry; that trade-off
+is deferred until there is a reason to make it.

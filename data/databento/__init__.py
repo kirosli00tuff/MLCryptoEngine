@@ -17,16 +17,28 @@ from data.databento.budget import (
     spent_usd,
     summary,
 )
+from data.databento.rolls import (
+    RollBoundary,
+    read_rolls,
+    resolve_rolls,
+    roll_windows_ns,
+    write_rolls,
+)
 
 __all__ = [
     "BudgetExceededError",
+    "RollBoundary",
     "SequenceAudit",
     "UnpriceableRequestError",
     "check_affordable",
     "commit",
     "map_mbp10",
     "map_trade",
+    "read_rolls",
     "remaining_usd",
+    "resolve_rolls",
+    "roll_windows_ns",
     "spent_usd",
     "summary",
+    "write_rolls",
 ]

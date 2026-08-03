@@ -25,14 +25,21 @@ from dataclasses import dataclass, field
 from data.config import AppConfig
 from data.databento.adapter import NULL_PRICE
 from data.databento.ingest import record_to_dict, vendor_path
+from data.databento.rolls import RollBoundary, roll_windows_ns
 from data.databento.session import closed_windows_ns, no_match_windows_ns, open_ns
-from research.labels.fixed_horizon import DEFAULT_HORIZONS_MS
+from data.recorder.gaps import merge_windows
+from research.labels.fixed_horizon import DEFAULT_HORIZONS_MS, MAX_HORIZON_MS
 
 NS_PER_S = 1_000_000_000
 NS_PER_MS = 1_000_000
 # A quiet stretch longer than this outside a scheduled halt is reported as a
 # coverage anomaly worth a human look, not silently absorbed.
 QUIET_ANOMALY_MS = 60_000
+# Roll exclusion width, derived from configuration rather than fixed: the
+# feature lookback backward and the longest label horizon forward, so
+# extending the horizon set widens the exclusion automatically.
+FEATURE_LOOKBACK_NS = 60 * NS_PER_S
+MAX_LABEL_HORIZON_NS = MAX_HORIZON_MS * NS_PER_MS
 
 
 class IntervalStats:
@@ -131,6 +138,10 @@ class VendorDayReport:
     quiet_open_ns: int = 0
     scheduled_open_ns: int = 0
     quiet_windows: list[tuple[int, int]] = field(default_factory=list)
+    # Roll exclusions reported separately, never absorbed into coverage: an
+    # unexpectedly large exclusion must be visible as its own number.
+    roll_windows: int = 0
+    roll_excluded_open_ns: int = 0
     failure_reasons: list[str] = field(default_factory=list)
     # Inter-event interval statistics, accumulated in the same single pass:
     # a log-spaced histogram plus one counter per label horizon, never a
@@ -148,6 +159,12 @@ class VendorDayReport:
         return not self.failure_reasons
 
 
+def _date_to_ns(date: str) -> int:
+    from datetime import UTC, datetime
+
+    return int(datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=UTC).timestamp()) * NS_PER_S
+
+
 def _overlap_ns(lo: int, hi: int, windows: list[tuple[int, int]]) -> int:
     return sum(
         max(0, min(hi, w_end) - max(lo, w_start)) for w_start, w_end in windows if w_end > w_start
@@ -155,7 +172,11 @@ def _overlap_ns(lo: int, hi: int, windows: list[tuple[int, int]]) -> int:
 
 
 def validate_vendor_day(
-    cfg: AppConfig, symbol: str, date: str, schema: str = "mbp-10"
+    cfg: AppConfig,
+    symbol: str,
+    date: str,
+    schema: str = "mbp-10",
+    rolls: list[RollBoundary] | None = None,
 ) -> VendorDayReport:
     """Stream one DBN file and score it. Bounded memory, single pass."""
     import databento  # lazy
@@ -168,6 +189,24 @@ def validate_vendor_day(
     closed = closed_windows_ns(date)
     no_match = no_match_windows_ns(date)
     report.scheduled_open_ns = open_ns(date)
+
+    # Roll exclusion joins the existing invalidity path rather than forming a
+    # parallel one. Windows are unioned with the scheduled closures before any
+    # time is summed (CLAUDE.md interval rule) so an exclusion overlapping a
+    # halt is not counted twice.
+    roll_ex = roll_windows_ns(rolls or [], FEATURE_LOOKBACK_NS, MAX_LABEL_HORIZON_NS)
+    day_start = _date_to_ns(date)
+    day_end = day_start + 86_400 * NS_PER_S
+    roll_in_day = [
+        (max(lo, day_start), min(hi, day_end))
+        for lo, hi in roll_ex
+        if min(hi, day_end) > max(lo, day_start)
+    ]
+    report.roll_windows = len(roll_in_day)
+    open_and_rolled = merge_windows(roll_in_day)
+    report.roll_excluded_open_ns = sum(
+        (hi - lo) - _overlap_ns(lo, hi, closed) for lo, hi in open_and_rolled
+    )
 
     store = databento.DBNStore.from_file(path)
     prev_recv: int | None = None
