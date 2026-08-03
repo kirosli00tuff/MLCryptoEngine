@@ -920,3 +920,134 @@ manual step because the vendor gives us no programmatic way to do it. A
 charge with no file on disk is therefore a **finding requiring operator
 reconciliation before retry**, never something a script may assume it can
 re-issue: the gate cannot detect a double-spend it has already recorded.
+
+## ADR-023: Futures costs are per contract, converted at each sample's own notional
+
+**Date:** 2026-08-03 · **Status:** accepted
+
+**Context.** The cost model expressed every venue as basis points per leg,
+which is exactly right for crypto spot: an exchange charging 0.4% of notional
+charges the same rate whatever the price. Futures do not work that way. CME
+charges a fixed sum per contract per side, and its cost *as a rate* depends on
+the notional it is divided by — price times the contract multiplier.
+
+Stage C.8 arrived with the premise that "CME micro bitcoin futures cost under
+one basis point round trip", reasoning from MES at $2.99 per round turn on
+~$34,000 of notional (0.88 bps). That premise does not survive contact with
+MBT's own specification. MBT is **0.1 BTC**, so at the April–May 2026 prices in
+this range its notional is **$7,608**, not $34,000. Its CME exchange fee is
+also **$1.15 per side against MES's $0.35**. A 3.3x larger fee on a 5.2x
+smaller notional is roughly 17x the rate: **5.33 bps round turn resting, 7.26
+bps crossing**, against the sub-1 bp assumed.
+
+The venue config already carried a bps approximation with a comment saying the
+schema could not express per-contract dollars and that Phase C must fix it.
+Leaving that in place would have priced MBT with a number that was never
+charged, in the one stage whose entire question was whether a 3 bps edge clears
+its costs.
+
+**Decision.** `CostModel` carries two fee shapes. Percentage venues keep
+`fee_bps_per_leg`. Futures venues declare `fee_usd_per_contract_per_side` plus
+a `contract_multiplier` on the instrument, and the model converts to bps **at
+each sample's own entry price** — so a range over which price moves 26% is
+costed at 4.86 bps at one end and 6.13 bps at the other, rather than at a
+single average that is wrong everywhere but the middle. `entry_mid` is stored
+on every sample for exactly this purpose.
+
+A per-contract model with no price **raises**. There is no notional to divide
+by, and any default would invent a cost that was never charged; a sample whose
+entry price is unknown is an invalid sample, not a cheap one.
+
+CME does not split maker and taker fees — the exchange charges the same to add
+or remove liquidity — so for these venues the two modes differ only in whether
+the touch spread is paid. That is not a technicality: MBT's mean touch spread
+is **1.93 bps**, more than a third of the whole resting round turn, so calling
+both modes "the fee" would hide the dominant difference between them.
+
+**Consequences.** Every figure is sourced and dated in `config/venues.yaml`,
+because every fee schedule in this project has been found stale at least once.
+Two caveats travel with it: the exchange component rests on a **broker's
+republication** of CME's schedule rather than CME directly, since the fee
+finder is interactive and the PDF was not machine-readable at retrieval; and
+**CME changed its schedule effective 2026-04-01, inside this data range**. Both
+must be resolved before Phase C consumes these numbers with real capital.
+
+**Rejected: keep one bps figure per venue and use the worse contract's.** That
+is what the config did, and it is defensible for refusing to understate costs.
+It cannot answer a question about whether a specific contract's edge clears its
+specific costs, which is the only question that matters here.
+
+## ADR-024: Fold count is reported, never manufactured
+
+**Date:** 2026-08-03 · **Status:** accepted
+
+**Context.** Two contiguous months of MBT span 61 days. At a 42-day train /
+14-day test walk-forward window that yields two folds, and the second is
+truncated — its test window runs five days past the end of the data, giving
+43,340 samples against the first fold's 252,596. The obvious way to reach three
+honest-looking folds is to shrink the windows.
+
+That would be a lie told with arithmetic. Three folds cut from 61 days are not
+three independent tests; they are three overlapping looks at one regime. As the
+test span shrinks it also stops dominating the label horizon — at 14 days the
+longest label (900 s) is 1/1344 of the window, which is comfortable, and the
+ratio degrades fast as the window shrinks. A fold count is a property of the
+data, and reporting it as anything else converts a data limitation into an
+apparently-validated result.
+
+**Decision.** `walk_forward_capacity` reports how many folds the data supports
+at a **fixed, horizon-appropriate window size**, and returns the count with the
+fold sizes so a truncated fold is visible rather than counted as whole. The
+window is a constant chosen against the label horizon, never tuned against the
+amount of data available. Where the count is small, the report says so in those
+words rather than presenting the folds as sufficient.
+
+**Consequences.** Stage C.8 reports **one clean fold**, not two and not three,
+and states that six months would give three. This is recorded as a limitation
+of the range, which is a purchasing decision (ADR-021), not a modelling one —
+the fix is more data, not a smaller window.
+
+## ADR-025: Training is memory-bounded by a declared stride, and the stride is part of the experiment
+
+**Date:** 2026-08-03 · **Status:** accepted
+
+**Context.** The training path holds the whole range in memory at once: a dict
+of columns, a stacked feature matrix, and a per-horizon masked copy of that
+matrix. At Phase B's scale — three venue-days, ~30,000 samples — this is
+invisible. At 53 days of MBT it is 5.4 million samples, and the process was
+**OOM-killed at 5.48 GB resident** on a 14 GiB machine already holding a
+browser and three live recorders.
+
+A first round of fixes helped and was not enough: reading one file at a time
+instead of concatenating every day into one Arrow table and *then* building a
+float64 dict (which held two full copies of the range), loading only the
+columns training reads rather than all 70, and using float32 for features.
+That took the projected peak from ~6.6 GB to the 5.48 GB at which it still
+died. **Reducing a number is not the same as fitting under a limit**, and
+reporting the reduction as "bounded" was wrong.
+
+**Decision.** `load_samples` accepts a `stride` that keeps every nth retained
+sample, applied per file so the full arrays are never built. Because samples
+are event bars, striding by n is equivalent to having sampled every
+`n x every_n` book updates: it coarsens the bar, it does not bias which moments
+are chosen. Stage C.8 used stride 4 — 1.02M samples, ~0.56 GB of arrays.
+
+**The stride is recorded in the report and the experiment log, as part of the
+sampling description rather than as a footnote.** A coarser bar is a real
+change to the experiment. A run that quietly trains on a quarter of its samples
+and reports the sampling rule it did not use is not reproducible, and the
+Phase B contract requires every run's configuration to be logged from the first
+one precisely so a deflated Sharpe ratio can be computed honestly later.
+
+**Consequences.** Because the stride changes the experiment, its effect must be
+measured rather than assumed away. C.8 ran a **stride-1 control on 10 days**
+(896,018 samples — the same memory footprint, a shorter range instead of a
+coarser bar) and the AUC curve reproduced within 0.01 at every horizon, which
+is what licensed the main run's conclusion. Any future stage using a stride
+owes the same control, or it owes the caveat that bar width is an unexamined
+alternative explanation for its result.
+
+**Rejected: subsample randomly rather than by stride.** A random subsample of
+event bars is not an event-bar rule at all, and could not be described as any
+sampling scheme a live system would implement. A stride remains a rule the
+execution path could actually run.

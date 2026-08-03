@@ -1111,3 +1111,76 @@ raised.**
 - `make lint`, `make typecheck`, `make test` clean — 182 tests pass. Two
   pre-existing `zip()` lint errors in the C.6 roll code fixed to
   `itertools.pairwise`. All three crypto recorders untouched and live.
+
+## 2026-08-03 — Stage C.8: the Phase B edge does not transfer to CME MBT
+
+**Answer: it vanished. Costs fell 15x by changing venue; the gross edge fell
+15x with them. Expected value never crosses zero at any horizon.**
+
+- **Pipeline ran end to end on the two validated months.** 224,425,675 vendor
+  events ingested to per-day Parquet (6.9 GB), 53 days of samples extracted,
+  purged-CV evaluation across 8 horizons and 2 cost modes. Ordering clock is
+  **`ts_recv`, Databento's capture-server hardware clock**, mapped to `ts_ns`;
+  `ts_event` (CME MDP3 exchange clock) is kept as `exchange_ns` and never used
+  for ordering — the same receive-side discipline the WebSocket recorders use,
+  and the two are never ordered against each other.
+- **Headline, 900 s maker:** Coinbase BTC-USD captured 3.31 bps gross against
+  80 bps of cost (EV −76.69). MBT captures **0.22 bps** against **5.33 bps**
+  (EV **−5.11**). AUC 0.596 → **0.501**. See report.md for the full table.
+- **The negative result changed character, which is the useful part.** Spot had
+  a real edge buried under fees — a cost problem. CME has affordable costs and
+  no edge. Fixing the cost problem revealed a second, independent one.
+- **The one apparent positive was checked and reversed.** +0.215 bps at 900 s
+  was the only figure clearing rounding noise; a stride-1 control on 10 April
+  days returns **−0.785 bps** with AUC 0.490. Noise around zero, as AUC ≈ 0.50
+  implied. Nothing is handed to Phase C as a hypothesis.
+- **Cost model rebuilt for per-contract fees (ADR-023).** The stage's premise —
+  "CME costs under one basis point round trip" — is an MES property. MBT is
+  0.1 BTC, so at April–May prices its notional is **$7,608** against MES's
+  ~$34,000, and its CME exchange fee is **$1.15/side against MES's $0.35**.
+  Same dollar cost, ~5x the rate. Sourced and dated in config/venues.yaml;
+  the exchange component rests on a broker's republication because CME's own
+  fee finder is interactive, and CME changed its schedule effective
+  **2026-04-01, inside this data range**.
+- **Capability matrix applied: 35 of 42 features computed.** All 7 cross-venue
+  features are 100% NaN — Kraken/Coinbase/Hyperliquid have no April–May data
+  because those recorders started later. Absent, not silently zero. Short
+  trade-window features are populated (29.0–59.7% nonzero), confirming
+  ADR-018's "quiet market, not an absent one".
+- **Walk-forward: one clean fold, not three (ADR-024).** 42/14-day windows over
+  a 61-day span yield 2 folds, the second truncated 5 days past the data
+  (43,340 samples vs 252,596). Windows were not shrunk to manufacture folds.
+- **Exclusions run through the single existing invalidity path.** CME has no
+  recorder, so closures, no-match windows, roll splices and **observed
+  silences** are unioned into the same `[start, end)` list the sampler already
+  consumes. The silence class is new and load-bearing: C.7 showed the roll
+  exclusion, centred on the splice, covers **0 s** of the ~6.0 h expiry-day
+  dead book. Silences are derived from the data, not the calendar. On
+  2026-04-06 the detector also finds the daily maintenance halt and
+  `merge_windows` unions it with the calendar closure rather than
+  double-counting — the fifth instance of the interval rule, with the
+  overlapping-pair test it requires.
+- **Two OOM kills, one avoided and one not.** `load_samples` concatenated every
+  day into one Arrow table and then built a float64 dict — two full copies —
+  while loading 18 columns training never reads. Fixed before it fired
+  (one file at a time, selected columns, float32, `ts_ns` kept integral since
+  1.8e18 exceeds float64's exact-integer range). It still OOM-killed at
+  **5.48 GB** on the full 5.4M samples, and the stride in ADR-025 is what
+  actually made it fit. **The first fix reduced the peak and I reported it as
+  bounded; it was not.** Measuring the reduction is not the same as measuring
+  the requirement.
+- **A silent-empty bug cost a full overnight cycle.** The vendor venue gate
+  walked one directory too far (`.parent.parent` lands on `venue=cme`, whose
+  children are `symbol=` not `date=`), producing an empty date set reported as
+  "no recorded data" while 6.9 GB sat on disk. It returned success-shaped
+  output instead of raising. Regression test added. `main()` also re-extracted
+  samples unconditionally where the trades path checks first — a re-run to
+  reach training would have silently redone 5 hours of work.
+- **Measured, not assumed:** decode+map 165K rec/s (181 MB peak) · ingest ~40K
+  rows/s (386 MB, 30.5 B/row) · extraction 10,582 events/s (1,272 MB peak,
+  107,377 samples/day, 99.7% valid) · training 1,109,072 samples in ~18 min.
+  Ingest reproduced C.4's MBTN6 count exactly (4,275,234).
+- **This stage bought no data.** Ledger unchanged at $81.3416 of $120.
+- `make lint`, `make typecheck`, `make test` clean. All three recorders alive
+  and untouched throughout. Both runs logged to research/experiments.jsonl
+  (`99ad7dde`, `464f8937`).

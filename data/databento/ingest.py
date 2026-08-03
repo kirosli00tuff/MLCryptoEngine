@@ -8,7 +8,9 @@ through the same bounded writers as the recorder path.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -260,6 +262,107 @@ def fetch_day(cfg: AppConfig, date: str, symbol: str, schema: str) -> Path:
         end=_next_day(date),
     )
     return target
+
+
+def ingest_dbn_range(
+    cfg: AppConfig,
+    dbn_path: Path,
+    schema: str,
+    symbol_by_instrument_id: dict[int, str] | None = None,
+    contract_symbol: str | None = None,
+    progress_every: int = 5_000_000,
+) -> dict[str, IngestReport]:
+    """Map one multi-day DBN file into per-UTC-day canonical Parquet.
+
+    :func:`ingest_dbn` writes every record into a single date partition,
+    which is right for a day file and silently wrong for a month: it would
+    label 30 days of events as one. This routes each record to the partition
+    of its own ``ts_recv`` date instead.
+
+    Records arrive in capture-clock order, so at most one day is open at a
+    time and the writer for a finished day is closed as soon as the date
+    advances — memory stays flat across a 44 GB month. A record arriving for
+    an already-finalised day would mean the stream was not ordered and the
+    partition just closed is short, so that raises rather than reopening and
+    overwriting.
+
+    ``contract_symbol`` overrides the per-record symbol so a continuous
+    series lands under one stable name (``MBT``) rather than splitting into
+    a partition per underlying instrument at each roll — the roll is handled
+    as an exclusion window, not as a change of instrument identity.
+    """
+    if schema not in ("mbp-10", "trades"):
+        raise ValueError(f"unsupported schema '{schema}' — this adapter maps mbp-10 and trades")
+    import databento  # lazy
+
+    store = databento.DBNStore.from_file(dbn_path)
+    symbols = symbol_by_instrument_id or {}
+    reports: dict[str, IngestReport] = {}
+    audit = SequenceAudit()
+    finalised: set[str] = set()
+    open_date: str | None = None
+    book_writers: dict[str, BookDayWriter] = {}
+    trade_writers: dict[str, TradesDayWriter] = {}
+    started = time.monotonic()
+
+    def close_open_day() -> None:
+        nonlocal book_writers, trade_writers
+        if open_date is None:
+            return
+        report = reports[open_date]
+        for sym, writer in book_writers.items():
+            writer.close()
+            report.book_rows[sym] = writer.rows_written
+        for sym, twriter in trade_writers.items():
+            twriter.close()
+            report.trade_rows[sym] = twriter.rows_written
+        report.sequence_observations = dict(audit.observations)
+        report.sequence_gaps = dict(audit.gaps)
+        book_writers = {}
+        trade_writers = {}
+        finalised.add(open_date)
+
+    for seen, record in enumerate(store, start=1):
+        raw = record_to_dict(record)
+        ts_recv = int(raw["ts_recv"])
+        date = datetime.fromtimestamp(ts_recv / 1e9, tz=UTC).strftime("%Y-%m-%d")
+        if date != open_date:
+            if date in finalised:
+                raise ValueError(
+                    f"{dbn_path.name}: record for already-finalised day {date} after "
+                    f"{open_date} — the stream is not capture-clock ordered, so that "
+                    "partition was closed short. Ingest cannot proceed safely."
+                )
+            close_open_day()
+            open_date = date
+            reports[date] = IngestReport(dataset=DATASET, date=date)
+            audit = SequenceAudit()
+
+        symbol = contract_symbol
+        if symbol is None:
+            instrument_id = getattr(record, "instrument_id", None)
+            symbol = (
+                symbols.get(int(instrument_id), str(instrument_id))
+                if instrument_id is not None
+                else "?"
+            )
+        if raw.get("sequence") is not None:
+            audit.observe(symbol, int(raw["sequence"]))
+        if schema == "mbp-10":
+            if symbol not in book_writers:
+                book_writers[symbol] = BookDayWriter(cfg.processed_dir, VENUE, symbol, date)
+            book_writers[symbol].append([map_mbp10(raw, symbol)])
+        else:
+            if symbol not in trade_writers:
+                trade_writers[symbol] = TradesDayWriter(cfg.processed_dir, VENUE, symbol, date)
+            trade_writers[symbol].append([map_trade(raw, symbol)])
+
+        if seen % progress_every == 0:
+            rate = seen / max(time.monotonic() - started, 1e-9)
+            print(f"  ingest {dbn_path.name}: {seen:,} records · {rate:,.0f}/s", flush=True)
+
+    close_open_day()
+    return reports
 
 
 def _next_day(date: str) -> str:

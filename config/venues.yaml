@@ -134,15 +134,49 @@ venues:
         nanosecond hardware timestamps. ts_recv is Databento's capture-server
         clock and ts_event is the exchange clock — neither is this project's
         recorder clock, and they must never be ordered against it.
+    # Contract multipliers: units of underlying per contract. MBT is 0.1 BTC
+    # (CME contract specs, retrieved 2026-08-02); MES is $5 per index point.
+    # These turn a per-contract fee into basis points — notional = price x
+    # multiplier — so they are not decoration.
+    instruments:
+      MBT: { price_decimals: 0, qty_decimals: 0, contract_multiplier: 0.1 }
+      MES: { price_decimals: 2, qty_decimals: 0, contract_multiplier: 5.0 }
     # CME matching engine is in Aurora, IL; nearest AWS region for Phase D.
     aws_region: us-east-2
-    # Futures fees are per-contract dollars, not bps — this schema cannot
-    # express that, so the entry records a conservative bps approximation
-    # dated 2026-08-01 from Claude's knowledge (CME exchange+clearing plus a
-    # retail broker, e.g. IBKR): MBT ~US$2.85/side on ~US$6.3k notional
-    # ~= 4.5 bps; MES ~US$0.62/side on ~US$32k notional ~= 0.2 bps. The WORSE
-    # (MBT) figure is recorded venue-wide so nothing downstream understates
-    # costs. Phase C must model per-contract dollar fees properly and verify
-    # against cmegroup.com and the broker schedule before consuming this.
+    # Superseded 2026-08-02 (Stage C.8). The previous entry recorded a bps
+    # approximation with a note that the schema could not express per-contract
+    # dollar fees; it now can (ADR-023), so the real figure lives here and the
+    # bps fields are unused for this venue.
+    #
+    # Per contract PER SIDE, all-in, small non-member account:
+    #   CME exchange execution + clearing   $1.15   MBT non-member rate,
+    #                                               TradeStation published
+    #                                               exchange fee schedule,
+    #                                               retrieved 2026-08-02.
+    #                                               (MES is $0.35 on the same
+    #                                               schedule — MBT's exchange
+    #                                               fee is 3.3x MES's.)
+    #   NFA regulatory fee                  $0.02   standard per-side rate.
+    #   Broker commission (IBKR)            $0.85   top of IBKR's published
+    #                                               $0.25-$0.85 futures range,
+    #                                               retrieved 2026-08-02; the
+    #                                               top is the honest default
+    #                                               for an account with no
+    #                                               volume tier, matching the
+    #                                               tier-0 convention used for
+    #                                               the crypto venues.
+    #                                       -----
+    #                                       $2.02 per side = $4.04 round turn.
+    #
+    # CME does not split maker/taker on these products — the exchange charges
+    # the same to add or remove liquidity — so both modes carry the same fee
+    # and differ only in whether the touch spread is paid.
+    #
+    # NOT verified directly against cmegroup.com: the CME fee finder is
+    # interactive and the published PDF schedule was not machine-readable at
+    # retrieval time. The exchange component therefore rests on a broker's
+    # republication of it. Re-verify before Phase C consumes this, and note
+    # CME announced a schedule change effective 2026-04-01 that falls inside
+    # this very data range.
     fee_tiers:
-      - { volume_usd_30d: 0, maker_bps: 4.5, taker_bps: 4.5 }
+      - { volume_usd_30d: 0, maker_bps: 0, taker_bps: 0, fee_usd_per_contract_per_side: 2.02 }

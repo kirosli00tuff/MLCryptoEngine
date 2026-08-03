@@ -885,3 +885,204 @@ Valid samples: 179,719
 Predictability decay (AUC by horizon): 100 ms: 0.851 · 500 ms: 0.810 · 1000 ms: 0.790 · 5000 ms: 0.707 · 30000 ms: 0.571 · 60000 ms: 0.538 · 300000 ms: 0.528 · 900000 ms: 0.552
 
 Top feature importances (fold-averaged): depth_ask_1 0.11 · depth_bid_1 0.06 · slope_ask 0.06 · depth_ask_2 0.05 · slope_bid 0.04 · xv_diff_z 0.04 · spread_bps 0.04 · depth_bid_2 0.04 · dwp_minus_mid 0.04 · ofi_best_1s 0.03
+
+## Phase B research run — 2026-08-03 20:38 UTC
+
+**Caveat, read first: these results rest on 53 day(s) of data spanning ~10 volatility regime(s). They validate the pipeline; they are NOT evidence of edge. Microstructure relationships shift with regime, session, and venue conditions — a signal fitted on one day is fitted on that day's regime.**
+
+Data range: 2026-04-01, 2026-04-02, 2026-04-03, 2026-04-05, 2026-04-06, 2026-04-07, 2026-04-08, 2026-04-09, 2026-04-10, 2026-04-12, 2026-04-13, 2026-04-14, 2026-04-15, 2026-04-16, 2026-04-17, 2026-04-19, 2026-04-20, 2026-04-21, 2026-04-22, 2026-04-23, 2026-04-24, 2026-04-26, 2026-04-27, 2026-04-28, 2026-04-29, 2026-04-30, 2026-05-01, 2026-05-03, 2026-05-04, 2026-05-05, 2026-05-06, 2026-05-07, 2026-05-08, 2026-05-10, 2026-05-11, 2026-05-12, 2026-05-13, 2026-05-14, 2026-05-15, 2026-05-17, 2026-05-18, 2026-05-19, 2026-05-20, 2026-05-21, 2026-05-22, 2026-05-24, 2026-05-25, 2026-05-26, 2026-05-27, 2026-05-28, 2026-05-29, 2026-05-30, 2026-05-31 · sampling: event bars, every 50 book updates, then every 4th retained sample kept for training (effective bar ~200 book updates) — memory-bounded, see ADR-025 · features: 42 · labels: fixed-horizon [100, 500, 1000, 5000, 30000, 60000, 300000, 900000] ms + triple-barrier (pt/sl 2.0x rvol_30s, 30 s time limit) · cost assumptions: cme: $2.02 per contract per side (= $4.04 round turn), converted to bps at each sample's own notional (price x multiplier {'MBT': 0.1, 'MES': 5.0}); taker additionally pays the touch spread · trade signing: {'kraken': 'venue_flag', 'coinbase': 'tick_rule', 'hyperliquid': 'venue_flag', 'cme': 'venue_flag'}
+
+Leakage suite: PASS (...                                                                      [100%])
+
+### cme MBT
+
+Valid samples: 1,109,072
+
+| horizon | n | AUC | cost mode | model EV bps | model hit | regressor EV bps | last-sign EV bps | zero EV bps |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 1109068 | 0.664 | maker | -5.32 | 0.250 | -5.26 | -5.30 | n/a |
+| 100 ms | 1109068 | 0.664 | taker | -7.25 | 0.250 | -7.19 | -7.24 | n/a |
+| 500 ms | 1109065 | 0.620 | maker | -5.32 | 0.341 | -5.25 | -5.31 | n/a |
+| 500 ms | 1109065 | 0.620 | taker | -7.25 | 0.341 | -7.18 | -7.24 | n/a |
+| 1000 ms | 1109059 | 0.600 | maker | -5.32 | 0.376 | -5.25 | -5.31 | n/a |
+| 1000 ms | 1109059 | 0.600 | taker | -7.25 | 0.376 | -7.18 | -7.24 | n/a |
+| 5000 ms | 1109022 | 0.551 | maker | -5.31 | 0.445 | -5.24 | -5.32 | n/a |
+| 5000 ms | 1109022 | 0.551 | taker | -7.24 | 0.445 | -7.18 | -7.25 | n/a |
+| 30000 ms | 1108858 | 0.521 | maker | -5.28 | 0.486 | -5.23 | -5.32 | n/a |
+| 30000 ms | 1108858 | 0.521 | taker | -7.21 | 0.486 | -7.16 | -7.26 | n/a |
+| 60000 ms | 1108687 | 0.516 | maker | -5.29 | 0.492 | -5.25 | -5.32 | n/a |
+| 60000 ms | 1108687 | 0.516 | taker | -7.23 | 0.492 | -7.18 | -7.26 | n/a |
+| 300000 ms | 1107056 | 0.508 | maker | -5.24 | 0.501 | -5.39 | -5.35 | n/a |
+| 300000 ms | 1107056 | 0.508 | taker | -7.18 | 0.501 | -7.32 | -7.29 | n/a |
+| 900000 ms | 1101582 | 0.501 | maker | -5.11 | 0.500 | -5.41 | -5.38 | n/a |
+| 900000 ms | 1101582 | 0.501 | taker | -7.04 | 0.500 | -7.34 | -7.31 | n/a |
+
+Predictability decay (AUC by horizon): 100 ms: 0.664 · 500 ms: 0.620 · 1000 ms: 0.600 · 5000 ms: 0.551 · 30000 ms: 0.521 · 60000 ms: 0.516 · 300000 ms: 0.508 · 900000 ms: 0.501
+
+Top feature importances (fold-averaged): spread_bps 0.08 · time_since_trade_ms 0.07 · rvol_1s 0.06 · abs_ret_1s 0.05 · ofi_best_1s 0.05 · rvol_30s 0.04 · depth_ask_1 0.04 · micro_minus_mid 0.04 · ofi_deep_1s 0.04 · depth_bid_2 0.03
+
+## Phase B research run — 2026-08-03 20:55 UTC
+
+**Caveat, read first: these results rest on 10 day(s) of data spanning ~2 volatility regime(s). They validate the pipeline; they are NOT evidence of edge. Microstructure relationships shift with regime, session, and venue conditions — a signal fitted on one day is fitted on that day's regime.**
+
+Data range: 2026-04-01, 2026-04-02, 2026-04-03, 2026-04-05, 2026-04-06, 2026-04-07, 2026-04-08, 2026-04-09, 2026-04-10, 2026-04-12 · sampling: event bars, every 50 book updates · features: 42 · labels: fixed-horizon [100, 500, 1000, 5000, 30000, 60000, 300000, 900000] ms + triple-barrier (pt/sl 2.0x rvol_30s, 30 s time limit) · cost assumptions: cme: $2.02 per contract per side (= $4.04 round turn), converted to bps at each sample's own notional (price x multiplier {'MBT': 0.1, 'MES': 5.0}); taker additionally pays the touch spread · trade signing: {'kraken': 'venue_flag', 'coinbase': 'tick_rule', 'hyperliquid': 'venue_flag', 'cme': 'venue_flag'}
+
+Leakage suite: PASS (...                                                                      [100%])
+
+### cme MBT
+
+Valid samples: 896,018
+
+| horizon | n | AUC | cost mode | model EV bps | model hit | regressor EV bps | last-sign EV bps | zero EV bps |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 896016 | 0.659 | maker | -5.79 | 0.259 | -5.72 | -5.77 | n/a |
+| 100 ms | 896016 | 0.659 | taker | -7.99 | 0.259 | -7.92 | -7.97 | n/a |
+| 500 ms | 896010 | 0.615 | maker | -5.79 | 0.350 | -5.71 | -5.77 | n/a |
+| 500 ms | 896010 | 0.615 | taker | -7.99 | 0.350 | -7.92 | -7.97 | n/a |
+| 1000 ms | 896005 | 0.591 | maker | -5.79 | 0.384 | -5.71 | -5.76 | n/a |
+| 1000 ms | 896005 | 0.591 | taker | -7.99 | 0.384 | -7.92 | -7.96 | n/a |
+| 5000 ms | 895966 | 0.544 | maker | -5.78 | 0.454 | -5.72 | -5.77 | n/a |
+| 5000 ms | 895966 | 0.544 | taker | -7.99 | 0.454 | -7.92 | -7.98 | n/a |
+| 30000 ms | 895826 | 0.515 | maker | -5.73 | 0.490 | -5.69 | -5.81 | n/a |
+| 30000 ms | 895826 | 0.515 | taker | -7.93 | 0.490 | -7.89 | -8.01 | n/a |
+| 60000 ms | 895677 | 0.508 | maker | -5.79 | 0.490 | -5.83 | -5.77 | n/a |
+| 60000 ms | 895677 | 0.508 | taker | -7.99 | 0.490 | -8.03 | -7.97 | n/a |
+| 300000 ms | 894171 | 0.489 | maker | -6.28 | 0.484 | -6.38 | -5.89 | n/a |
+| 300000 ms | 894171 | 0.489 | taker | -8.48 | 0.484 | -8.58 | -8.09 | n/a |
+| 900000 ms | 889624 | 0.490 | maker | -6.58 | 0.489 | -7.37 | -5.88 | n/a |
+| 900000 ms | 889624 | 0.490 | taker | -8.77 | 0.489 | -9.57 | -8.08 | n/a |
+
+Predictability decay (AUC by horizon): 100 ms: 0.659 · 500 ms: 0.615 · 1000 ms: 0.591 · 5000 ms: 0.544 · 30000 ms: 0.515 · 60000 ms: 0.508 · 300000 ms: 0.489 · 900000 ms: 0.490
+
+Top feature importances (fold-averaged): spread_bps 0.09 · time_since_trade_ms 0.07 · rvol_1s 0.06 · ofi_best_1s 0.05 · abs_ret_1s 0.04 · rvol_30s 0.04 · depth_ask_1 0.04 · depth_bid_1 0.04 · ofi_deep_1s 0.04 · depth_ask_2 0.03
+
+## Stage C.8 — does the Phase B edge transfer to CME? — 2026-08-03
+
+**Caveat, read first: this is 53 days of ONE instrument on ONE venue, spanning
+one directional regime. It is more than the single day Phase B rested on and
+it is still not enough to conclude an edge exists — or that one is absent for
+any reason more durable than the conditions of April and May 2026.**
+
+**Correction to the auto-generated header above it:** the "~10 volatility
+regime(s)" figure is `len(dates) // 5`, a placeholder heuristic in
+`research/__main__.py`, not a measurement. What the data actually spans:
+BTC ran **65,850 to 83,195 (+26%)** across the two months with no sustained
+drawdown — a rising market, sampled once. Daily book events ranged 413,952 to
+7,325,851 (17.7x), but the low end is the expiry-session collapse rather than
+a quiet regime. **Distinct volatility conditions genuinely covered: one.**
+
+### The answer: the edge did not transfer. It vanished.
+
+| 900 s, maker | round-trip cost | gross capture | AUC | net EV |
+|---|---|---|---|---|
+| Kraken ETH/USD (Phase B) | 80.00 bps | ~3.9 bps | — | −76.1 |
+| Coinbase BTC-USD (Phase B) | 80.00 bps | **3.31 bps** | 0.596 | −76.69 |
+| Coinbase ETH-USD (Phase B) | 80.00 bps | 2.64 bps | 0.558 | −77.36 |
+| **CME MBT (this run)** | **5.33 bps** | **0.22 bps** | **0.501** | **−5.11** |
+
+Changing venue cut costs **15x**. It cut the gross edge **15x** as well. Net EV
+improves from −76.69 to −5.11 bps and **never crosses zero at any horizon in
+either cost mode** — best case is maker at 900 s, −5.11 bps; worst is taker at
+100 ms, −7.25 bps.
+
+**This is a different negative result from Phase B's, and the difference is the
+point.** On crypto spot a real 3–4 bps edge was buried under 80 bps of fees: a
+cost problem. On CME MBT the cost problem is genuinely solved — 5.33 bps is
+affordable against a 3 bps edge — and there is no edge left to capture. Moving
+venue fixed what was wrong and revealed that something else was also wrong.
+
+### Gross capture and net EV, per horizon
+
+Realised costs, computed per sample at its own notional (mean BTC 76,084,
+mean notional **$7,608**/contract): maker **5.325 bps** round trip (range
+4.862–6.125 as price moved), touch spread **1.930 bps**, taker **7.255 bps**.
+
+| horizon | AUC | gross capture | net EV maker | net EV taker |
+|---|---|---|---|---|
+| 100 ms | 0.664 | +0.005 | −5.32 | −7.25 |
+| 500 ms | 0.620 | +0.005 | −5.32 | −7.25 |
+| 1000 ms | 0.600 | +0.005 | −5.32 | −7.25 |
+| 5 s | 0.551 | +0.015 | −5.31 | −7.24 |
+| 30 s | 0.521 | +0.045 | −5.28 | −7.21 |
+| 60 s | 0.516 | +0.035 | −5.29 | −7.23 |
+| 300 s | 0.508 | +0.085 | −5.24 | −7.18 |
+| 900 s | 0.501 | +0.215 | **−5.11** | −7.04 |
+
+Gross capture is `mean(EV) + mean(cost)`, which is exact because both are means
+over the same samples. Everything below 300 s sits at or under the rounding
+precision of the EV column (±0.005) — indistinguishable from zero.
+
+**MBT is less predictable than Coinbase spot at every horizon:**
+
+| horizon | Coinbase BTC-USD | CME MBT |
+|---|---|---|
+| 100 ms | 0.886 | 0.664 |
+| 1 s | 0.786 | 0.600 |
+| 30 s | 0.551 | 0.521 |
+| 900 s | 0.596 | **0.501** |
+
+The last row is a coin flip.
+
+### The one apparent positive does not replicate
+
+The +0.215 bps at 900 s is the only figure in the table that clears rounding
+noise, so it was checked rather than reported. A **control run on 10 April days
+at stride 1** (896,018 samples, run_id `464f8937`) returns **−0.785 bps** gross
+capture at the same horizon, with AUC **0.490** — below chance. Gross capture on
+MBT is noise around zero, which is what AUC ≈ 0.50 already implied. **No horizon
+carries an edge, and the strongest-looking one reverses sign on a different
+subset.** Nothing here is a hypothesis for Phase C to test under fill
+simulation, because there is no positive expected value to preserve.
+
+### The control also clears the sampling confound
+
+The main run used an effective ~200-update bar (stride 4, forced by memory —
+ADR-025) where Phase B used 50, so bar width was a live alternative explanation
+for the weaker AUC. The stride-1 control reproduces the AUC curve within 0.01
+at every horizon:
+
+| horizon | 100 ms | 1 s | 30 s | 300 s | 900 s |
+|---|---|---|---|---|---|
+| main (stride 4, 53 d) | 0.664 | 0.600 | 0.521 | 0.508 | 0.501 |
+| control (stride 1, 10 d) | 0.659 | 0.591 | 0.515 | 0.489 | 0.490 |
+
+Bar width explains none of the result.
+
+### Capability matrix, applied honestly
+
+**35 of 42 features computed; 7 skipped.** All seven cross-venue features
+(`xv_mid_diff_bps`, `xv_diff_z`, `xv_leadlag_{m500,m100,0,p100,p500}`) are
+**100% NaN** — Kraken, Coinbase and Hyperliquid have no April–May data, since
+those recorders were activated later. They are absent, not silently zero, and
+none appears in the top-10 importances.
+
+MBT's per-contract entry (ADR-018) credits it with the full library, and the
+data bears that out: short trade-window features are populated rather than
+constant — `signed_vol_1s` 29.0% nonzero, `signed_vol_5s` 56.3%,
+`trade_count_5s` 59.7%, `vwap_minus_mid_5s` 56.6% nonzero / 40.3% NaN. A quiet
+market, not an absent one.
+
+Top features are microstructure-local, as expected with no cross-venue signal:
+`spread_bps` 0.08 · `time_since_trade_ms` 0.07 · `rvol_1s` 0.06 ·
+`abs_ret_1s` 0.05 · `ofi_best_1s` 0.05.
+
+### Walk-forward capacity: one clean fold, not three
+
+At 42-day train / 14-day test over a 61-day span the data yields **2 folds, and
+the second is truncated** — its test window runs 5 days past the end of the
+data (43,340 samples against the first fold's 252,596). **Honestly counted,
+this range supports one complete train/test split.** The windows were not
+shrunk to manufacture more: a 14-day test is already 1,344x the longest label
+horizon, and cutting it further would trade independent evaluation for the
+appearance of cross-validation. Six months would give three.
+
+### What would change this answer
+
+Nothing here says CME micro bitcoin has no exploitable structure. It says that
+*this feature set*, at *these horizons*, over *this one rising regime*, does
+not find any — with costs low enough that a 3 bps edge would have shown. The
+open possibilities, in order of cheapness: a regime that is not a two-month
+uptrend; cross-venue features against the crypto recorders, which now run and
+will make lead-lag against Kraken/Coinbase computable for future months; and
+MES, which is 2.49x MBT's event rate on a 5.2x larger notional, so its costs in
+bps are ~7x lower and the same gross edge would clear them.

@@ -21,16 +21,19 @@ from __future__ import annotations
 import heapq
 import time
 from bisect import bisect_right
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-from numpy.typing import NDArray
+from numpy.typing import DTypeLike, NDArray
 
 from data.config import AppConfig
+from data.databento.adapter import VENUE as VENDOR_VENUE
+from data.databento.exclusions import exclusion_windows_ns
+from data.databento.rolls import read_rolls
 from data.store import StreamingPartWriter, sanitize_symbol
 from data.store.parquet_writer import PART_NAME
 from research.features.cross_venue import CrossVenueTracker
@@ -83,6 +86,12 @@ def samples_partition_dir(processed_dir: Path, venue: str, symbol: str, date: st
 
 def _samples_schema() -> pa.Schema:
     fields = [pa.field("ts_ns", pa.int64()), pa.field("valid", pa.bool_())]
+    # The mid at entry. Kept because a per-contract fee (futures) only becomes
+    # a rate once divided by notional, and notional is this price times the
+    # contract multiplier — evaluation cannot re-derive it from features alone
+    # without dividing spread_abs by spread_bps and inheriting both their
+    # rounding and their zeros. See ADR-023.
+    fields += [pa.field("entry_mid", pa.float64())]
     fields += [
         pa.field(name, pa.float64())
         for name in [*FEATURE_COLUMNS, *LABEL_COLUMNS, *NET_COLUMNS, *TB_COLUMNS]
@@ -196,15 +205,34 @@ def extract_samples(
     engine = FeatureEngine(venue, symbol, cross=CrossVenueTracker())
     fixed = FixedHorizonLabeler()
     barrier = TripleBarrierLabeler()
-    windows = gap_windows(cfg.raw_dir, venue)
+    # Same invalidity path, two sources of windows. Recorder venues derive
+    # them from feed gaps and downtime; CME has no recorder, so its closures,
+    # no-match windows, roll splices and observed silences are unioned into
+    # the identical [start, end) list rather than getting a parallel
+    # mechanism that could drift out of agreement with this one.
+    if venue == VENDOR_VENUE:
+        windows = exclusion_windows_ns(
+            cfg,
+            symbol,
+            date,
+            read_rolls(cfg, f"{symbol}.c.0"),
+            FEATURE_LOOKBACK_NS,
+            MAX_LABEL_HORIZON_NS,
+            venue=venue,
+        )
+    else:
+        windows = gap_windows(cfg.raw_dir, venue)
     window_starts = [start for start, _ in windows]
-    maker = cost_model_from_config(venue, cfg.venues[venue], "maker")
-    taker = cost_model_from_config(venue, cfg.venues[venue], "taker")
+    maker = cost_model_from_config(venue, cfg.venues[venue], "maker", symbol=symbol)
+    taker = cost_model_from_config(venue, cfg.venues[venue], "taker", symbol=symbol)
 
     partition = samples_partition_dir(cfg.processed_dir, venue, symbol, date)
     writer = StreamingPartWriter(partition / PART_NAME, _samples_schema())
     pending = _PendingSamples(writer, resolutions_needed=len(DEFAULT_HORIZONS_MS))
     entry_spread: dict[int, float | None] = {}
+    # Entry price per pending sample, for per-contract fee venues. Dropped on
+    # the same schedule as entry_spread so neither outlives its sample.
+    entry_price: dict[int, float | None] = {}
 
     tagged = [_tag("primary", merged_stream(cfg.processed_dir, venue, symbol, date))]
     reference = _find_reference(cfg, venue, symbol)
@@ -237,20 +265,22 @@ def extract_samples(
         if event.book is not None and event.book.valid and event.book.mid is not None:
             for sample_index, horizon_ms, ret_bps in fixed.on_mid(t, event.book.mid):
                 spread_bps = entry_spread.get(sample_index)
+                px = entry_price.get(sample_index)
                 pending.resolve(
                     sample_index,
                     {
                         f"ret_bps_{horizon_ms}ms": ret_bps,
                         f"y_net_maker_{horizon_ms}ms": float(
-                            net_label(ret_bps, maker.round_trip_cost_bps(spread_bps))
+                            net_label(ret_bps, maker.round_trip_cost_bps(spread_bps, px))
                         ),
                         f"y_net_taker_{horizon_ms}ms": float(
-                            net_label(ret_bps, taker.round_trip_cost_bps(spread_bps))
+                            net_label(ret_bps, taker.round_trip_cost_bps(spread_bps, px))
                         ),
                     },
                 )
                 if horizon_ms == _MAX_HORIZON_MS:
                     entry_spread.pop(sample_index, None)
+                    entry_price.pop(sample_index, None)
             for outcome in barrier.on_mid(t, event.book.mid):
                 pending.resolve(
                     outcome.index,
@@ -273,7 +303,12 @@ def extract_samples(
                 windows, window_starts, t - FEATURE_LOOKBACK_NS, t + MAX_LABEL_HORIZON_NS
             )
             valid = entry_mid is not None and engine.book_is_valid and not in_gap
-            row: dict[str, Any] = {"ts_ns": t, "valid": valid, **features}
+            row: dict[str, Any] = {
+                "ts_ns": t,
+                "valid": valid,
+                "entry_mid": entry_mid,
+                **features,
+            }
             for name in [*LABEL_COLUMNS, *NET_COLUMNS, *TB_COLUMNS]:
                 row.setdefault(name, None)
             if valid and entry_mid is not None:
@@ -281,6 +316,7 @@ def extract_samples(
                 vol = features.get("rvol_30s")
                 tb_armed = bool(vol) and barrier.on_sample(index, t, entry_mid, vol or 0.0)
                 entry_spread[index] = features.get("spread_bps")
+                entry_price[index] = entry_mid
                 pending.add(index, row, tb_armed)
             else:
                 # Invalid samples are written immediately with null labels —
@@ -292,6 +328,7 @@ def extract_samples(
 
     for sample_index, _horizon in fixed.finalize():
         entry_spread.pop(sample_index, None)
+        entry_price.pop(sample_index, None)
         pending.resolve(sample_index, {})
     for sample_index in barrier.finalize():
         pending.resolve(sample_index, {})
@@ -304,20 +341,63 @@ def extract_samples(
 # --------------------------------------------------------------------------
 
 
-def load_samples(paths: list[Path]) -> dict[str, NDArray[np.float64]]:
-    """Concatenate sample parquet files into named float arrays (valid rows only)."""
-    tables = [pq.read_table(p) for p in paths if p.is_file()]
-    if not tables:
+def training_columns(horizons_ms: tuple[int, ...] = DEFAULT_HORIZONS_MS) -> list[str]:
+    """Exactly the columns :func:`train_and_evaluate` reads.
+
+    The net-label and triple-barrier columns are written to the dataset and
+    are not consumed here; naming what is needed keeps 18 unread columns out
+    of memory on a multi-million-sample range.
+    """
+    return ["ts_ns", "entry_mid", *FEATURE_COLUMNS, *[f"ret_bps_{h}ms" for h in horizons_ms]]
+
+
+def load_samples(
+    paths: list[Path],
+    columns: Sequence[str] | None = None,
+    dtype: DTypeLike = np.float64,
+    stride: int = 1,
+) -> dict[str, NDArray[Any]]:
+    """Concatenate sample parquet files into named arrays (valid rows only).
+
+    Reads one file at a time and keeps only the requested columns. The
+    previous shape — concatenate every day into one Arrow table, then convert
+    each column to float64 — held two full copies of the range at once. That
+    is invisible on the three venue-days Phase B ran and fatal on 53 days of
+    MBT: ~5.4 million samples across ~70 columns is roughly 3 GB per copy on
+    a 14 GiB machine. Peak here is the finished arrays plus one day.
+
+    ``ts_ns`` stays integral. Nanosecond stamps are ~1.8e18, past float64's
+    exact-integer range (2^53), so casting them to float rounds to the
+    nearest ~256 ns. Nothing downstream cares at that scale, but a timestamp
+    that silently loses precision is not worth keeping for symmetry's sake.
+
+    ``stride`` keeps every nth retained sample, applied per file so the full
+    arrays are never built. Because samples are event bars, striding by n is
+    equivalent to having sampled every ``n x every_n`` book updates: it
+    coarsens the bar, it does not bias which moments are chosen. It exists
+    because the training path holds the whole range in memory at once, and
+    on a 14 GiB machine 5.4M samples does not fit — see ADR-025. Any run
+    using it must say so in its report; a coarser bar is a real change to
+    the experiment, not an implementation detail.
+    """
+    if stride < 1:
+        raise ValueError(f"stride must be >= 1, got {stride}")
+    files = [p for p in paths if p.is_file()]
+    if not files:
         return {}
-    table = pa.concat_tables(tables)
-    mask = table.column("valid").to_numpy(zero_copy_only=False).astype(bool)
-    out: dict[str, NDArray[np.float64]] = {}
-    for name in table.schema.names:
-        if name == "valid":
-            continue
-        column = table.column(name).to_numpy(zero_copy_only=False)
-        out[name] = np.asarray(column, dtype=np.float64)[mask]
-    return out
+    wanted = list(dict.fromkeys([*columns, "valid"])) if columns is not None else None
+    chunks: dict[str, list[NDArray[Any]]] = {}
+    for path in files:
+        table = pq.read_table(path, columns=wanted)
+        mask = table.column("valid").to_numpy(zero_copy_only=False).astype(bool)
+        for name in table.schema.names:
+            if name == "valid":
+                continue
+            column = table.column(name).to_numpy(zero_copy_only=False)
+            as_type = np.int64 if name == "ts_ns" else dtype
+            chunks.setdefault(name, []).append(np.asarray(column, dtype=as_type)[mask][::stride])
+        del table
+    return {name: np.concatenate(parts) for name, parts in chunks.items()}
 
 
 def train_and_evaluate(
@@ -336,6 +416,12 @@ def train_and_evaluate(
         return {"error": "no valid samples"}
     ts = data["ts_ns"].astype(np.int64)
     features = np.column_stack([data[name] for name in FEATURE_COLUMNS])
+    # Every feature now exists twice: once in `data`, once in the matrix.
+    # spread_bps and entry_mid are still read per horizon for the cost model,
+    # so they stay; the rest are dropped, which is ~40 columns of the range.
+    for name in FEATURE_COLUMNS:
+        if name not in ("spread_bps", "entry_mid"):
+            data.pop(name, None)
     ret_index = FEATURE_COLUMNS.index("ret_1s")
     results: dict[str, Any] = {"n_samples": len(ts), "horizons": {}}
 
@@ -379,6 +465,15 @@ def train_and_evaluate(
         reg_c = reg_pred[covered]
         x_c = x[covered]
         spread = data["spread_bps"][usable][covered]
+        # Per-contract fee venues need the entry price to convert a fixed
+        # dollar fee into bps. Samples predating this column evaluate as
+        # before on percentage venues and fail loudly on futures, which is
+        # the right way round: a silent default would invent a fee.
+        entry_mid = (
+            data["entry_mid"][usable][covered]
+            if "entry_mid" in data
+            else np.full(int(covered.sum()), np.nan)
+        )
 
         top10 = dict(sorted(importance_acc.items(), key=lambda kv: -kv[1])[:10])
         horizon_result: dict[str, Any] = {
@@ -390,7 +485,13 @@ def train_and_evaluate(
         }
         for mode, model in cost_models.items():
             costs = np.array(
-                [model.round_trip_cost_bps(s if not np.isnan(s) else None) for s in spread]
+                [
+                    model.round_trip_cost_bps(
+                        s if not np.isnan(s) else None,
+                        p if p is not None and not np.isnan(p) else None,
+                    )
+                    for s, p in zip(spread, entry_mid, strict=True)
+                ]
             )
             predictions = {
                 "model_classifier": np.where(prob_c > 0.5, 1.0, -1.0),

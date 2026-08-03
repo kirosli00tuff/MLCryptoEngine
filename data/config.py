@@ -45,6 +45,12 @@ class FeeTier(BaseModel):
     volume_usd_30d: float = Field(ge=0)
     maker_bps: float = Field(ge=0)
     taker_bps: float = Field(ge=0)
+    # Futures venues charge a fixed sum per contract per side, not a share of
+    # notional, so their cost in bps depends on the price at the time of the
+    # trade. When this is set it supersedes the bps fields, and the cost model
+    # refuses to price a sample whose entry price it does not know rather than
+    # falling back to a percentage that was never charged. See ADR-023.
+    fee_usd_per_contract_per_side: float | None = Field(default=None, ge=0)
 
 
 class SnapshotBehaviour(BaseModel):
@@ -60,6 +66,11 @@ class InstrumentMeta(BaseModel):
 
     price_decimals: int = Field(ge=0)
     qty_decimals: int = Field(ge=0)
+    # Units of the underlying per contract (MBT 0.1 BTC, MES $5 per index
+    # point). Notional is price x this, which is what turns a per-contract
+    # fee into basis points. Absent for spot instruments, where one unit of
+    # the symbol is one unit of the underlying.
+    contract_multiplier: float | None = Field(default=None, gt=0)
 
 
 class VenueConfig(BaseModel):
