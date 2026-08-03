@@ -105,6 +105,8 @@ def iter_book_events(
                     ask_prices=tuple(row["ask_prices"] or ()),
                     ask_qtys=tuple(row["ask_qtys"] or ()),
                     valid=bool(row["valid"]),
+                    crossed=bool(row.get("crossed")),
+                    locked=bool(row.get("locked")),
                 ),
                 trade=None,
                 is_warmup=is_warmup,

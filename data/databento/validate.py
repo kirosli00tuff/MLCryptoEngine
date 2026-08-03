@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from data.config import AppConfig
 from data.databento.adapter import NULL_PRICE
 from data.databento.ingest import record_to_dict, vendor_path
-from data.databento.session import closed_windows_ns, open_ns
+from data.databento.session import closed_windows_ns, no_match_windows_ns, open_ns
 from research.labels.fixed_horizon import DEFAULT_HORIZONS_MS
 
 NS_PER_S = 1_000_000_000
@@ -118,6 +118,12 @@ class VendorDayReport:
     out_of_order_recv: int = 0
     exchange_clock_regressions: int = 0
     crossed: int = 0
+    # Crossings inside a scheduled no-match window (maintenance halt plus the
+    # reopen auction) are EXPECTED: order entry continues while matching is
+    # suspended, so bid can legitimately exceed ask. Counted and reported,
+    # excluded from the failure criterion — never suppressed. Outside those
+    # windows a crossed book is a real defect and still fails.
+    crossed_explained: int = 0
     locked: int = 0
     covered_open_ns: int = 0
     # Scheduled-open time lost to unexplained silences, excluded from
@@ -160,6 +166,7 @@ def validate_vendor_day(
 
     report = VendorDayReport(venue="cme", symbol=symbol, date=date, schema=schema)
     closed = closed_windows_ns(date)
+    no_match = no_match_windows_ns(date)
     report.scheduled_open_ns = open_ns(date)
 
     store = databento.DBNStore.from_file(path)
@@ -215,6 +222,8 @@ def validate_vendor_day(
             if bid != NULL_PRICE and ask != NULL_PRICE:
                 if bid > ask:
                     report.crossed += 1
+                    if any(lo <= recv < hi for lo, hi in no_match):
+                        report.crossed_explained += 1
                 elif bid == ask:
                     report.locked += 1
 
@@ -238,8 +247,13 @@ def validate_vendor_day(
             "declares MDP3 sequence numbers but none were observed — zero "
             "regressions out of zero observations is not evidence of integrity"
         )
-    if report.crossed:
-        report.failure_reasons.append(f"{report.crossed} crossed book events")
+    unexplained_crossed = report.crossed - report.crossed_explained
+    if unexplained_crossed:
+        report.failure_reasons.append(
+            f"{unexplained_crossed} crossed book events outside any scheduled "
+            f"no-match window ({report.crossed_explained} of {report.crossed} "
+            "occurred during a halt or reopen auction and are explained)"
+        )
     if report.coverage_pct < 99.0:
         report.failure_reasons.append(
             f"coverage {report.coverage_pct:.2f}% of scheduled-open time < 99%"

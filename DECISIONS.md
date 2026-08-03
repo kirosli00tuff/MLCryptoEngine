@@ -696,3 +696,71 @@ ADR-016's general principle — measured resolution outranks price — survives
 and is strengthened: here price was precisely the misleading signal, and
 only measurement on a representative day corrected it. ADR-016 is left
 unedited as the record of how that misreading happened.
+
+---
+
+## ADR-019: Crossed books during no-match windows are explained; crossed state never reaches features
+
+**Date:** 2026-08-02 · **Status:** accepted
+
+**Context.** MES failed validation on 2026-07-15 with 193 crossed book
+events — best bid above best ask — while MBT passed the same session with
+zero. A matching engine cannot produce a crossed book, so this looked like
+an adapter defect, and the candidates were real: MDP3 action semantics,
+implied and calendar-spread instruments appearing inside the outright book,
+ordering by the wrong timestamp, or mbp-10 aggregation artifacts.
+
+The evidence ruled them out one at a time. **Instruments:** the file contains
+exactly one instrument_id (42003239, MESU6) across all 10,649,955 records and
+all 193 crossings, so no implied or spread instrument is being mixed in.
+**Actions:** crossings appear under every action type (add 43, cancel 70,
+modify 79, trade 1), so no single unhandled action explains them — and the
+adapter never applies actions, because mbp-10 delivers the resolved book in
+each record. **Ordering:** crossing is detected within a single record, so
+inter-record ordering cannot manufacture it. **Transience:** the inversion is
+bid 7655.00 against ask 7615.75, 39.25 points, persisting across minutes —
+not a sub-millisecond artifact. **Vendor flags:** 192 of 193 carry only
+F_LAST, the same flag 10.29M ordinary records carry; none is marked
+F_MAYBE_BAD_BOOK.
+
+What identified the cause was the time distribution: **192 of 193 crossings
+fall inside 21:00–22:00 UTC and the last at 22:00:00.009Z.** That hour is the
+CME daily maintenance halt (16:00–17:00 US/Central), already in the session
+calendar. Order entry and cancellation continue through the halt while
+matching is suspended, so the book legitimately crosses; it uncrosses at the
+reopen auction, which is why the final event lands 9.9 ms after the reopen.
+The crossings are real, correctly delivered, and expected.
+
+**Decision.** Two separate things, deliberately not conflated.
+
+*Classification, not suppression.* A crossing inside a **no-match window** —
+the scheduled closure plus a 1 s reopen-auction grace — is counted as
+`crossed_explained` and excluded from the failure criterion. It remains
+counted in `crossed` and printed in every report, exactly as out-of-span gaps
+and scheduled closures are: anything the harness excuses stays visible. A
+crossing outside those windows is still a failure, and the test suite pins
+that a mid-session crossing is not excused. The grace is bounded by the
+measured 9.9 ms by an ample margin and is not tuned to make a check pass.
+
+*A guard that does not depend on the cause.* Independently of why a book
+crosses, a crossed book must never reach the feature pipeline: its mid,
+spread, microprice, queue imbalance and every depth statistic are
+meaningless, and a model would train on them without complaint. `BookState`
+now carries `crossed`/`locked` (columns the schema always had but the reader
+discarded) and exposes `usable`. The feature engine treats a crossed book as
+unusable: touch-derived features are nulled, the crossed mid never enters the
+return series or realized-volatility windows, and `book_is_valid` goes false
+so the pipeline marks the sample invalid — the same exclusion path as gap
+windows and Phase A book-invalid periods. Trade-derived features continue
+through a crossed book, since trades are unaffected by book inversion.
+Locked books (bid == ask) are counted and reported but not excluded: a touch
+where bid meets ask is degenerate, not impossible.
+
+**Consequences.** MES 2026-07-15 passes with 193 explained crossings and
+0 unexplained; MBT still passes the same session, so nothing was fixed at
+another contract's expense. The guard is cause-agnostic, so if a future venue
+crosses for an entirely different reason the features are still protected
+while the validation still reports it. The honest limitation: mbp-10 is a
+derived aggregation, and only the `mbo` schema could confirm the halt-period
+book at order granularity — worth buying if crossings ever appear *outside* a
+no-match window, and not worth buying now.

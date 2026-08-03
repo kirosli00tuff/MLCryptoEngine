@@ -811,3 +811,88 @@ both venues.
     single pass as validation: a log-spaced histogram plus one counter per
     label horizon, so 15M intervals cost fixed memory (4 tests, one pinning
     the bound).
+
+- 2026-08-02 — Stage C.5: MES crossed books diagnosed and classified; crossed
+  state can no longer reach the feature pipeline; backfill plan set.
+  **The 193 crossings are real, expected, and entirely inside the CME
+  maintenance halt. No adapter defect.**
+  - **Diagnosis, on evidence, before changing anything.** Extracted all 193
+    crossings from the stored MES 2026-07-15 mbp-10 file with context:
+    - *Adapter mixing instruments — RULED OUT.* The file holds exactly one
+      instrument_id (42003239, MESU6) across all 10,649,955 records and all
+      193 crossings. No implied, spread or calendar instrument is present, so
+      nothing is being merged that should be kept apart.
+    - *Unhandled action semantics — RULED OUT.* Crossings occur under every
+      action type (add 43, cancel 70, modify 79, trade 1), so no single
+      unhandled action explains them. More fundamentally the adapter never
+      applies actions: mbp-10 delivers the resolved 10-level book inside each
+      record, so a crossing is present in the vendor's record as delivered.
+    - *Sequencing / wrong timestamp — RULED OUT.* Crossing is detected within
+      a single record, so inter-record ordering cannot manufacture it.
+      (Ordering is `ts_recv` regardless, per ADR-011.)
+    - *Genuine sub-millisecond transient — RULED OUT.* The inversion is bid
+      7655.00 vs ask 7615.75 — 39.25 points — and persists across many
+      records for roughly 15 minutes, not one update.
+    - *Vendor flagged them bad — RULED OUT.* 192 of 193 carry only F_LAST
+      (flags=128), the same flag 10,289,383 ordinary records carry; none is
+      marked F_MAYBE_BAD_BOOK.
+    - *Vendor aggregation artifact — NOT SUPPORTED, and not bought.* mbp-10
+      is a derived aggregation and only `mbo` could confirm at order
+      granularity; the time evidence below explains the data without it, so
+      no data was purchased to settle it.
+  - **What the time distribution showed: 192 of 193 crossings fall in the
+    21:00Z hour** (first 21:45:22.809Z), and the last at **22:00:00.009Z**.
+    21:00-22:00 UTC is the **CME daily maintenance halt** (16:00-17:00
+    US/Central) already in the session calendar. Order entry and cancellation
+    continue while matching is suspended, so the book legitimately crosses;
+    it uncrosses at the reopen auction, which is why the final crossing lands
+    9.9 ms after 22:00:00Z.
+  - **Classified, not suppressed.** Crossings inside a **no-match window**
+    (scheduled closure + a 1 s reopen-auction grace, bounded well above the
+    measured 9.9 ms) count as `crossed_explained` and are excluded from the
+    failure criterion while remaining counted and printed — the same
+    treatment as out-of-span gaps and scheduled closures. A crossing outside
+    those windows still fails, pinned by a test.
+  - **Revalidation on the stored days:** MES 2026-07-15 **PASS** (193
+    crossed, 193 explained, 0 unexplained, coverage 100.000%); MBT
+    2026-07-15 **PASS** unchanged (0 crossed) — nothing was fixed at another
+    contract's expense; MES 2026-07-31 PASS; MBT 2026-07-31 still correctly
+    FAILS on 71.494% coverage (expiry day).
+  - **Feature-level guard, independent of the cause.** `BookState` now
+    carries `crossed`/`locked` — columns the schema always had but the
+    stream reader silently discarded — and exposes `usable`. A crossed book
+    nulls every touch- and depth-derived feature, never enters the return
+    series or realized-vol windows, and drives `book_is_valid` false so the
+    pipeline marks the sample invalid via the same path as gap windows.
+    Trade-derived features keep flowing (trades are unaffected by an
+    inverted book); locked books are counted and reported but not excluded.
+    6 regression tests built from the measured timestamps and prices.
+  - **Backfill recommendation (recommend only; nothing purchased):**
+    - **Buy MBT first.** It is the same asset the three live recorders
+      already capture, so it directly answers the question Phase B raised —
+      *is BTC microstructure tradeable at ~4.5 bps taker instead of the
+      80-160 bps that killed spot?* — and it enables cross-venue features
+      against Kraken/Coinbase/Hyperliquid. MES is a different asset class
+      and answers a new question rather than the open one. C.4 established
+      MBT is adequate: 51.6 book updates/s, 96.38% of intervals under 100 ms.
+    - **Contiguous months needed: 6 minimum, 12 preferred.** Walk-forward
+      with a 3-month train and 1-month test window yields 3 folds at 6
+      months and 9 at 12; fewer than ~6 folds cannot distinguish a real
+      pattern from one regime. 12 months also spans a full seasonal cycle.
+    - **Estimated cost** at measured rates (MBT $0.7525/day, MES
+      $2.2763/day, ~21 sessions/month): **MBT 6 months ~$95, 12 months
+      ~$190; MES 6 months ~$287, 12 months ~$574.** Both fit a sane research
+      budget; buying both for 12 months is ~$764.
+    - **Roll handling is mandatory before any multi-month feature run.**
+      Continuous stitching (`.c.0`) splices a different instrument at each
+      roll, so the price series has a discontinuity there that is a contract
+      change, not a market move. **MBT rolls monthly (12 discontinuities per
+      year); MES rolls quarterly (4).** Every roll boundary must be treated
+      exactly like a gap window: no feature lookback and no label horizon may
+      span it, and the roll timestamps come from symbology resolution rather
+      than being inferred from price jumps. This is the one respect in which
+      MES is the easier instrument, and it is a real cost of choosing MBT.
+    - **Do not buy until roll-boundary exclusion exists**, or the first
+      multi-month run will silently train across 12 contract changes.
+  - **Budget: $6.2343 of $25.00 spent, $18.7657 remaining. This stage bought
+    no data.**

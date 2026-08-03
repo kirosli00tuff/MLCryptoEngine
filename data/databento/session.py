@@ -78,3 +78,30 @@ def open_ns(date: str) -> int:
 
 def is_closed(ts_ns: int, date: str) -> bool:
     return any(start <= ts_ns < end for start, end in closed_windows_ns(date))
+
+
+# The reopen is an auction, not an instant: the book is matched only once the
+# uncrossing completes, so a crossed state can survive microseconds past the
+# scheduled reopen. Measured on MES 2026-07-15, the last crossed record sits
+# 9.9 ms after 22:00:00Z; 1 s is a deliberately generous bound on that
+# transition, not a constant tuned to make a check pass.
+REOPEN_AUCTION_GRACE_MS = 1_000
+
+
+def no_match_windows_ns(date: str) -> list[tuple[int, int]]:
+    """Windows when the matching engine is not matching.
+
+    The scheduled closure plus the reopen auction that ends it. A crossed
+    book inside one of these is expected — orders are entered and cancelled
+    while nothing matches, so bid can legitimately exceed ask until the
+    uncrossing. Outside them, a crossed book is a real defect.
+
+    Unioned rather than summed, per the CLAUDE.md interval rule: the grace
+    extension can make adjacent windows touch.
+    """
+    grace_ns = REOPEN_AUCTION_GRACE_MS * 1_000_000
+    return merge_windows((start, end + grace_ns) for start, end in closed_windows_ns(date))
+
+
+def in_no_match_window(ts_ns: int, date: str) -> bool:
+    return any(start <= ts_ns < end for start, end in no_match_windows_ns(date))

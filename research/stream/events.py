@@ -33,6 +33,18 @@ class BookState:
     ask_prices: tuple[float, ...]
     ask_qtys: tuple[float, ...]
     valid: bool
+    # A crossed book (bid > ask) is not a book: its mid, spread, microprice
+    # and every depth statistic are meaningless. Carried explicitly so the
+    # feature engine can exclude those moments rather than computing
+    # confident nonsense from them. Locked (bid == ask) is degenerate but
+    # legitimate at a touch, so it is carried and reported without excluding.
+    crossed: bool = False
+    locked: bool = False
+
+    @property
+    def usable(self) -> bool:
+        """True only when this state can support book-derived features."""
+        return self.valid and not self.crossed
 
 
 @dataclass(frozen=True, slots=True)

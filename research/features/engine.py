@@ -126,8 +126,12 @@ class FeatureEngine:
 
     @property
     def book_is_valid(self) -> bool:
+        """Usable book state. A crossed book (bid > ask) is never usable:
+        its mid, spread, microprice and depth statistics are meaningless, so
+        samples taken during one are excluded exactly as gap windows and
+        book-invalid periods are (ADR-019)."""
         book = self._prev_book
-        return book is not None and book.valid
+        return book is not None and book.usable
 
     def preview_signed_qty(
         self, trade_price: float, trade_qty: float, venue_side: str | None
@@ -194,7 +198,9 @@ class FeatureEngine:
                 self._ofi_deep[5].add(ts, deep)
         # On BBO venues the book is the slow, depth-only view: it must not
         # inject stale mids into the return series that bbo already drives.
-        if not self._prefers_bbo_mid and book.valid and book.mid is not None and book.mid > 0:
+        # A crossed book's mid is not a price: it must not enter the return
+        # series, realized vol, or the cross-venue tracker.
+        if not self._prefers_bbo_mid and book.usable and book.mid is not None and book.mid > 0:
             self._observe_mid(ts, book.mid)
         self._prev_book = book
 
@@ -249,7 +255,7 @@ class FeatureEngine:
             )
             total = touch.bid_qty + touch.ask_qty
             out["qimb_best"] = (touch.bid_qty - touch.ask_qty) / total if total > 0 else None
-        if book is not None and book.valid:
+        if book is not None and book.usable:
             if not self._prefers_bbo_mid:
                 out["qimb_best"] = bookfeat.queue_imbalance(book)
                 out["micro_minus_mid"] = bookfeat.microprice_minus_mid(book)
