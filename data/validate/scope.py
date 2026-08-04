@@ -188,6 +188,28 @@ def _vendor_scope(
     ]
 
 
+def _archive_skips(cfg: AppConfig) -> list[Skipped]:
+    """Report configured archives so a sweep never silently omits them.
+
+    An archive is never replayed and never scored here — it is downloaded bars,
+    not capture. But ADR-027's rule holds: a source invisible to the validator
+    is a source nobody notices has stopped being refreshed. Listing them costs
+    one line each and keeps the report's venue count honest.
+    """
+    return [
+        Skipped(
+            venue=key,
+            kind=source.kind,
+            reason=(
+                f"free public bar archive for {source.venue} ({source.name}) — downloaded "
+                "history, never captured and never traded, so there is nothing to replay. "
+                "Integrity is checked at ingest by data.archive, not here."
+            ),
+        )
+        for key, source in sorted(cfg.sources.items())
+    ]
+
+
 def plan_run(
     cfg: AppConfig,
     venues: list[str] | None = None,
@@ -208,7 +230,10 @@ def plan_run(
 
     recorder_days: list[RecorderDay] = []
     vendor_days: list[VendorDay] = []
-    skipped: list[Skipped] = []
+    # Archives are listed only on a default sweep: naming venues explicitly is
+    # a request for those venues, and padding that answer with unrelated
+    # archives would be noise.
+    skipped: list[Skipped] = [] if requested else _archive_skips(cfg)
     for venue in selected:
         vcfg = cfg.venues.get(venue)
         if vcfg is None:

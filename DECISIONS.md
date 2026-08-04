@@ -1255,3 +1255,178 @@ gaps plus 1 unclean of 602 ms, totalling 21,919,770 ms. The sort has been in
 downstream consumed a bad pairing. What was missing was not the sort — it was
 the statement of *why* the sort is load-bearing, the tie-break, and the assertion
 that would fire if either were ever removed.
+
+## ADR-029: Universes are built point-in-time, from what was listed at the sample's start
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** A pairs study measures whether price relationships between assets
+hold. The obvious way to pick assets — take today's liquid symbols and pull
+their history — deletes every asset that died inside the sample. Those are not
+a random subset. They are precisely the ones whose relationships broke, which
+is the quantity being measured. The bias does not merely inflate the result; it
+points directly at the conclusion.
+
+Measured on this stage's own sample: of the top 60 symbols by quote volume in
+2021-08, **twelve stopped trading before 2026-07** — one in five. A universe
+screened on today's liquidity contains none of them, so it would never test a
+relationship that ended, while keeping every relationship that survived. The
+measured decay of cointegration would then be an artefact of the screen.
+
+**Decision.** The universe is **the symbols that had bars in the sample's first
+month, ranked by that month's quote volume.** Every clause matters: not today's
+symbols, not symbols with a complete series, not symbols still trading. Members
+that die mid-sample stay in and their price series simply ends — that is not a
+data-quality problem to patch, it is the event the study most needs to see.
+
+This requires a source that remembers dead assets. `data.binance.vision` does:
+`FTTUSDT`, `LUNAUSDT`, `SRMUSDT`, `BUSDUSDT` and `WAVESUSDT` all still resolve
+(verified 2026-08-04). Kraken's `AssetPairs` and Coinbase's `products`
+enumerate only live products, so **neither may ever be used to select a
+universe** — only to cross-check prices. Kraken additionally caps its OHLC
+endpoint at 720 candles and cannot carry a multi-year sample at all.
+
+**Consequences.** The caveat travels with the result rather than being assumed
+away: this rests on Binance not purging delisted directories. Five known-dead
+symbols surviving is evidence, not a guarantee, and a symbol purged before the
+check ran would be invisible to the check itself.
+
+**A second bias the survivorship fix does not cover, and must be handled
+separately: ticker reuse.** `LUNAUSDT` has an unbroken run of monthly files and
+is nonetheless two different assets — Terra collapsed in May 2022 and Terra 2.0
+relaunched on the same ticker while the old chain became `LUNCUSDT`. Read
+naively the series is continuous; in truth it is a splice across a 177,400x
+single-bar jump. No cointegration test interprets that correctly and none
+complains, because a splice looks like a structural break and a structural
+break looks like a relationship that decayed. Any single-bar move beyond a
+factor of five excludes the symbol entirely. The threshold is deliberately
+blunt — on a top-sixty asset, 5x in a day is never a market move, and subtle
+detectors for this class of defect fail subtly.
+
+**Rejected: truncate a spliced series at the splice.** It keeps whichever side
+happened to be longer and silently changes which asset the symbol denotes
+partway through the study.
+
+## ADR-030: Screening reports raw hits, expected-by-chance, and corrected hits — always all three
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** Testing *N* pairs at α=0.05 produces about `0.05 * N` rejections
+when nothing is cointegrated at all. This stage tested 1,653 pairs, so **roughly
+83 "discoveries" are the null hypothesis behaving normally.** That is more than
+enough to fill a results table, sort it by Sharpe, and publish the top ten. The
+pairs-trading literature is full of exactly this artifact, and a raw count is
+indistinguishable from a real finding unless the correction is applied *before*
+anyone looks at the winners.
+
+**Decision.** Every screen reports three numbers together and never one without
+the others:
+
+1. **raw hits** at the threshold,
+2. **expected false positives** = α × pairs tested,
+3. **hits surviving Benjamini-Hochberg** at q=0.05.
+
+Benjamini-Hochberg over Bonferroni deliberately. Bonferroni controls the
+probability of even one false rejection and on 1,653 tests is so conservative
+that an ordinary real relationship cannot survive it. What a trading decision
+needs is "how much of this table is noise", and that is the false discovery rate
+BH bounds.
+
+**Consequences.** The gap between raw and corrected *is* the finding, so the raw
+count is never deleted as superseded. This stage's two windows show why: the
+formation window gave 432 raw against 82.7 expected (a real 5.2x excess, 180
+surviving BH), while the holdout gave **91 raw against 77.0 expected and zero
+surviving**. Reporting only corrected counts would have hidden that the second
+window is pure noise; reporting only raw counts would have made it look like 91
+discoveries.
+
+Test orientation is fixed by symbol order and never chosen by which direction
+scores better. Engle-Granger is not symmetric, so silently taking the better of
+`coint(y,x)` and `coint(x,y)` doubles the tests actually run while leaving the
+count handed to the correction unchanged — a screen quietly doubling its own
+false discovery rate. Johansen's lag order and deterministic-trend order are
+fixed for the same reason: searching them would be another uncounted dimension.
+
+## ADR-031: A free public archive is a source, not a venue — the third venue kind
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** Stage C.9.1 established that data reaching this project has a
+*kind*, and that validation must route on it (ADR-027). Two kinds existed:
+`recorder` (captured live into `data/raw/`) and `vendor` (purchased into
+`data/vendor/`). C.10 introduced a third thing that is neither: free public
+historical bars, downloaded once, from a venue that in Binance's case **cannot
+legally be traded from British Columbia at all**.
+
+Left undeclared it would default to `recorder`, and `make validate` would abort
+on it exactly as it did on `cme`.
+
+**Decision.** A third kind, `archive`, and — more consequentially — archives
+live in their own `sources` block rather than under `venues`.
+
+A `VenueConfig` carries a matching-engine endpoint, a book depth, a snapshot
+protocol and **a fee schedule**. Every one of those is meaningless for an
+archive, and the fee schedule is worse than meaningless: publishing `fee_tiers`
+for Binance would invite a future reader to model a strategy on fees no order of
+ours could ever pay. The model refuses any `kind` other than `archive` in that
+block, so a recorder or vendor stream cannot be smuggled in without its
+endpoints and fees being validated.
+
+What an archive shares with a venue is the routing: `plan_run` lists configured
+archives among its skipped entries on a default sweep, so an archive that stops
+being refreshed is visible rather than merely absent — ADR-027's rule that a
+source invisible to the validator is one nobody notices has stopped working.
+
+**Consequences.** Provenance is per file, not per config entry: source, venue,
+dataset, symbol, interval, period, URL, byte count, sha256 and retrieval date,
+appended to `data/vendor/archive/manifest.jsonl` **after** the bytes land and
+the checksum is taken. That ordering is the opposite of the vendor spend
+ledger's (ADR-022), and deliberately so — the ledger commits a charge before the
+request because the charge happens whether or not the bytes arrive. Nothing is
+spent here, so the record can wait for proof.
+
+`venue` and `source` are separate fields because they are separate things.
+Binance dumps carry Binance prints, but the dump endpoint is its own artefact
+and can be revised, or stop being published, independently of the exchange.
+
+## ADR-032: Strategies are ranked by break-even transaction cost, not by return
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** Three stages have now died on the same arithmetic — C.8 on
+directional prediction, C.9 on spread capture, and the executable half of C.10 —
+and in every case the deciding quantity was cost per trade against edge per
+trade, not the size of the edge. A return figure cannot express that. A pair
+returning 20% a year that stops being profitable above 5 bps per round trip is
+unreachable from every venue this project can use; one returning 8% that
+survives to 200 bps is tradeable everywhere, Kraken spot at its punitive 40 bps
+maker included.
+
+**Decision.** The primary ranking metric is **break-even transaction cost**: the
+round-trip cost in basis points at which a strategy's net return reaches zero,
+computed as `2 * gross_return / one_way_turns` in bps. Return, Sharpe and
+turnover are reported as context beneath it.
+
+Two conventions make the number comparable across strategies. Gross exposure is
+normalised to one unit across both legs, so entering transacts one unit one-way
+and exiting another, and a cost figure is always a *round-trip rate on one unit
+of capital* — 3.0 bps at Hyperliquid maker, 80.0 bps at Kraken base-tier spot.
+And a strategy that loses money before costs reports a break-even of **zero, not
+a negative number**: there is no cost at which it becomes profitable, and a
+negative value invites being read as a threshold.
+
+**Consequences.** The metric earned itself immediately by separating two
+failures that a return column would have merged. C.10's break-even costs of
+300–550 bps sit 100–180x above Hyperliquid's 3 bps — the turnover fix worked
+exactly as intended and **cost stopped being the binding constraint**. The
+strategy still failed, on persistence and on executability. Had the stage been
+judged on returns alone, "40% a year gross" would have read as a success and the
+real reasons for the failure would have been invisible.
+
+**A break-even is only as meaningful as the trade count under it**, so a power
+floor accompanies the ranking — this stage used ≥20 trades and ≥250 scored bars,
+which 43 of 175 pairs cleared. Unfiltered, the table was led by a pair returning
+128.7% a year on a leg dead since 2025-09. The floor is applied to the headline
+and the unfiltered table is kept beside it, because dropping thin results
+silently would be its own dishonesty and the gap between the two rankings is
+informative.

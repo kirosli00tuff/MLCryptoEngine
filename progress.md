@@ -1355,3 +1355,91 @@ correct, and the interesting part is why.**
   21:00Z Friday close — not a new finding. Matching a previously recorded
   number to three decimal places is the check that the new routing scores the
   same file the same way.
+
+## 2026-08-04 — Stage C.10: cointegration pairs trading
+
+**The turnover fix worked and the edge was not there. Break-even costs of
+300–550 bps against a 3 bps venue — a margin of 100–180x — and still no
+executable pair survives, because the relationships do not persist and the
+pairs that look best cannot be shorted anywhere reachable.**
+
+- **Task 1 — free history, survivorship-free by construction.** 3,936 monthly
+  files, 295 symbols, 15.0 MB, **nothing purchased**. Sample 2021-08-01 to
+  2026-07-31, 1,826 daily bars. Selection rule: symbols with a Binance monthly
+  bar file in the sample's **first** month, ranked by **that month's** quote
+  volume — 710 USDT candidates, **291 listed at 2021-08**, top 60 taken.
+- **20% of the universe died inside the sample.** Twelve of 60: MATIC (2024-09),
+  FTM (2025-01), EOS (2025-05), BAKE (2025-09), SRM (2022-11), BTT (2022-01),
+  EPS (2022-05), and five more. A universe screened on today's liquidity drops
+  one in five of this sample — and drops exactly the relationships that ended.
+- **Only Binance can do this.** Its dumps retain delisted directories (FTT,
+  LUNA, SRM, BUSD, WAVES all still resolve, verified 2026-08-04). Kraken's
+  `AssetPairs` and Coinbase's `products` list only live products, so neither is
+  ever used to select a universe; Kraken additionally hard-caps OHLC at **720
+  candles**, about two years, and cannot carry the sample at all.
+- **A second bias the survivorship fix does not cover: ticker reuse.**
+  `LUNAUSDT` has an unbroken run of files and is two different assets — Terra
+  collapsed May 2022, Terra 2.0 relaunched on the same ticker. Caught exactly:
+  17.46 → 1.08 → 0.00032 → **8.87, a 177,400x jump in one bar**. Excluded
+  entirely, not truncated. BTTUSDT (1:1000 redenomination) went too.
+- **New venue kind `archive`, in its own `sources` block** (ADR-031). Not under
+  `venues`: an archive has no endpoint, no book depth, and above all **no fee
+  schedule** — publishing one for Binance would invite modelling a strategy on
+  fees no order of ours could pay. `plan_run` lists archives among its skips so
+  one that stops being refreshed is visible rather than absent.
+- **Task 2 — 1,653 pairs, and 83 of the hits are the null behaving normally.**
+  Formation 2021-08→2023-07: **432 raw hits vs 82.7 expected by chance**, 180
+  surviving Benjamini-Hochberg. Holdout 2023-08→2026-07: **91 raw vs 77.0
+  expected — barely above noise — and zero surviving BH.**
+- **Relationships decay.** Of 180 formation survivors, 175 re-testable, **18
+  (10.3%) still significant uncorrected, 0 under BH**, against a 5.9% base rate
+  for any pair — a lift of **1.74x**. This reproduces the literature's finding
+  that cointegrating vectors are time-varying, which is why the hedge ratio is
+  re-estimated on a rolling 90-day window rather than fitted once.
+- **Tasks 3–4 — cost stopped being the constraint, which is the real news.**
+  At 6–9 round trips a year, Hyperliquid's 3 bps costs ~20 bps annually against
+  returns in the tens of percent: **98 of 175 pairs profitable gross and the
+  same 98 profitable net of HL cost**; 85 still profitable at Kraken's 80 bps.
+  Best powered pair C98/XTZ: 40.56% gross, 40.34% net HL, **break-even 553.1
+  bps** — 184x the venue's cost. C.8 and C.9 died on cost; C.10 did not.
+- **Task 4 — executability is zero, for two independent reasons.** Of the 12
+  subscribed Hyperliquid perps, only **5 existed on Binance at 2021-08** (BTC,
+  ETH, SOL, DOT, LINK); HYPE and MERL have **never** listed there, and ARB, GMX,
+  TNSR, NOT, PUMP came later. Of the ten testable executable pairs, none
+  survives — and **BTC/ETH scores p=0.1169**, not cointegrated even uncorrected.
+  **The published BTC-ETH result the stage was asked to test does not
+  reproduce.**
+- **Given a fair test, the executable set still fails.** Re-screened on
+  2024-06→2026-07 where 9 of 12 exist: 36 pairs, **1 raw hit against 1.8
+  expected by chance**, 0 surviving BH, **23 of 36 lose money gross**, and no
+  pair exceeds **9 trades** in 425 out-of-sample bars. The one Johansen
+  rejection (ARB/GMX) loses 8.4% a year. BTC/ETH scores p=0.9275 here.
+- **Task 5 — the deflation benchmark exceeds the result.** Best powered pair:
+  annualised Sharpe 0.98, per-bar 0.0514, against an **expected max per-bar
+  Sharpe under the null of 0.1058 across 1,653 trials**. **Deflated Sharpe
+  0.026.** Kurtosis 79.5, and the 12-fold walk-forward shows why — **two of
+  twelve quarters carry essentially the whole return** (+51.5%, +55.9%), seven
+  positive, five negative. Embargo scaling confirmed at day magnitude: 30 bars =
+  2,592,000,000,000,000 ns, exact in int64.
+- **A look-ahead bug I introduced and caught.** The first run ranked
+  BAKEUSDT/EPSUSDT first at **223% annualised from 4 trades** — EPSUSDT died in
+  2022-05, inside the formation window. `start` was an offset from the end of
+  each pair's own series, so any pair whose overlap was shorter than the holdout
+  traded **in-sample on the window it had been selected on**. Fixed to index by
+  date (`searchsorted` on the holdout start); the flashiest number in the table
+  was the bug. Pinned by regression test.
+- **Verdict: the fourth negative, and it fails differently.** C.8 and C.9 died
+  because edge per trade was below cost per trade. C.10's turnover fix removed
+  cost as the constraint entirely — and the strategy still fails, on persistence
+  (0 of 180 survive re-testing) and on access (0 executable pairs). Cointegration
+  among liquid crypto assets over 2021–2026, measured without survivorship bias
+  and corrected for multiple testing, is not distinguishable from noise out of
+  sample.
+- `make lint`, `make typecheck`, `make test` clean — **242 tests**, 23 new
+  (`tests/test_pairs.py`, `tests/test_archive.py`). statsmodels added to the
+  research group for Engle-Granger and Johansen. All recorders alive throughout;
+  2026-08-03 still validates PASS on all three venues.
+- **Known noise, not a defect:** statsmodels' `coint_johansen` emits
+  `ComplexWarning` on some pairs — its eigenvalue solve returns a negligible
+  imaginary part which the library discards. Johansen is reported alongside
+  Engle-Granger, never alone, and no conclusion here rests on it.

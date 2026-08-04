@@ -1,6 +1,15 @@
 # Per-venue metadata. Fee schedules are the venues' documented public spot schedules
 # (bps of notional, by trailing 30-day USD volume tier). Verify against the venue
 # before Phase C backtests consume them — venues reprice occasionally.
+#
+# Two blocks live here and they are not interchangeable:
+#
+#   venues:   places whose data this project captures or buys, and (from Phase D)
+#             could send an order to. Every one carries endpoints and a fee
+#             schedule, both of which are validated.
+#   sources:  free public bar archives, kind "archive" (ADR-031). History only.
+#             No endpoints, no fee schedule, and no assumption that the venue is
+#             reachable from British Columbia — Binance is not.
 
 venues:
   kraken:
@@ -216,3 +225,49 @@ venues:
     # this very data range.
     fee_tiers:
       - { volume_usd_30d: 0, maker_bps: 0, taker_bps: 0, fee_usd_per_contract_per_side: 2.02 }
+
+# Free public bar archives — kind "archive" (ADR-031). Downloaded once, never
+# live, never traded. Deliberately NOT under `venues`: an archive has no
+# matching engine we can reach, and publishing a fee schedule for one would
+# invite a future reader to model a strategy on fees no order of ours could
+# ever pay. Provenance (source, venue, retrieval date, URL, sha256) is recorded
+# per file in data/vendor/archive/manifest.jsonl, not here.
+sources:
+  binance_spot_klines:
+    name: Binance public data dumps (data.binance.vision)
+    kind: archive
+    venue: binance
+    base_url: https://data.binance.vision
+    notes: >-
+      Monthly OHLCV kline ZIPs, free and unauthenticated. Used because it is the
+      only one of the three that retains DELISTED symbols: FTTUSDT, LUNAUSDT,
+      SRMUSDT, BUSDUSDT and WAVESUSDT all still resolve (verified 2026-08-04),
+      which is what makes a survivorship-free universe constructible at all.
+      Binance is not legally available to Canadian residents (CLAUDE.md hard
+      constraint) — this is research history only and no order is ever routed
+      here. Directory listing via the S3 REST API at
+      s3-ap-northeast-1.amazonaws.com/data.binance.vision.
+
+  kraken_ohlc:
+    name: Kraken public REST OHLC
+    kind: archive
+    venue: kraken
+    base_url: https://api.kraken.com/0/public/OHLC
+    notes: >-
+      Cross-source price check for a venue we DO trade. Hard limit: the endpoint
+      returns at most 720 candles per pair regardless of the `since` parameter,
+      so daily bars reach back roughly two years and no further. Cannot carry
+      the cointegration sample on its own; used to verify Binance closes rather
+      than to extend them. Lists only currently-tradeable pairs, so its universe
+      is survivorship-biased by construction and is never used to select one.
+
+  coinbase_candles:
+    name: Coinbase Exchange public candles
+    kind: archive
+    venue: coinbase
+    base_url: https://api.exchange.coinbase.com
+    notes: >-
+      Cross-source price check for the second venue we trade. 300 candles per
+      request but pageable via start/end, so it reaches back further than
+      Kraken. Like Kraken it lists only live products, so it is never used for
+      universe selection.

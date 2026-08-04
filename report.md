@@ -1382,3 +1382,254 @@ Ordering clock: ts_recv (Databento capture-server hardware clock) · reference o
 Integrity: MDP3 sequence numbers: 14,989,106 checked (0 regressions) · book checksums: n/a (this feed provides none) · book snapshots: n/a (this feed provides none)
 
 Crossed: 0 (0 inside a scheduled no-match window, so expected) · locked: 0 · out of order on ts_recv: 0 · exchange-clock regressions: 0 (reference clock, not a defect)
+
+## Stage C.10 — cointegration pairs trading — 2026-08-04
+
+**Standing caveat, first.** Everything below rests on free daily bars from a
+venue this project cannot trade (Binance), used because it is the only free
+source that remembers delisted assets. It is not the recorded tick archive,
+which remains under three weeks old and cannot carry a multi-year statistical
+relationship. Conclusions about *cointegration* are drawn from that history;
+conclusions about *executability* are constrained by the venues actually
+reachable from British Columbia.
+
+### 1. Universe construction — survivorship-free, and here is the evidence
+
+Sample **2021-08-01 to 2026-07-31**, 1,826 daily bars.
+
+Selection rule: **symbols with a Binance monthly daily-bar file in the sample's
+first month, ranked by that month's quote volume.** Not today's liquid symbols,
+not symbols with a complete series, not symbols still trading — each of those is
+a way of letting the sample's end leak into its beginning.
+
+| step | count |
+|---|---|
+| USDT-quoted symbol directories in the archive | 710 |
+| listed at 2021-08 (had bars that month) | **291** |
+| selected (top 60 by 2021-08 quote volume) | 60 |
+| **stopped trading inside the sample** | **12 (20%)** |
+| excluded for a spliced price series | 1 |
+| excluded for too few observations | 1 |
+| carried into the study | **58** |
+
+The twelve that died: `MATICUSDT` (2024-09), `EOSUSDT` (2025-05), `FTMUSDT`
+(2025-01), `BAKEUSDT` (2025-09), `ATAUSDT`, `DENTUSDT`, `TRUUSDT`, `SXPUSDT`
+(2026-04/05), `MBOXUSDT` (2026-06), `SRMUSDT` (2022-11), `BTTUSDT` (2022-01),
+`EPSUSDT` (2022-05). Several are rebrands or redenominations rather than
+failures — MATIC became POL, FTM became S, EOS became A — but the ticker ended,
+which is what matters for a tradeable series. **A universe screened on today's
+liquidity silently drops one in five of this sample.**
+
+This is possible only because `data.binance.vision` retains delisted
+directories; `FTTUSDT`, `LUNAUSDT`, `SRMUSDT`, `BUSDUSDT` and `WAVESUSDT` all
+still resolve (verified 2026-08-04). Kraken's `AssetPairs` and Coinbase's
+`products` enumerate only live products, so **neither is ever used to select a
+universe here** — Kraken additionally hard-caps its OHLC endpoint at 720
+candles, roughly two years of daily bars, and cannot carry this sample at all.
+
+**Caveat, not assumed away:** this rests on Binance not purging delisted
+directories. Five known-dead symbols surviving is evidence, not a guarantee, and
+a symbol purged before 2026-08-04 would be invisible to the check itself.
+
+#### A second bias the survivorship fix does not cover: ticker reuse
+
+`LUNAUSDT` has an unbroken run of monthly files. It is also two different
+assets. Terra collapsed in May 2022 and Terra 2.0 relaunched on the same ticker;
+the old chain became `LUNCUSDT`. The detector caught it exactly:
+
+```
+LUNAUSDT 2022-05-11: 17.46    -> 1.0769   (0.0617x in one bar)
+LUNAUSDT 2022-05-12: 1.0769   -> 0.00032  (0.000297x in one bar)
+LUNAUSDT 2022-05-31: 0.00005  -> 8.87     (177,400x in one bar)
+```
+
+Read naively the series is continuous. In truth it is a splice, and no
+cointegration test interprets one correctly — a splice looks like a structural
+break, and a structural break looks like a relationship that decayed. Excluded
+entirely rather than truncated. `BTTUSDT` (1:1000 redenomination to BTTC,
+January 2022) went the same way on observation count.
+
+### 2. Screening — 432 raw "discoveries", 83 of them expected from noise
+
+Engle-Granger two-step on log closes, one fixed orientation per pair, plus a
+Johansen trace test. Benjamini-Hochberg at q=0.05.
+
+| | formation 2021-08→2023-07 | holdout 2023-08→2026-07 |
+|---|---|---|
+| pairs tested | 1,653 | 1,540 |
+| raw hits at α=0.05 (Engle-Granger) | 432 | 91 |
+| **expected by chance at this universe size** | **82.7** | **77.0** |
+| **hits surviving Benjamini-Hochberg** | **180** | **0** |
+| Johansen rejections, uncorrected | 559 | 194 |
+| pairs passing both tests | 167 | 0 |
+
+The formation window has a genuine excess — 432 against 82.7 expected, 5.2×. The
+holdout window does not: **91 raw hits against 77.0 expected is barely above
+noise, and not one pair survives the correction.**
+
+**Persistence: relationships decay, they do not hold.**
+
+| | |
+|---|---|
+| formation-window BH survivors | 180 |
+| re-testable in the holdout | 175 |
+| still significant uncorrected | **18 (10.3%)** |
+| still significant under BH | **0** |
+| base rate for *any* pair in the holdout | 5.9% |
+| lift over base rate | **1.74×** |
+
+A 10.3% persistence rate against a 5.9% base rate is not a stable relationship;
+it is a coin weighted very slightly. This reproduces the literature's finding
+that cointegrating vectors are time-varying, and it is the reason the hedge
+ratio here is re-estimated on a rolling 90-day window rather than fitted once.
+
+### 3. Break-even transaction cost — the ranking that matters
+
+Signal fixed a priori and never searched: rolling 90-bar hedge ratio, 60-bar
+z-score, enter at |z|=2, exit at z=0, abandon after 30 bars. Gross exposure
+normalised to one unit across both legs, so `cost_bps` is a **round-trip** rate
+on that unit — 3.0 bps at Hyperliquid maker, 80.0 bps at Kraken base-tier spot
+maker. Traded strictly out of sample: selection on the formation window, scoring
+begins the day it ends.
+
+**Power floor applied: ≥20 trades and ≥250 scored bars.** 43 of 175 pairs clear
+it. The unfiltered table is kept below, because the gap between the two is the
+finding.
+
+| pair | trades | RT/yr | gross %/yr | net HL %/yr | net Kraken %/yr | **break-even bps** | Sharpe | executable |
+|---|---|---|---|---|---|---|---|---|
+| C98/XTZ | 22 | 7.3 | 40.56 | 40.34 | 34.70 | **553.1** | 0.98 | no |
+| THETA/WIN | 20 | 6.5 | 34.88 | 34.68 | 29.68 | **536.6** | 0.84 | no |
+| KSM/WIN | 20 | 6.7 | 34.80 | 34.60 | 29.46 | **521.9** | 0.64 | no |
+| ALICE/RAY | 21 | 7.2 | 32.95 | 32.74 | 27.22 | **459.8** | 0.60 | no |
+| KSM/XTZ | 22 | 7.3 | 32.77 | 32.55 | 26.91 | **446.9** | 0.62 | no |
+| AUDIO/THETA | 26 | 8.8 | 36.33 | 36.07 | 29.27 | **411.3** | 1.22 | no |
+| QTUM/WIN | 21 | 6.8 | 26.85 | 26.64 | 21.38 | **392.9** | 0.70 | no |
+| TLM/XTZ | 27 | 9.0 | 27.32 | 27.05 | 20.12 | **303.6** | 0.78 | no |
+
+**The stage's premise is confirmed and it is not enough.** At 6–9 round trips a
+year, Hyperliquid's 3 bps costs about 20 bps annually against returns in the
+tens of percent — 98 of 175 pairs are profitable gross and **the same 98** are
+profitable net of Hyperliquid cost. Even Kraken's punitive 80 bps leaves 85
+profitable. Break-even costs of 300–550 bps sit **100–180× above** the cost of
+the venue. Lower turnover did exactly what it was supposed to: **cost is no
+longer the binding constraint.** Something else is.
+
+**What the power floor removes.** Unfiltered, the table is led by
+`BAKEUSDT/XTZUSDT` at 128.7% a year on 18 trades and `FTMUSDT/GRTUSDT` at 74.0%
+on **9 trades over 531 bars**. Both have a leg that died mid-sample, so their
+out-of-sample stretch is short and their returns rest on a handful of events.
+132 of 175 pairs sit below the floor.
+
+### 4. Executability — zero, for two independent reasons
+
+Of the twelve Hyperliquid perps subscribed on 2026-08-03, **five existed on
+Binance at 2021-08**: BTC, ETH, SOL, DOT, LINK. The other seven listed later or
+never: ARB 2023-03, GMX 2022-10, TNSR 2024-04, NOT 2024-05, PUMP 2025-09, and
+HYPE and MERL **never listed on Binance at all**.
+
+That gives ten testable executable pairs in the main sample. **None survives,
+and none is close:**
+
+| pair | Engle-Granger p | BH q | survives |
+|---|---|---|---|
+| DOT/SOL | 0.0128 | 0.0858 | no |
+| LINK/SOL | 0.0185 | 0.1088 | no |
+| **BTC/ETH** | **0.1169** | 0.3189 | **no** |
+| ETH/LINK | 0.1681 | 0.3785 | no |
+| BTC/SOL | 0.4054 | 0.6333 | no |
+| BTC/DOT | 0.8695 | 0.9487 | no |
+
+**The published BTC-ETH result does not reproduce.** The strategy this stage was
+asked to test — 14.89% annualised at Sharpe 2.23 — rests on a pair that is not
+cointegrated at 5% even before any multiple-testing correction, on a
+survivorship-free five-year sample.
+
+#### The executable set, tested fairly
+
+Reporting only the above would report a conclusion the window guaranteed, since
+seven of twelve coins could not be in a 2021-08 universe. So the executable set
+was re-screened on **2024-06 to 2026-07** (791 bars), where nine of the twelve
+exist:
+
+| | |
+|---|---|
+| pairs tested | 36 |
+| raw hits at α=0.05 | **1** |
+| expected by chance | **1.8** |
+| surviving Benjamini-Hochberg | **0** |
+| passing both tests | **0** |
+| losing money gross | **23 of 36** |
+| trades per pair | **5 to 9** |
+
+Fewer raw hits than chance produces. The single Johansen rejection, ARB/GMX
+(p=0.0136), **loses 8.4% a year gross**. BTC/ETH scores p=0.9275 in this window.
+No pair exceeds nine trades in 425 out-of-sample bars — none has the power to
+support any conclusion about its own Sharpe.
+
+### 5. Walk-forward and deflated Sharpe
+
+Best powered pair `C98USDT/XTZUSDT`, twelve consecutive 90-bar folds:
+
+| fold | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| return % | +3.3 | +10.4 | +8.7 | −1.3 | +6.6 | −4.4 | +0.9 | −7.1 | **+51.5** | −1.8 | **+55.9** | −0.8 |
+| Sharpe | 0.67 | 1.06 | 1.55 | −0.40 | 1.64 | −0.30 | 0.19 | −1.48 | 3.14 | −0.43 | 2.52 | −0.13 |
+
+Seven positive, five negative, and **two of twelve quarters carry essentially
+the entire return**. That is not a strategy with a stable edge; it is two events
+with ten quarters of noise around them.
+
+**Deflated Sharpe (Bailey & López de Prado, 2014), correcting for 1,653 pairs
+screened:**
+
+| | |
+|---|---|
+| annualised Sharpe | 0.98 |
+| per-bar Sharpe | 0.0514 |
+| **expected max per-bar Sharpe under the null, 1,653 trials** | **0.1058** |
+| skew / kurtosis | 3.78 / 79.50 |
+| observations | 1,095 |
+| **deflated Sharpe** | **0.026** |
+
+**The benchmark exceeds the result.** Searching 1,653 pairs of pure noise would
+be expected to produce a best per-bar Sharpe of 0.1058; the actual best is
+0.0514, less than half of it. The deflated Sharpe of 0.026 says there is roughly
+a 2.6% probability this pair's true Sharpe is above zero. A kurtosis of 79
+confirms what the fold table shows — the return is a couple of outliers, not a
+distribution.
+
+Embargo scaling confirmed for day-scale holding: 30 bars → 2,592,000,000,000,000
+ns, exact in int64 (Stage C.2 machinery was sized for millisecond horizons).
+
+### 6. Verdict
+
+**No executable pair survives at Hyperliquid cost with enough trades to be
+statistically meaningful. Not one.** Zero of the ten testable executable pairs
+in the main sample, and zero of thirty-six in the recent window, are
+cointegrated after correction — most are not cointegrated before it.
+
+This is the project's fourth negative, and it fails differently from the first
+three, which matters:
+
+- **C.8 and C.9 failed on cost.** Edge per trade was smaller than cost per
+  trade, by 15× and by 2.75–4.25 bps respectively.
+- **C.10 does not fail on cost.** The turnover fix worked — break-even costs of
+  300–550 bps against a 3 bps venue, a margin of 100–180×. Cost stopped being
+  the constraint.
+- **C.10 fails on the edge and on access.** The relationships do not persist
+  (0 of 180 survive re-testing), the best surviving result is weaker than what
+  screening 1,653 pairs of noise would produce, and the pairs that do look best
+  are ones no reachable venue lets us short.
+
+The honest summary is that the structural response was correct and the thing it
+was applied to was not there. Cointegration among liquid crypto assets over
+2021–2026, measured without survivorship bias and corrected for multiple
+testing, is not distinguishable from noise out of sample.
+
+**Data acquired this stage:** 3,936 monthly files, 295 symbols, 15.0 MB, all
+free — 3,702 daily and 234 hourly. Hourly bars cover the nine executable
+symbols over 2024-06→2026-07 and are retained for future intraday work; this
+study runs on daily bars because the holding period is days. Every file carries
+source, venue, URL, sha256 and retrieval date in
+`data/vendor/archive/manifest.jsonl`. **Nothing was purchased.**

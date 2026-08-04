@@ -36,6 +36,7 @@ research = [
     "numpy>=2.0",
     "matplotlib>=3.9",
     "jupyterlab>=4.2",
+    "statsmodels>=0.14",
 ]
 
 [build-system]
@@ -84,7 +85,16 @@ explicit_package_bases = true
 exclude = ["research/notebooks"]
 
 [[tool.mypy.overrides]]
-module = ["duckdb.*", "pyarrow.*", "uvloop.*", "zstandard.*", "lightgbm.*", "sklearn.*"]
+module = [
+    "duckdb.*",
+    "pyarrow.*",
+    "uvloop.*",
+    "zstandard.*",
+    "lightgbm.*",
+    "sklearn.*",
+    "statsmodels.*",
+    "scipy.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

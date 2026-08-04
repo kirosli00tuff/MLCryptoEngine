@@ -73,18 +73,22 @@ class InstrumentMeta(BaseModel):
     contract_multiplier: float | None = Field(default=None, gt=0)
 
 
-# How a venue's data reaches this project, and therefore how it is validated.
+# How a stream of data reaches this project, and therefore how it is validated.
 #
 #   recorder  captured live by data/recorder/ into data/raw/venue=<venue>/,
 #             validated by replaying that raw capture (data/validate/replay.py).
 #   vendor    no recorder exists: days arrive as purchased vendor files under
 #             data/vendor/ and are scored by data/databento/validate.py.
+#   archive   free public historical bars, downloaded once and never live. Not
+#             a venue this project trades on — it may not even be reachable
+#             from here — so it carries no fee schedule and no endpoints. See
+#             ADR-031.
 #
 # The distinction is not cosmetic. A *recorder* venue with no replay support is
 # a configuration error worth failing on; a *vendor* venue with no raw capture
 # is its normal, permanent state. Conflating the two is what made a routine
 # `python -m data.validate --date <today>` abort before validating anything.
-VenueKind = Literal["recorder", "vendor"]
+VenueKind = Literal["recorder", "vendor", "archive"]
 
 
 class VenueConfig(BaseModel):
@@ -190,6 +194,41 @@ class BudgetSettings(BaseModel):
     refuse_without_estimate: bool = True
 
 
+class SourceConfig(BaseModel):
+    """A free public historical archive: bars downloaded once, never captured.
+
+    Kept out of ``venues`` deliberately (ADR-031). A ``VenueConfig`` carries a
+    matching-engine endpoint, a book depth, a snapshot protocol and a fee
+    schedule — every one of which is either meaningless or actively misleading
+    for an archive. Binance in particular is not legally reachable from British
+    Columbia, so publishing a ``fee_tiers`` block for it would invite a future
+    reader to model a strategy on fees no order of ours could ever pay.
+
+    What an archive does share with a venue is its *kind*, so validation routes
+    it the same way it routes vendor days: never replayed, always reported.
+    """
+
+    name: str
+    # Always "archive" — declared rather than defaulted, so this can never be
+    # mistaken for something the recorder is expected to be capturing.
+    kind: VenueKind
+    # The venue whose prints these bars are, for provenance. Not a promise that
+    # the venue is reachable, tradeable, or configured under `venues`.
+    venue: str
+    base_url: str
+    notes: str = ""
+
+    @model_validator(mode="after")
+    def _archive_only(self) -> SourceConfig:
+        if self.kind != "archive":
+            raise ValueError(
+                f"source '{self.name}' declares kind={self.kind!r}; the sources block holds "
+                "free historical archives only. A recorder or vendor stream belongs under "
+                "'venues', where its endpoints and fee schedule are validated."
+            )
+        return self
+
+
 class AppConfig(BaseSettings):
     """Full application configuration: YAML defaults overlaid by environment."""
 
@@ -214,6 +253,9 @@ class AppConfig(BaseSettings):
     book: BookSettings = BookSettings()
     required_secrets: list[str] = Field(default_factory=list)
     venues: dict[str, VenueConfig] = Field(default_factory=dict)
+    # Free public bar archives (ADR-031). Separate from `venues` because they
+    # are history, not capture, and carry no tradeable fee schedule.
+    sources: dict[str, SourceConfig] = Field(default_factory=dict)
     # Read-only market-data vendor key (CLAUDE.md rule 4). SecretStr so it
     # cannot leak through a repr, a log line, or a pydantic dump.
     databento_api_key: SecretStr | None = None
@@ -282,6 +324,12 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
     if not isinstance(venues, dict) or not venues:
         raise ConfigError(f"{directory / 'venues.yaml'} must define a non-empty 'venues' mapping")
 
-    config = AppConfig(**{**defaults, "venues": venues})
+    # Sources are optional: a checkout with no archive configured is valid, and
+    # every consumer treats an empty mapping as "no free history available".
+    sources = venues_doc.get("sources") or {}
+    if not isinstance(sources, dict):
+        raise ConfigError(f"{directory / 'venues.yaml'} 'sources' must be a mapping if present")
+
+    config = AppConfig(**{**defaults, "venues": venues, "sources": sources})
     config.require_secrets()
     return config
