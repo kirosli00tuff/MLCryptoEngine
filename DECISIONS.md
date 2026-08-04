@@ -1051,3 +1051,64 @@ alternative explanation for its result.
 event bars is not an event-bar rule at all, and could not be described as any
 sampling scheme a live system would implement. A stride remains a rule the
 execution path could actually run.
+
+## ADR-026: Spread capture is judged per instrument, by spread minus adverse selection minus cost
+
+**Date:** 2026-08-03 · **Status:** accepted
+
+**Context.** Stage C.8 closed directional prediction. The natural next question
+is whether the passive side pays instead — quote, earn the spread, avoid the
+cost of crossing. A claim was made that it does not, anywhere reachable,
+because fees exceed the spread. The evidence was two instruments: MBT at 1.93
+bps of spread against 5.33 bps of cost, and full-size ES by estimate.
+
+Both are among the tightest instruments available, which makes them the worst
+possible basis for a claim about everything. The reason is structural: a fee
+quoted per contract converts to a roughly constant number of basis points as
+notional scales, because both numerator and denominator scale together. A
+spread does not — it is set by competition among quoters, and on a thin
+instrument it widens by orders of magnitude while the fee stays put. The
+survey bears this out across a single venue: CME micro contracts on one day
+range from 0.37 bps (MNQ) to 128 bps (MHG) of spread, a 350x span, against
+costs spanning 0.41 to 6.2 bps. **The spread-to-cost ratio is a property of an
+instrument, not a venue**, and a venue-level claim about it is a category error.
+
+**Decision.** Spread capture is assessed per instrument, on three measured
+quantities and never on the ratio alone:
+
+1. **Time-weighted spread.** Weighted by how long each spread was quoted, not
+   by how often the quote changed. A book that sits wide and then flickers
+   tight reports a very different number under the two weightings, and only the
+   time-weighted one describes what a resting order faced.
+2. **Adverse selection** — signed post-trade mid drift. A resting quote is not
+   filled by a random counterparty; it is filled by someone who wanted that
+   side. Measuring how far the mid then moves in the aggressor's favour costs
+   nothing but recorded data and requires no fill model.
+3. **Round-trip cost**, per contract at the instrument's own notional
+   (ADR-023).
+
+The verdict is **spread − adverse − cost**, and a favourable ratio alone is
+explicitly not sufficient: on a wide-spread instrument the adverse term grows
+with the spread and can exceed it.
+
+**Consequences.** Two guards travel with the framing.
+
+**Activity is reported alongside the ratio, always.** Stage C.9 found CME micro
+silver quoting a ratio of 3,889 on 69 quote updates in a day — one per twenty
+minutes. Reporting that as an opportunity would be the same error as measuring
+MBT on its expiry day (ADR-018): a number computed over a book that is not
+really there. A ratio without an update count is not a finding.
+
+**Every figure is an upper bound, because a fill is assumed.** Nothing in this
+project models queue position, so the arithmetic credits every quote with a
+fill it has not earned. Where the bound is negative — as it is on every
+instrument measured in C.9, by 2.75 to 4.25 bps — the conclusion is safe
+without a fill model. Where it is positive, the fill model becomes the next
+question rather than an optional refinement, and the very attractiveness that
+makes it positive is what puts other quotes ahead of yours in the queue.
+
+**Rejected: settle it by buying depth data across many CME contracts.** Top of
+book answers the spread question, and bbo-1s costs a fraction of mbp-10 — the
+whole 16-contract survey was $0.78. Depth would be needed for queue modelling,
+which is only worth buying once something survives this arithmetic. Buy the
+cheap measurement that can rule out, before the expensive one that can refine.

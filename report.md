@@ -1086,3 +1086,166 @@ uptrend; cross-venue features against the crypto recorders, which now run and
 will make lead-lag against Kraken/Coinbase computable for future months; and
 MES, which is 2.49x MBT's event rate on a 5.2x larger notional, so its costs in
 bps are ~7x lower and the same gross edge would clear them.
+
+## Stage C.9 — spread-to-cost survey and adverse selection — 2026-08-03
+
+**The correction this stage exists to make.** After C.8 closed directional
+prediction, a further claim was made and not verified: that spread capture is
+dead everywhere reachable, because fees exceed the spread. That was checked on
+**two instruments** — MBT at 1.93 bps against 5.33 bps of cost, and full-size ES
+by estimate — and generalised. Those are among the *tightest* instruments
+available, which is the worst possible basis for the generalisation. Fees scale
+with notional and stay roughly constant in bps; spreads do not, and widen
+sharply on thin instruments. **The spread-to-cost ratio is a property of an
+instrument, not a venue.** This stage measures it across 28 instruments instead
+of arguing about it.
+
+The correction is **partly vindicated and does not change the conclusion**, for
+a reason the ratio alone cannot show.
+
+### Task 1 — Hyperliquid census, and what was actually subscribed
+
+**Finding, as anticipated: the recorder was subscribed to BTC and ETH only** —
+2 of 177 live perps, and precisely the two where the ratio is worst. The census
+below is therefore a census of the least favourable corner of the venue.
+
+Measured over **53.13 quoted hours** (2026-08-01 to 08-03, 2,151,124 bbo
+updates, 342,965 trade messages, 0 unparseable), against a maker round trip of
+**3.00 bps** (1.5 bps/leg, base tier, `config/venues.yaml`, verified 2026-08-01):
+
+| coin | mean bps | median | p90 | >3 bps | >6 bps | >12 bps | **spread/cost** |
+|---|---|---|---|---|---|---|---|
+| BTC | 0.164 | 0.2 | 0.2 | 0.01% | 0.00% | 0.00% | **0.055** |
+| ETH | 0.545 | 0.75 | 0.75 | 0.03% | 0.00% | 0.00% | **0.182** |
+
+Spread is **time-weighted**, not update-weighted: what matters is what a resting
+quote faced, not how often the quote changed. Neither instrument spends
+measurable time above the 3 bps it would need merely to break even on fees.
+
+**Subscription extended** from `[BTC, ETH]` to **12 coins**, chosen by the
+venue's own liquidity ranking (24h notional volume, `metaAndAssetCtxs`,
+retrieved 2026-08-03) sampled across the whole range rather than cherry-picked:
+
+| coin | rank | 24h notional | endpoint impact spread |
+|---|---|---|---|
+| BTC / ETH | 1 / 2 | $2.03B / $672M | 0.72 / 1.82 bps |
+| HYPE / SOL | 3 / 4 | $217M / $154M | 1.87 / 0.81 bps |
+| PUMP | 6 | $31M | 4.47 bps |
+| DOT / LINK / ARB | 29 / 31 / 33 | $2.4M / $2.0M / $1.9M | 3.96 / 3.00 / 6.01 bps |
+| GMX / MERL | 152 / 153 | $97K / $97K | 16.19 / 15.95 bps |
+| TNSR / NOT | 175 / 177 | $31K / $15K | 79.18 / 58.31 bps |
+
+Impact spread is the endpoint's own field and only a *ranking* signal — touch
+spread is what matters and is what the census will measure. The thin end is
+where the ratio could plausibly be favourable, so it is where adverse selection
+has to be measured before any of it is believed. Applied via a managed systemd
+restart; all 12 coins verified recording bbo **and** trades within 40 s, and the
+lifecycle boundary was recorded as a clean end/start pair 574 ms apart.
+
+### Task 2 — CME survey, 16 micro contracts, $0.7763
+
+Priced before buying, bbo-1s only (no mbp-10 for any new contract), one day
+(2026-07-15). Cost per side = CME exchange execution + clearing (TradeStation
+published non-member schedule, retrieved 2026-08-02) + $0.02 NFA + $0.85 IBKR
+commission, the same tier-0 convention as ADR-023.
+
+**Contracts with a real continuous market (>20,000 quote updates/day):**
+
+| symbol | updates/day | spread bps | notional | RT $ | cost bps | **ratio** |
+|---|---|---|---|---|---|---|
+| M6A micro AUD | 22,761 | 3.099 | $6,985 | 2.22 | 3.178 | **0.98** |
+| MNQ micro Nasdaq | 82,259 | 0.370 | $59,670 | 2.44 | 0.409 | **0.91** |
+| M6E micro EUR | 34,122 | 1.337 | $14,332 | 2.22 | 1.549 | **0.86** |
+| MGC micro gold | 73,358 | 0.817 | $40,505 | 3.94 | 0.973 | **0.84** |
+| M6B micro GBP | 23,332 | 2.162 | $8,408 | 2.22 | 2.640 | **0.82** |
+| MES micro S&P | 79,999 | 0.377 | $38,027 | 2.44 | 0.642 | **0.59** |
+| MYM micro Dow | 68,935 | 0.455 | $26,428 | 2.44 | 0.923 | **0.49** |
+| M2K micro Russell | 72,968 | 0.703 | $14,931 | 2.44 | 1.634 | **0.43** |
+| MBT micro bitcoin | 64,230 | 2.640 | $6,505 | 4.04 | 6.211 | **0.43** |
+| MET micro ether | 50,609 | 8.981 | **$191** | 1.94 | 101.762 | **0.09** |
+
+**Not one exceeds 1.0.** The best, micro AUD/USD at 0.98, is break-even on fees
+*before* any adverse selection. MET is the extreme case of the notional effect
+that started this: 0.1 ETH is a $191 contract, so even a $1.94 round turn is
+102 bps.
+
+**Contracts too inactive to call a market:**
+
+| symbol | updates/day | spread bps | cost bps | ratio | note |
+|---|---|---|---|---|---|
+| SIL micro silver | 69 | 2275.4 | 0.585 | 3889 | one quote per 20 min |
+| MHG micro copper | 1,494 | 128.6 | 1.978 | 65.0 | one quote per minute |
+| 30Y micro yield | 96 | 410.6 | — | — | yield-quoted |
+| 10Y micro yield | 4,577 | 17.9 | — | — | yield-quoted |
+| 2YY / 5YY | 10 / 1 | — | — | — | **failed measurement** |
+
+Three honest qualifications. The **yield** contracts quote in yield, not price,
+so "bps of notional" is the wrong frame and no ratio is computed. **2YY and
+5YY** returned 10 and 1 usable records with mids of 1.4e9 and 4.6e9 — implausible
+values from an unresolved continuous symbol, so these are a failed measurement,
+not a thin market, and are reported as such rather than as data. And **SIL and
+MHG show enormously favourable ratios on books that barely exist**: a spread you
+cannot get filled against is not an opportunity, and with 69 quote updates in a
+day the measurement may not describe a tradeable market at all.
+
+### Task 3 — adverse selection
+
+Signed post-trade mid drift: for every trade, signed by aggressor direction,
+how far the mid moves in the aggressor's favour. That is what a passive fill on
+the other side would have suffered. Positive means adverse. Deadlines resolve
+against the last mid at or before them, never a later one.
+
+| instrument | trades | 100 ms | 1 s | 5 s |
+|---|---|---|---|---|
+| Hyperliquid BTC | 491,982 | +0.063 | +0.215 | +0.289 |
+| Hyperliquid ETH | 278,835 | +0.106 | +0.298 | +0.384 |
+| CME MBT | 148,768 | +0.657 | +0.678 | +0.643 |
+
+Positive at every horizon on every instrument measured. MBT's is ~3x the
+Hyperliquid majors' and already flat by 100 ms, which is what one expects where
+informed flow is a larger share of a thinner tape.
+
+### The number that decides it: spread − adverse − cost
+
+| instrument | spread | adverse (1 s) | cost | **net bps** |
+|---|---|---|---|---|
+| Hyperliquid BTC | 0.164 | 0.215 | 3.000 | **−3.05** |
+| Hyperliquid ETH | 0.545 | 0.298 | 3.000 | **−2.75** |
+| CME MBT | 2.640 | 0.678 | 6.211 | **−4.25** |
+
+**Every instrument measured fails, and none is close.** For the ten liquid CME
+contracts where trades were not bought, the conclusion follows without them:
+ratio < 1 means spread < cost, so the net is negative before adverse selection
+is charged at all, and measured adverse selection is positive everywhere
+(+0.06 to +0.68 bps). Adding a positive quantity to a negative result does not
+rescue it.
+
+**This assumes a fill, which no part of this pipeline models.** Queue position
+determines whether the passive order is filled at all; the arithmetic above
+credits every quote with a fill it has not earned. That makes these figures an
+*upper bound* on spread-capture economics, and they are already negative. On
+any instrument where the ratio does look attractive, the same is visible to
+everyone else quoting it, and the queue in front of you is the mechanism by
+which that attractiveness is competed away.
+
+### Recommendation: do not build the fill simulation against any of these
+
+The ratio-minus-adverse-selection arithmetic closes spread capture on every
+instrument with a measurable market, the way C.8 closed directional prediction —
+and for a sharper reason: C.8 needed a model to fail, whereas this needs only
+subtraction, and it fails by 2.75 to 4.25 bps rather than marginally. Building
+fill simulation against a negative upper bound would be building it to confirm
+a sign that is already determined.
+
+**What is genuinely open, and how to close it for free.** The thin tail is not
+closed: SIL and MHG show ratios of 65 and 3,889, and the correction that
+prompted this stage is right that the ratio is instrument-dependent and does
+exceed 1 somewhere. What is unknown is whether those books are tradeable and
+what adverse selection does there — and CME bbo-1s cannot answer it, because it
+carries no trades. The ten thin Hyperliquid perps subscribed in Task 1 answer
+exactly that question, with both quotes and aggressor-signed trades, at **zero
+marginal cost**, on instruments spanning a 110x range of impact spread. Re-run
+this census in a week. If the thin end survives spread − adverse − cost there,
+that is the first positive result this project has produced and it earns a fill
+simulation; if it does not, spread capture is closed on the evidence rather than
+by assertion.

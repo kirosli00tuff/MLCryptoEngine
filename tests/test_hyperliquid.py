@@ -77,13 +77,15 @@ def test_recorder_subscribes_all_channels_for_all_coins() -> None:
     recorder = HyperliquidRecorder.__new__(HyperliquidRecorder)
     recorder.venue_cfg = cfg.venues["hyperliquid"]
     payloads = [orjson.loads(m) for m in recorder.subscribe_messages()]
-    assert len(payloads) == 8  # 2 coins x 4 channels
+    # Derived from config, not hardcoded: the subscription list grew from 2 to
+    # 12 coins in Stage C.9, and a test pinned to the old list would have to be
+    # edited every time rather than checking the property that matters — that
+    # every configured coin is actually subscribed on every channel.
+    coins = tuple(cfg.venues["hyperliquid"].symbols)
+    channels = ("l2Book", "bbo", "trades", "activeAssetCtx")
+    assert len(payloads) == len(coins) * len(channels)
     seen = {(p["subscription"]["coin"], p["subscription"]["type"]) for p in payloads}
-    assert seen == {
-        (coin, channel)
-        for coin in ("BTC", "ETH")
-        for channel in ("l2Book", "bbo", "trades", "activeAssetCtx")
-    }
+    assert seen == {(coin, channel) for coin in coins for channel in channels}
     assert recorder.sequence_of({"channel": "l2Book"}) is None
 
 

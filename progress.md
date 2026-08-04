@@ -1184,3 +1184,66 @@ raised.**
 - `make lint`, `make typecheck`, `make test` clean. All three recorders alive
   and untouched throughout. Both runs logged to research/experiments.jsonl
   (`99ad7dde`, `464f8937`).
+
+## 2026-08-03 — Stage C.9: spread-to-cost measured across 28 instruments; all fail
+
+**Every instrument with a measurable market fails spread − adverse − cost, by
+2.75 to 4.25 bps. The thin tail is the one thing left genuinely open, and the
+subscription extension made in this stage will close it for free.**
+
+- **The correction, stated plainly.** After C.8 a claim was made and not
+  verified: spread capture is dead everywhere because fees exceed the spread.
+  It was checked on **two instruments** (MBT 1.93 bps vs 5.33 bps cost, and ES
+  by estimate) and generalised — from two of the *tightest* instruments
+  available, which is the worst possible basis. Fees hold roughly constant in
+  bps as notional scales; spreads do not. This stage measured 28 instruments.
+- **Hyperliquid was subscribed to BTC and ETH only** — 2 of 177 live perps, and
+  the two where the ratio is worst. Over 53.13 quoted hours: BTC **0.164 bps**
+  (ratio 0.055), ETH **0.545 bps** (ratio 0.182) against a 3.00 bps maker round
+  trip. Neither spends measurable time above 3 bps. Spread is **time-weighted**,
+  not update-weighted — what a resting quote faced, not how often it changed.
+- **Subscription extended to 12 coins** spanning the venue's own liquidity
+  ranking (24h notional, metaAndAssetCtxs, 2026-08-03): BTC, ETH, HYPE, SOL,
+  PUMP, DOT, LINK, ARB, GMX, MERL, TNSR, NOT — a 110x range of impact spread
+  (0.72 to 79.18 bps). Applied by managed systemd restart; all 12 verified
+  recording bbo and trades within 40 s, lifecycle boundary logged as a clean
+  end/start pair 574 ms apart, other venues undisturbed.
+- **CME survey: 16 micro contracts, bbo-1s only, $0.7763 total.** Priced before
+  buying. No mbp-10 bought for any new contract.
+  **Not one liquid contract has a ratio above 1.0.** Best is M6A micro AUD at
+  **0.98** — break-even on fees before adverse selection. Then MNQ 0.91, M6E
+  0.86, MGC 0.84, M6B 0.82, MES 0.59, MYM 0.49, M2K 0.43, MBT 0.43, MET 0.09.
+  MET is the notional effect in extremis: 0.1 ETH is a **$191** contract, so a
+  $1.94 round turn is 102 bps.
+- **Three contracts are too inactive to call a market.** SIL shows a ratio of
+  3,889 on **69 quote updates in a day**; MHG 65.0 on 1,494. A spread you cannot
+  be filled against is not an opportunity. Reported as an open question, not as
+  an opportunity and not as a dismissal.
+- **Two contracts are a failed measurement, not data.** 2YY and 5YY returned 10
+  and 1 usable records with mids of 1.4e9 and 4.6e9 — an unresolved continuous
+  symbol. Recorded as failed rather than reported as thin. The micro yield
+  contracts (2YY/5YY/10Y/30Y) quote in yield, not price, so bps-of-notional is
+  the wrong frame and no ratio is computed for them.
+- **Adverse selection, measured with no fill simulation** (signed post-trade
+  mid drift, resolving against the last mid at or before each deadline):
+  HL BTC +0.063/+0.215/+0.289 bps, HL ETH +0.106/+0.298/+0.384, CME MBT
+  +0.657/+0.678/+0.643 at 100 ms / 1 s / 5 s. Positive everywhere; MBT's is ~3x
+  the majors' and already flat by 100 ms.
+- **spread − adverse − cost:** HL BTC **−3.05**, HL ETH **−2.75**, CME MBT
+  **−4.25** bps. For the ten liquid CME contracts without trades data the
+  conclusion follows without them: ratio < 1 means the net is negative before
+  adverse selection is charged, and adverse selection is positive everywhere.
+- **This assumes a fill, which nothing here models.** Queue position decides
+  whether the passive order fills at all, so these are an *upper bound* — and
+  the upper bound is already negative.
+- **Recommendation: do not build Phase C fill simulation against any of these.**
+  C.8 needed a model to fail; this needs only subtraction. What stays open is
+  the thin tail, and the ten thin perps subscribed here answer it with quotes
+  *and* aggressor-signed trades at zero marginal cost. Re-run this census in a
+  week.
+- **Budget:** $0.7763 spent on the survey; **$82.1179 of $120, $37.8821
+  remaining**, cap unchanged. 29 ledger requests.
+- `make lint`, `make typecheck`, `make test` clean — **207 tests**, 10 new.
+  `tests/test_hyperliquid.py` subscription assertion rederived from config
+  instead of a hardcoded 2-coin list, so growing the list no longer breaks it.
+  All recorders alive.

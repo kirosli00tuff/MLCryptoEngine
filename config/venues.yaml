@@ -84,7 +84,37 @@ venues:
     # Coin names discovered from the info endpoint ({"type":"meta"}) on
     # 2026-08-01: 232 perp assets; BTC (szDecimals 5, maxLeverage 40) and ETH
     # (szDecimals 4, maxLeverage 25) confirmed present under exactly these names.
-    symbols: [BTC, ETH]
+    # Extended 2026-08-03 (Stage C.9) from [BTC, ETH]. Two instruments is not a
+    # census, and they were the two where the spread-to-cost ratio is known to
+    # be worst: measured over 53 recorded hours, BTC quotes 0.164 bps and ETH
+    # 0.545 bps against a 3.0 bps maker round trip — ratios of 0.05 and 0.18.
+    # Concluding from those two that spread capture is dead everywhere is the
+    # error this stage exists to correct, because the ratio is a property of an
+    # instrument, not a venue.
+    #
+    # Selection is by the venue's own liquidity ranking — 24h notional volume
+    # from the info endpoint's metaAndAssetCtxs, retrieved 2026-08-03, 177 live
+    # perps — sampled across the range rather than cherry-picked, with the
+    # endpoint's impact spread shown as the (loose) proxy that motivated each
+    # pick. Touch spread is what actually matters and is what the census will
+    # measure; impact spread is only the ranking signal.
+    #
+    #   BTC   rank   1   $2.03B/day   impact  0.72 bps  baseline, known worst
+    #   ETH   rank   2   $672M/day    impact  1.82 bps  baseline, known worst
+    #   HYPE  rank   3   $217M/day    impact  1.87 bps  liquid native token
+    #   SOL   rank   4   $154M/day    impact  0.81 bps  liquid major
+    #   PUMP  rank   6   $31M/day     impact  4.47 bps  first above cost
+    #   DOT   rank  29   $2.4M/day    impact  3.96 bps  mid-book
+    #   LINK  rank  31   $2.0M/day    impact  3.00 bps  mid-book
+    #   ARB   rank  33   $1.9M/day    impact  6.01 bps  mid-book
+    #   GMX   rank 152   $97K/day     impact 16.19 bps  thin
+    #   MERL  rank 153   $97K/day     impact 15.95 bps  thin
+    #   TNSR  rank 175   $31K/day     impact 79.18 bps  thinnest quartile
+    #   NOT   rank 177   $15K/day     impact 58.31 bps  thinnest live perp
+    #
+    # The thin end is where the ratio could plausibly be favourable, so it is
+    # where adverse selection has to be measured before any of it is believed.
+    symbols: [BTC, ETH, HYPE, SOL, PUMP, DOT, LINK, ARB, GMX, MERL, TNSR, NOT]
     # l2Book delivers 20 levels per side, full snapshot per push.
     book_depth: 20
     # The feed provides neither sequence numbers nor checksums; both render
