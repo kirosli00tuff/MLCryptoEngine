@@ -1247,3 +1247,111 @@ subscription extension made in this stage will close it for free.**
   `tests/test_hyperliquid.py` subscription assertion rederived from config
   instead of a hardcoded 2-coin list, so growing the list no longer breaks it.
   All recorders alive.
+
+## 2026-08-04 — Stage C.9.1: validation venue handling and session marker ordering
+
+**Two defects from a post-incident check. Neither lost data. One would have
+aborted every validation run from here on; the other turned out to be already
+correct, and the interesting part is why.**
+
+- **Task 1 — validation aborted on `cme` before validating anything.** The CLI
+  treated every configured venue as replayable and raised `ValueError: No replay
+  support for venue 'cme'`. Venues iterate in sorted order, so `cme` came first
+  and took the three healthy venues down with it: three days went unscored
+  because of the one venue that is never going to have raw capture.
+- **Fixed by declaring the difference, not routing around it.** `VenueConfig`
+  now carries `kind`: `recorder` (captured live into `data/raw/`) or `vendor`
+  (purchased into `data/vendor/`), defaulting to `recorder` so an undeclared
+  venue fails loudly rather than quietly dropping out. New
+  `data/validate/scope.py` plans the whole run up front into three outcomes that
+  never collapse into each other: **replay**, **skip with a reason**, and
+  **`VenueConfigurationError`** (exit 2, distinct from exit 1 "nothing to do").
+  A recorder venue with no parser still raises — that one *is* a defect.
+- **The two skip reasons are worded to be unmistakable.** Vendor: *"not captured
+  live — it has no raw data on any date by design"*. Recorder: *"no recorded
+  data for 2099-01-01 (6 other recorded date(s) under data/raw)"*. Skips are
+  written into report.md, not only printed: a section listing two venues where
+  three were expected has to say what happened to the third.
+- **`cme` stays in the venue list.** Named explicitly, `--venue cme --date
+  YYYY-MM-DD` now scores stored vendor day files through
+  `data.databento.validate` — which until this stage had **no caller anywhere in
+  the repository**. A default sweep skips vendor venues rather than streaming
+  gigabyte DBN files on every `make validate`; multi-day `range=` files keep
+  their own entry point.
+- **Task 2 — the reported premise was half right, and the half that was wrong is
+  the point.** `derive_downtime_gaps` does **not** trust file order. It has
+  sorted by `ts_ns` since the commit that introduced it (`2f94b53`, 2026-08-01
+  00:32 PDT), six hours before the first out-of-order pair was written. On the
+  actual on-disk sequence it produces a correct **327 ms clean `downtime` gap**.
+- **What file order would have produced, measured rather than assumed:** a
+  **602 ms `unclean` termination** — a graceful systemd restart reported as a
+  crash — with the 327 ms clean gap lost entirely. Kind matters more than
+  duration here: `unclean` is the signature of a crash, OOM kill or power loss,
+  and one appearing in a report is a reason to go looking.
+- **So the sort was load-bearing and undocumented.** Added: the rationale in the
+  module docstring (two processes append to one file during every restart —
+  unreliable by design, not an anomaly to prevent), an `end`-before-`start`
+  tie-break for identical timestamps, and the invariant the prompt asked for —
+  `NegativeGapError` on any `GapRecord` whose window runs backwards, enforced on
+  the model so no future derivation can reintroduce it.
+- **The code it replaces silently dropped inverted pairs.** `if marker.ts_ns >
+  pending_end.ts_ns:` would have hidden exactly the corruption worth knowing
+  about, and hidden it twice over: `merge_windows` also filters inverted
+  windows, so a negative gap vanishes from the coverage union while still being
+  counted in its per-kind total, leaving the two to disagree with nothing to
+  show why.
+- **Task 3 — nothing downstream consumed a bad pairing.** The only runs
+  published after the mis-ordered markers were written (2026-08-01 07:28 and
+  07:32 UTC) report **3 recorder-downtime gaps totalling 21,919,496 ms, 0
+  unclean**. Clock-ordered pairing gives exactly 21,919,496 ms; file-ordered
+  would have given 2 downtime + 1 unclean (602 ms), 21,919,770 ms. The published
+  figures reconcile to the nanosecond with correct ordering. No day needs
+  recomputing, and none was recomputed.
+- **Task 4 — 2026-08-03 validated, all three live venues PASS.** Kraken
+  16,653,584 msgs (7 feed gaps, 14,593 ms; 16,531,192 CRC32 checksums verified,
+  0 failures; coverage 100.00% excl. gaps). Coinbase 3,460,641 msgs (0 gaps;
+  3,460,641 sequence numbers checked, 0 gaps; 100.00%). Hyperliquid 1,489,552
+  msgs (1 feed gap, 1,142 ms; 32,200 snapshots; 100.00%). Zero crossed and zero
+  locked books on every symbol. Zero recorder downtime and zero unclean
+  terminations on all three.
+- **Correction to the stage premise: the 05:40:40 UTC restart is on 2026-08-04,
+  not 08-03.** `1785822040408043821` is `2026-08-04T05:40:40.408Z` — 22:40 PDT
+  on Aug 3, which is where the date came from. 2026-08-03 UTC contains no
+  session markers at all, so its downtime is legitimately zero. The restart
+  pairs correctly as a **574 ms clean `downtime` gap** (`end` 05:40:40.408044 ->
+  `start` 05:40:40.982369), verified directly and pinned by the regression test.
+- **New finding, not in scope to fix: a 22.6 s host stall at 19:51:25.336Z.**
+  All three venues fall silent within **1 ms of each other** and resume 22.5 to
+  22.8 s later — one host, not three venues. **Zero logged gaps overlap it on
+  any venue**, so the WebSocket connections stayed up and the process simply
+  stopped reading its sockets. Invisible in the verdict (22.6 s of 86,400 is
+  0.026%, and coverage still rounds to 100.00%), and invisible in the arrival
+  histogram, where it is one entry in a max. The **snapshot-cadence check is the
+  only thing that caught it** — Hyperliquid reports 1 unexplained stale interval
+  of 28,100 ms, which is the stall plus its surrounding 5.4 s cadence. Cause
+  unknown; a stall of that length with connections intact points at the host
+  (I/O or memory pressure on a 14 GiB machine that was also running C.9
+  analysis that afternoon), not at any venue. Recorded for a future stage.
+- **Also observed, not a defect:** on a snapshot-stream venue the
+  "snapshot compares (mismatch)" column does not mean what it means elsewhere.
+  Hyperliquid shows 6,616 of 16,099 (BTC) and 6,884 of 16,099 (ETH) — it is
+  comparing consecutive *full* snapshots 5.4 s apart, so a differing top of book
+  is the market moving, not a reconstruction error. It is scored against nothing
+  and fails nothing; noting it so a future reader does not mistake 41% for a
+  problem.
+- `make lint`, `make typecheck`, `make test` clean — **219 tests**, 12 new
+  (`tests/test_validate_scope.py`, plus three in `tests/test_downtime_gaps.py`
+  built from the literal on-disk marker sequence). Both recorder units
+  `active running` under `systemctl --user`, all three feeds at age 0 s,
+  undisturbed throughout.
+- **Vendor dispatch verified against a known answer, not just implemented.**
+  `--venue cme --date 2026-07-31` reproduces C.6's recorded verdicts exactly:
+  `MES.c.0` **PASS** (14,989,106 events, 0 sequence regressions, 0 out-of-order,
+  0 crossed, coverage 100.00%) and `MBT.c.0` **FAIL** (380,358 events, coverage
+  **71.49%** vs C.6's 71.494%, 5.99 h of unexplained quiet across 4 windows vs
+  C.6's 5.986 h across 4). MBT's failure is the fully-explained expiry-day
+  behaviour from C.6 — MBTN6 expired that day, settled against the CF Bitcoin
+  Reference Rate at 15:00 UTC, and its book ran dead from 15:18:41Z to the
+  21:00Z Friday close — not a new finding. Matching a previously recorded
+  number to three decimal places is the check that the new routing scores the
+  same file the same way.

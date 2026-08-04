@@ -1,20 +1,32 @@
-"""CLI: ``python -m data.validate [--venue kraken] [--date 2026-07-30]`` (``make validate``)."""
+"""CLI: ``python -m data.validate [--venue kraken] [--date 2026-07-30]`` (``make validate``).
+
+Scores whatever the run plan says is scoreable and reports everything it
+skipped. A venue with nothing to validate for the requested date is never a
+reason to abort the other venues — see :mod:`data.validate.scope`.
+"""
 
 from __future__ import annotations
 
 import argparse
 import sys
 
-from data.config import REPO_ROOT, load_config
-from data.recorder.reader import available_dates
-from data.validate.replay import DayReport, validate_venue_day
+from data.config import REPO_ROOT, AppConfig, load_config
+from data.databento.rolls import read_rolls
+from data.databento.validate import VendorDayReport, validate_vendor_day
+from data.validate.replay import DayReport, VenueConfigurationError, validate_venue_day
 from data.validate.report_writer import append_report, write_summary_json
+from data.validate.scope import RunPlan, VendorDay, plan_run
+
+# Configuration is wrong (unknown venue, or a recorder venue nothing can
+# replay). Distinct from 1, which means "nothing to do", so a scripted caller
+# can tell a misconfiguration from an empty archive.
+EXIT_CONFIG_ERROR = 2
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m data.validate",
-        description="Reconstruct books from raw capture, score data quality, "
+        description="Reconstruct books from raw data, score data quality, "
         "and append results to report.md.",
     )
     parser.add_argument(
@@ -22,7 +34,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="append",
         dest="venues",
         metavar="KEY",
-        help="venue key (repeatable; default: every venue with recorded data)",
+        help="venue key (repeatable; default: every recorder venue with recorded "
+        "data — vendor venues are scored only when named explicitly)",
     )
     parser.add_argument(
         "--date",
@@ -34,35 +47,56 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _score_vendor_day(cfg: AppConfig, day: VendorDay) -> VendorDayReport:
+    """Score one stored vendor contract-day, with its roll boundaries applied."""
+    return validate_vendor_day(
+        cfg, day.symbol, day.date, schema=day.schema, rolls=read_rolls(cfg, day.symbol)
+    )
+
+
+def _run(cfg: AppConfig, plan: RunPlan) -> tuple[list[DayReport], list[VendorDayReport]]:
+    runs: list[DayReport] = []
+    for replay in plan.recorder_days:
+        print(f"validating {replay.venue} {replay.date} ...", flush=True)
+        runs.append(validate_venue_day(cfg, replay.venue, replay.date))
+    vendor_runs: list[VendorDayReport] = []
+    for day in plan.vendor_days:
+        print(f"validating {day.venue} {day.symbol} {day.date} ({day.schema}) ...", flush=True)
+        vendor_runs.append(_score_vendor_day(cfg, day))
+    return runs, vendor_runs
+
+
 def main() -> int:
     args = _parse_args()
     cfg = load_config()
-    venues = args.venues if args.venues else sorted(cfg.venues)
+    try:
+        plan = plan_run(cfg, args.venues, args.dates)
+    except VenueConfigurationError as exc:
+        print(f"configuration error: {exc}", file=sys.stderr)
+        return EXIT_CONFIG_ERROR
 
-    runs: list[DayReport] = []
-    for venue in venues:
-        if venue not in cfg.venues:
-            print(f"unknown venue: {venue} (configured: {', '.join(sorted(cfg.venues))})")
-            return 2
-        dates = args.dates if args.dates else available_dates(cfg.raw_dir, venue)
-        if not dates:
-            print(f"{venue}: no recorded data found under {cfg.raw_dir}")
-            continue
-        for date in dates:
-            print(f"validating {venue} {date} ...", flush=True)
-            runs.append(validate_venue_day(cfg, venue, date))
-
-    if not runs:
+    # Printed before any scoring so an operator watching a long run knows up
+    # front which venues are not in it, rather than inferring it from absence.
+    for skip in plan.skipped:
+        print(f"skipping {skip.venue} ({skip.kind}): {skip.reason}")
+    if plan.is_empty:
         print("nothing to validate — run `make record` first")
         return 1
 
-    append_report(REPO_ROOT / "report.md", runs)
+    runs, vendor_runs = _run(cfg, plan)
+
+    append_report(REPO_ROOT / "report.md", runs, vendor_runs, plan.skipped)
     summary_path = write_summary_json(cfg.logs_dir, runs)
 
     for run in runs:
         verdict = "PASS" if run.passed else "FAIL"
         print(f"{run.venue} {run.date}: {verdict} · {run.msgs_total} msgs")
         for reason in run.failure_reasons:
+            print(f"  ✗ {reason}")
+    for vendor in vendor_runs:
+        verdict = "PASS" if vendor.passed else "FAIL"
+        print(f"{vendor.venue} {vendor.symbol} {vendor.date}: {verdict} · {vendor.events} events")
+        for reason in vendor.failure_reasons:
             print(f"  ✗ {reason}")
     print(f"report.md updated · summary: {summary_path}")
     return 0

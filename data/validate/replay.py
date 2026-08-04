@@ -60,6 +60,18 @@ class GapAccountingError(RuntimeError):
     """Gap records contradict recorded data; nothing downstream is trustworthy."""
 
 
+class VenueConfigurationError(RuntimeError):
+    """A venue cannot be replayed, and that is a defect rather than a data gap.
+
+    Distinct from "this venue has no data for that date", which is ordinary and
+    is reported as a skip. This is raised only when the configuration itself is
+    incoherent: a venue declared as recorder-backed with no parser behind it, or
+    a vendor venue routed into the raw-capture replay path that structurally
+    cannot serve it. Both mean something is wrong with the code or the config,
+    not with the day's data, so both must be loud.
+    """
+
+
 NS_PER_S = 1_000_000_000
 DAY_NS = 86_400 * NS_PER_S
 # A crossed book or sequence anomaly this close to a logged reconnect is
@@ -391,11 +403,34 @@ def _snapshot_tob(event: BookEvent) -> tuple[Decimal | None, Decimal | None]:
     return best_bid, best_ask
 
 
+def replay_supported(venue: str) -> bool:
+    """True if raw capture from this venue can be replayed into a book."""
+    return venue in PARSE_FNS
+
+
 def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
-    """Replay, score, and persist one venue-day. Raises on unsupported venues."""
-    if venue not in PARSE_FNS:
-        raise ValueError(f"No replay support for venue '{venue}'")
+    """Replay, score, and persist one recorder venue-day.
+
+    Raises :class:`VenueConfigurationError` when the venue cannot be replayed at
+    all. It never raises merely because the day is empty: a recorder venue with
+    no records for ``date`` returns a report that fails on "no book data found",
+    which is a verdict, not a crash. Deciding which venue-days reach this
+    function is :mod:`data.validate.scope`'s job.
+    """
     vcfg = cfg.venues[venue]
+    if vcfg.kind != "recorder":
+        raise VenueConfigurationError(
+            f"venue '{venue}' is declared kind={vcfg.kind!r}: its data arrives as vendor "
+            "files under data/vendor/, never as raw capture under data/raw/, so there is "
+            "nothing here to replay. Score it with data.databento.validate instead."
+        )
+    if not replay_supported(venue):
+        raise VenueConfigurationError(
+            f"venue '{venue}' is declared kind='recorder' but no replay parser is "
+            f"registered for it (have: {', '.join(sorted(PARSE_FNS))}). This is a "
+            "configuration or code defect — the recorder may be capturing a feed "
+            "nothing can reconstruct — not a missing-data condition."
+        )
     mechanisms = mechanisms_for(vcfg)
     seq_applies = vcfg.sequence_numbers
     checksum_applies = vcfg.snapshot.checksum

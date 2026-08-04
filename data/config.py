@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
@@ -73,6 +73,20 @@ class InstrumentMeta(BaseModel):
     contract_multiplier: float | None = Field(default=None, gt=0)
 
 
+# How a venue's data reaches this project, and therefore how it is validated.
+#
+#   recorder  captured live by data/recorder/ into data/raw/venue=<venue>/,
+#             validated by replaying that raw capture (data/validate/replay.py).
+#   vendor    no recorder exists: days arrive as purchased vendor files under
+#             data/vendor/ and are scored by data/databento/validate.py.
+#
+# The distinction is not cosmetic. A *recorder* venue with no replay support is
+# a configuration error worth failing on; a *vendor* venue with no raw capture
+# is its normal, permanent state. Conflating the two is what made a routine
+# `python -m data.validate --date <today>` abort before validating anything.
+VenueKind = Literal["recorder", "vendor"]
+
+
 class VenueConfig(BaseModel):
     """Static metadata for one venue."""
 
@@ -95,6 +109,11 @@ class VenueConfig(BaseModel):
     # snapshot cadence instead of sequence/checksum integrity, and warm-start
     # replay is skipped because every message already carries the whole book.
     snapshot_stream: bool = False
+    # See VenueKind above. Defaults to "recorder" on purpose: an undeclared
+    # venue is one this project believes it is capturing live, so a missing
+    # declaration surfaces as a loud configuration error rather than as a
+    # silently skipped venue that nobody notices stopped being validated.
+    kind: VenueKind = "recorder"
 
     @field_validator("fee_tiers")
     @classmethod

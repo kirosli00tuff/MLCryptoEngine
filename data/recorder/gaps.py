@@ -7,9 +7,31 @@ from pathlib import Path
 from typing import Literal
 
 import orjson
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 GAPS_FILE_NAME = "gaps.jsonl"
+
+
+class NegativeGapError(RuntimeError):
+    """A gap window runs backwards in time; every number derived from it is wrong.
+
+    A gap is a half-open ``[disconnect_ns, reconnect_ns)`` window, so its
+    duration is non-negative by construction. A negative one is never a small
+    numeric annoyance: it subtracts phantom time from coverage denominators,
+    and :func:`merge_windows` silently drops inverted windows, so the gap
+    disappears from the union while still being counted in its per-kind total
+    — two numbers that disagree with nothing to show why. It also means
+    whatever built it paired the wrong two timestamps, which is exactly what
+    happens when session markers are read in file order instead of timestamp
+    order. Same spirit as the Stage 1.6 span-clamping invariant: refuse to
+    produce a number rather than produce a wrong one.
+
+    Deliberately a ``RuntimeError`` and not a ``ValueError``: pydantic folds a
+    ``ValueError`` raised inside a model validator into a ``ValidationError``,
+    which would bury this behind a generic "1 validation error" and let a
+    caller catching ``ValidationError`` for ordinary malformed input swallow a
+    corruption signal.
+    """
 
 
 def merge_windows(windows: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -49,6 +71,24 @@ class GapRecord(BaseModel):
     duration_ms: int
     reason: str
     kind: Literal["feed", "downtime", "unclean"] = "feed"
+
+    @model_validator(mode="after")
+    def _window_runs_forwards(self) -> GapRecord:
+        """Every gap, from any source, is a forwards window. No exceptions.
+
+        Enforced on the model rather than at each producer so a new derivation
+        cannot reintroduce the defect by forgetting to check. Zero-length is
+        allowed — a restart fast enough to reconnect within the timestamp
+        resolution is real — but backwards never is.
+        """
+        if self.reconnect_ns < self.disconnect_ns:
+            raise NegativeGapError(
+                f"{self.venue} {self.kind} gap ends {self.disconnect_ns - self.reconnect_ns} ns "
+                f"before it starts (disconnect {self.disconnect_ns}, reconnect "
+                f"{self.reconnect_ns}). A gap cannot run backwards; whatever produced this "
+                "paired the wrong two timestamps and its output must not be trusted."
+            )
+        return self
 
     def overlaps_ns(self, start_ns: int, end_ns: int) -> bool:
         """True if this gap intersects the half-open window ``[start_ns, end_ns)``."""

@@ -1112,3 +1112,146 @@ book answers the spread question, and bbo-1s costs a fraction of mbp-10 — the
 whole 16-contract survey was $0.78. Depth would be needed for queue modelling,
 which is only worth buying once something survives this arithmetic. Buy the
 cheap measurement that can rule out, before the expensive one that can refine.
+
+## ADR-027: Validation distinguishes venue kinds, and only one of the three outcomes is an error
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** `config/venues.yaml` describes four venues, but they do not all get
+their data the same way. Kraken, Coinbase and Hyperliquid are captured live into
+`data/raw/venue=<venue>/` by `data/recorder/`. CME is not: it has no recorder,
+no live gateway subscription, and never will in Stage 1 — its days are purchased
+from Databento and land under `data/vendor/`.
+
+The validator did not model that difference. It treated every configured venue as
+replayable and raised `ValueError: No replay support for venue 'cme'` on the
+first one it could not parse. Because venues are iterated in sorted order, `cme`
+came first, so `python -m data.validate --date 2026-08-03` aborted **before
+validating anything** — three healthy venues went unscored because of the one
+venue that was never going to have raw capture. The failure was silent in the
+worst way available to it: not silent in output, but silent in consequence, since
+an operator seeing a traceback learns nothing about the three days that did not
+get checked.
+
+The tempting fix — drop `cme` from the venue list — is wrong. Vendor days still
+need validating on the dates they cover, and a venue that is invisible to the
+validator is a venue nobody notices has stopped being validated.
+
+**Decision.** `VenueConfig` carries an explicit `kind`: `recorder` or `vendor`.
+It defaults to `recorder`, so an undeclared venue is one this project believes it
+is capturing live — a missing declaration surfaces loudly rather than quietly
+removing a venue from validation.
+
+A run then has exactly three outcomes per venue-scope, and they are kept apart:
+
+1. **Replay it** — a recorder venue with recorded data for the date.
+2. **Skip it, and say why** — nothing to score. Permanent and normal for a
+   vendor venue swept into a default run; ordinary for a recorder venue on a
+   date before it was switched on. **Never an error**, and the reason names
+   which of the two it is.
+3. **Fail loudly** — a venue declared `recorder` with no parser behind it, or an
+   unknown venue key. `VenueConfigurationError`, exit code 2, distinct from the
+   exit code for "nothing to do" so a scripted caller can tell a
+   misconfiguration from an empty archive.
+
+Deciding all of this happens up front, in `data/validate/scope.py`, before any
+replay begins. The plan is data, so the three outcomes are unit-testable without
+replaying a day, and skips are printed before the first long replay starts rather
+than being inferred afterwards from absence.
+
+**Consequences.** Skipped venues are written into `report.md`, not merely printed.
+A section listing two venues where three were expected has to say what happened to
+the third; otherwise the permanent record of a run cannot be distinguished from
+the record of a run where a venue quietly dropped out.
+
+Vendor venues are scored only when named explicitly with `--venue`. A default
+sweep skips them. This is not squeamishness about cost — it is that streaming
+stored DBN is a different operation from replaying a day of raw capture, and the
+stored range files run to 3.7 GB each; doing that on every `make validate` would
+be a nasty surprise. Named explicitly, `python -m data.validate --venue cme
+--date YYYY-MM-DD` scores the stored day files through
+`data.databento.validate`, which until now had no caller anywhere in the
+repository. Multi-day `range=` files stay out of the per-day loop and keep their
+own entry point, because scoring one day out of a month means streaming the whole
+month.
+
+`logs/validation_summary.json` stays recorder-only. The desktop coverage panel
+consumes it through generated types, and a vendor day is scored on different
+quantities — coverage against scheduled-open time rather than the calendar day,
+no checksum, no snapshot cadence. Mixing the two shapes into one array would
+either lie about a vendor day or force nullable fields on every recorder day.
+
+**Rejected: infer the kind from whether raw data exists.** It is the same
+mistake one level down. "No raw directory" is indistinguishable from "the
+recorder has not started yet", "the disk was remounted", and "someone deleted
+it" — and each of those should behave differently. The kind is a declaration
+about how a venue works, so it is declared.
+
+## ADR-028: Session markers are ordered by their clock, never by their position in the file
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** `sessions.jsonl` records one line per recorder lifecycle boundary,
+appended by the recorder process itself. During a restart **two processes append
+to that one file**: the outgoing process writes its `end` while shutting down,
+and the incoming process writes its `start` as soon as it is up. Whichever wins
+the race lands first. On disk, from the 2026-08-01T07:26:17 restart:
+
+```
+{"venue":"kraken","event":"start","ts_ns":1785569177909450362}
+{"venue":"kraken","event":"end",  "ts_ns":1785569177581971000}
+```
+
+The `end` is 327 ms *earlier* than the `start` written above it. The timestamps
+are correct; only the line order is wrong. This is not a defect to be prevented —
+there is no cheap way to make two independent processes agree on write order, and
+locking a shutdown path behind a file lock is a worse idea than tolerating
+unordered lines.
+
+Read sequentially, that sequence pairs the wrong markers. It reports a 602 ms
+**unclean termination** where the reality is a graceful systemd restart, and it
+loses the 327 ms clean downtime gap entirely. Kind matters more than duration
+here: `unclean` is the signature of a crash, OOM kill or power loss, and one
+appearing in a report is a reason to go looking.
+
+**Decision.** Markers are ordered by `ts_ns` before pairing, with `end` breaking
+ties ahead of `start` at an identical timestamp — a restart ends before it
+begins, and the opposite reading would invent an unclean termination out of a
+zero-length stop. **File order carries no information and is never consulted.**
+`read_sessions` still returns lines in file order; imposing the clock is the
+derivation's job, so any future reader that streams rather than loads inherits
+the same requirement rather than a fixed-up input.
+
+Alongside it, an invariant on `GapRecord` itself: a gap window cannot run
+backwards. Any gap from any source, feed or derived, raises `NegativeGapError`
+if `reconnect_ns < disconnect_ns`. Zero-length stays legal — a reconnect within
+the clock's resolution is real.
+
+**Consequences.** The invariant is deliberately unreachable once ordering is by
+the clock, which is the point. The code it replaces was `if marker.ts_ns >
+pending_end.ts_ns:` — a guard that **silently dropped** an inverted pair. That
+guard would have hidden precisely the corruption worth knowing about, and it
+would have hidden it twice over, because `merge_windows` also filters inverted
+windows: a negative gap disappears from the coverage union while still being
+counted in its per-kind total, so the two would disagree with nothing to show
+why. This is the same shape as the Stage 1.6 span-clamping invariant and the
+CLAUDE.md union-before-summing rule — a list, an arithmetic step, no check, and a
+plausible wrong number that never raises.
+
+`NegativeGapError` is a `RuntimeError`, not a `ValueError`, specifically so
+pydantic does not fold it into a `ValidationError`. A caller catching
+`ValidationError` for ordinary malformed input must not also swallow a
+corruption signal.
+
+**This was caught before it produced a wrong number, not after.** Every previous
+defect in this family was found downstream of a published figure. Reconciling
+the record: the only validation runs published after the mis-ordered pair was
+written (2026-08-01 07:28 and 07:32 UTC) report 3 recorder-downtime gaps
+totalling 21,919,496 ms and 0 unclean terminations, which is exactly what
+clock-ordered pairing yields. File-order pairing would have published 2 downtime
+gaps plus 1 unclean of 602 ms, totalling 21,919,770 ms. The sort has been in
+`derive_downtime_gaps` since the commit that introduced it (2f94b53,
+2026-08-01), predating the first out-of-order pair by six hours. Nothing
+downstream consumed a bad pairing. What was missing was not the sort — it was
+the statement of *why* the sort is load-bearing, the tie-break, and the assertion
+that would fire if either were ever removed.

@@ -143,6 +143,12 @@ venues:
 
   cme:
     name: CME micro futures (via Databento GLBX.MDP3)
+    # No live recorder exists for this venue and none is planned: days are
+    # purchased from Databento and land under data/vendor/, so there is never
+    # anything in data/raw/venue=cme/ to replay. Declaring the kind is what
+    # lets `python -m data.validate` skip it with a reason instead of aborting
+    # the whole run on a missing replay parser (Stage C.9.1, ADR-027).
+    kind: vendor
     # Not a recorder venue: data arrives through the Databento vendor adapter
     # (data/databento/), never this URL. Recorded for completeness — the
     # Databento live gateway for GLBX.MDP3.

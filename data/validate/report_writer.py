@@ -13,7 +13,9 @@ from pathlib import Path
 
 import orjson
 
+from data.databento.validate import VendorDayReport
 from data.validate.replay import DayReport
+from data.validate.scope import Skipped
 
 
 def _check_cell(failures: int | None, unexplained: int | None) -> str:
@@ -167,10 +169,79 @@ def render_section(runs: list[DayReport]) -> str:
     return "\n".join(lines)
 
 
-def append_report(report_path: Path, runs: list[DayReport]) -> None:
-    """Append a dated section to report.md (created if missing)."""
+def _hours(ns: int) -> str:
+    return f"{ns / 3_600_000_000_000:.2f} h"
+
+
+def render_vendor_section(runs: list[VendorDayReport], skipped: list[Skipped]) -> str:
+    """Render vendor contract-days and skipped venues.
+
+    Deliberately a different shape from the recorder section, because a vendor
+    day is scored on different things: coverage is measured against
+    scheduled-open time rather than the calendar day, there is no book checksum
+    and no snapshot stream (both render "n/a", never 0), and roll exclusions are
+    reported as their own number instead of being absorbed into coverage.
+    """
+    lines: list[str] = []
+    for report in runs:
+        verdict = "PASS" if report.passed else "FAIL"
+        lines.append(
+            f"### {report.venue} {report.symbol} — {report.date} — "
+            f"**{verdict}** (vendor, `{report.schema}`)\n"
+        )
+        if report.failure_reasons:
+            lines.extend(f"- ✗ {reason}" for reason in report.failure_reasons)
+            lines.append("")
+        lines.append(
+            f"Events: **{report.events:,}** · scheduled open: "
+            f"{_hours(report.scheduled_open_ns)} · covered: "
+            f"{_hours(report.covered_open_ns)} ({report.coverage_pct:.2f}%) · "
+            f"unexplained quiet: {_hours(report.quiet_open_ns)} "
+            f"({len(report.quiet_windows)} window(s)) · roll exclusions: "
+            f"{report.roll_windows} ({_hours(report.roll_excluded_open_ns)} of open time)"
+        )
+        lines.append("")
+        lines.append(
+            f"Ordering clock: {report.ordering_clock} · reference only: {report.reference_clock}"
+        )
+        lines.append("")
+        lines.append(
+            f"Integrity: {_volume('MDP3 sequence numbers', report.sequence_checks)} "
+            f"({report.sequence_regressions if report.sequence_checks else 'n/a'} "
+            f"regressions) · {_volume('book checksums', report.checksum_checks)} · "
+            f"{_volume('book snapshots', report.snapshot_checks)}"
+        )
+        lines.append("")
+        lines.append(
+            f"Crossed: {report.crossed} ({report.crossed_explained} inside a scheduled "
+            f"no-match window, so expected) · locked: {report.locked} · out of order on "
+            f"ts_recv: {report.out_of_order_recv} · exchange-clock regressions: "
+            f"{report.exchange_clock_regressions} (reference clock, not a defect)"
+        )
+        lines.append("")
+    if skipped:
+        lines.append("### Venues skipped\n")
+        lines.extend(f"- **{s.venue}** (kind `{s.kind}`) — {s.reason}" for s in skipped)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def append_report(
+    report_path: Path,
+    runs: list[DayReport],
+    vendor_runs: list[VendorDayReport] | None = None,
+    skipped: list[Skipped] | None = None,
+) -> None:
+    """Append a dated section to report.md (created if missing).
+
+    Skipped venues are written into the report rather than only printed: a
+    section that lists two venues where three were expected must say what
+    happened to the third, or a venue can quietly fall out of validation and
+    the record will not show it.
+    """
+    body = render_section(runs) + render_vendor_section(vendor_runs or [], skipped or [])
     with report_path.open("a", encoding="utf-8") as fh:
-        fh.write(render_section(runs))
+        fh.write(body)
 
 
 def write_summary_json(logs_dir: Path, runs: list[DayReport]) -> Path:

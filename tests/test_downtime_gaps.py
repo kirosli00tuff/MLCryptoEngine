@@ -14,7 +14,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from data.recorder.gaps import GapRecord
+import pytest
+
+from data.recorder.gaps import GapRecord, NegativeGapError
 from data.recorder.sessions import SessionLogger, SessionMarker, read_sessions
 from data.recorder.writer import RawFileWriter
 from data.validate.downtime import derive_downtime_gaps, last_activity_ns
@@ -24,6 +26,24 @@ NS_PER_S = 1_000_000_000
 # 2026-07-30T12:00:00Z, consistent with the other synthetic-day tests.
 BASE_NS = 1_785_412_800 * NS_PER_S
 DAY_BOUNDS = (BASE_NS - 12 * 3600 * NS_PER_S, BASE_NS + 12 * 3600 * NS_PER_S)
+
+# data/raw/venue=kraken/sessions.jsonl as it actually stands, in file order,
+# including the 2026-08-01T07:26:17 restart where the outgoing process wrote
+# its `end` after the incoming process had already written its `start`. Copied
+# verbatim rather than synthesised: the point of the regression test is that
+# this exact sequence pairs correctly.
+ON_DISK_MARKERS: tuple[tuple[str, int], ...] = (
+    ("end", 1785546400445906000),  # 08-01 01:06:40.445906
+    ("start", 1785568319279027000),  # 08-01 07:11:59.279027
+    ("end", 1785568373345944000),  # 08-01 07:12:53.345944
+    ("start", 1785568373681722000),  # 08-01 07:12:53.681722
+    ("start", 1785569177909450362),  # 08-01 07:26:17.909450  <-- written first
+    ("end", 1785569177581971000),  # 08-01 07:26:17.581971  <-- but 327 ms earlier
+    ("end", 1785610319364569957),  # 08-01 18:51:59.364570
+    ("start", 1785610319913102461),  # 08-01 18:51:59.913102
+    ("end", 1785822040408043821),  # 08-04 05:40:40.408044
+    ("start", 1785822040982369422),  # 08-04 05:40:40.982369
+)
 
 
 def _marker(event: str, ts_ns: int) -> SessionMarker:
@@ -218,6 +238,96 @@ def test_coverage_numerator_excludes_downtime(tmp_path: Path) -> None:
     # ~600 s of real data out of 86,400: ≈0.69%. Crediting the 300 s hole
     # would report ≈1.04%.
     assert 0.6 < symbol.valid_coverage_day_pct < 0.75
+
+
+def test_out_of_order_markers_on_disk_pair_by_timestamp_not_file_position(
+    tmp_path: Path,
+) -> None:
+    """The real sessions.jsonl, written through the real logger, in file order.
+
+    Two processes append to this file during every restart, so a start can and
+    does land above the end it follows. Pairing sequentially would read the
+    07:26:17 restart as a 602 ms *unclean termination* — a graceful systemd
+    restart reported as a crash — and would lose the 327 ms clean downtime gap
+    entirely. ``_no_activity`` raises if the unclean path is ever taken, so
+    that misreading cannot pass silently here.
+    """
+    # Arrange
+    logger = SessionLogger(tmp_path, "kraken")
+    for event, ts_ns in ON_DISK_MARKERS:
+        logger.log(event, ts_ns)  # type: ignore[arg-type]
+    markers = read_sessions(tmp_path, "kraken")
+    assert [m.ts_ns for m in markers] == [ts for _, ts in ON_DISK_MARKERS], (
+        "read_sessions preserves file order — reordering is the derivation's job"
+    )
+
+    # Act
+    gaps = derive_downtime_gaps(markers, _no_activity)
+
+    # Assert: five clean stop/start pairs, none of them unclean.
+    assert [g.kind for g in gaps] == ["downtime"] * 5
+    assert [(g.disconnect_ns, g.reconnect_ns) for g in gaps] == [
+        (1785546400445906000, 1785568319279027000),
+        (1785568373345944000, 1785568373681722000),
+        (1785569177581971000, 1785569177909450362),  # the out-of-order pair
+        (1785610319364569957, 1785610319913102461),
+        (1785822040408043821, 1785822040982369422),
+    ]
+    assert [g.duration_ms for g in gaps] == [21_918_833, 335, 327, 548, 574]
+    assert all(g.reconnect_ns >= g.disconnect_ns for g in gaps), "no gap runs backwards"
+    assert sorted(g.disconnect_ns for g in gaps) == [g.disconnect_ns for g in gaps]
+
+
+def test_markers_sharing_a_timestamp_read_end_before_start() -> None:
+    """A restart fast enough to stamp both markers identically is a zero-length
+    stop, not an unclean termination. Ordering ends first at a tie is what makes
+    the tie-break deterministic instead of dependent on which process won."""
+    # Arrange: start written first, same nanosecond on both.
+    shared = BASE_NS + 42
+    markers = [
+        _marker("start", BASE_NS - 3600 * NS_PER_S),
+        _marker("start", shared),
+        _marker("end", shared),
+    ]
+
+    # Act
+    gaps = derive_downtime_gaps(markers, _no_activity)
+
+    # Assert
+    assert gaps == [], "zero-length stop produces no gap, and never an unclean one"
+
+
+def test_a_backwards_gap_is_refused_rather_than_silently_produced() -> None:
+    """The Stage 1.6 invariant, applied to the window itself.
+
+    After ordering by ts_ns this is structurally unreachable, which is the
+    point: if it ever fires, the ordering or the marker file is corrupt.
+    Silently dropping the pair — what the previous guard did — would have hidden
+    exactly that, and merge_windows drops inverted windows too, so a negative
+    gap would vanish from the union while still being counted per-kind.
+    """
+    with pytest.raises(NegativeGapError, match="cannot run backwards"):
+        GapRecord(
+            venue="kraken",
+            disconnect_ns=BASE_NS,
+            reconnect_ns=BASE_NS - 327_479_362,  # the real 327 ms, inverted
+            duration_ms=-327,
+            reason="end paired with a start that preceded it",
+            kind="downtime",
+        )
+
+    # Zero-length stays legal: a reconnect inside the clock's resolution is real.
+    assert (
+        GapRecord(
+            venue="kraken",
+            disconnect_ns=BASE_NS,
+            reconnect_ns=BASE_NS,
+            duration_ms=0,
+            reason="instantaneous",
+            kind="downtime",
+        ).duration_ms
+        == 0
+    )
 
 
 def test_last_activity_ns_finds_final_message_before_cutoff(tmp_path: Path) -> None:

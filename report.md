@@ -1249,3 +1249,136 @@ this census in a week. If the thin end survives spread − adverse − cost ther
 that is the first positive result this project has produced and it earns a fill
 simulation; if it does not, spread capture is closed on the evidence rather than
 by assertion.
+
+## Validation run — 2026-08-04 08:29 UTC
+
+### coinbase — 2026-08-03 — **PASS**
+
+Messages: **3460641** · recorded span: 86400s · feed gaps in span: 0 (0 ms) · recorder downtime: 0 (0 ms) · unclean terminations: 0 (0 ms) · excluded from coverage: 0 ms (all kinds unioned and clamped to the span)
+
+Warm start: previous-day tail replayed from 2026-08-02 18:12:08Z so books are live at midnight (state only — nothing before the day is scored).
+
+Channels: `heartbeats`: 86400 · `l2_data`: 3106470 · `market_trades`: 267771
+
+Integrity mechanism: **envelope sequence numbers** · sequence numbers: 3,460,641 checked · book checksums: n/a (this feed provides none)
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | cksums verified | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC-USD | 1631707 | 7 | 0 (0) | n/a | n/a | 0 (0) | 0 | 100.00% | 100.00% | 7 (2) | 1718113 |
+| ETH-USD | 1474751 | 5 | 0 (0) | n/a | n/a | 0 (0) | 0 | 100.00% | 100.00% | 5 (0) | 1561155 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 0 |
+| 0.01 to 0.05 ms | 26659 |
+| 0.05 to 0.1 ms | 47664 |
+| 0.1 to 0.5 ms | 68771 |
+| 0.5 to 1 ms | 43205 |
+| 1 to 5 ms | 279904 |
+| 5 to 10 ms | 483418 |
+| 10 to 50 ms | 2250595 |
+| 50 to 100 ms | 242925 |
+| 100 to 500 ms | 17434 |
+| 500 to 1000 ms | 51 |
+| 1000 to 5000 ms | 13 |
+| 5000 to 30000 ms | 1 |
+| >30000 ms | 0 |
+
+p50 ≤ 50 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 22553.5 ms
+
+### hyperliquid — 2026-08-03 — **PASS**
+
+Messages: **1489552** · recorded span: 86400s · feed gaps in span: 1 (1142 ms) · recorder downtime: 0 (0 ms) · unclean terminations: 0 (0 ms) · excluded from coverage: 1142 ms (all kinds unioned and clamped to the span)
+
+Snapshot stream: every l2Book message is a full book, so warm start is structurally unnecessary; this venue is scored on snapshot cadence.
+
+Channels: `activeAssetCtx`: 169503 · `bbo`: 1112687 · `l2Book`: 32200 · `subscriptionResponse`: 64 · `trades`: 175098
+
+Integrity mechanism: **snapshot cadence** · sequence numbers: n/a (this feed provides none) · book checksums: n/a (this feed provides none) · book snapshots: 32,200 applied
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | cksums verified | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC | 0 | 16100 | n/a | n/a | n/a | 0 (0) | 0 | 100.00% | 100.00% | 16099 (6616) | 696580 |
+| ETH | 0 | 16100 | n/a | n/a | n/a | 0 (0) | 0 | 100.00% | 100.00% | 16099 (6884) | 621101 |
+
+Snapshot cadence BTC: 16,099 intervals · p50 5384 ms · p95 5554 ms · max 28100 ms · stale >10s: 1 (1 unexplained)
+Snapshot cadence ETH: 16,099 intervals · p50 5384 ms · p95 5554 ms · max 28100 ms · stale >10s: 1 (1 unexplained)
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 20 |
+| 0.01 to 0.05 ms | 289613 |
+| 0.05 to 0.1 ms | 269151 |
+| 0.1 to 0.5 ms | 205005 |
+| 0.5 to 1 ms | 1557 |
+| 1 to 5 ms | 2124 |
+| 5 to 10 ms | 3643 |
+| 10 to 50 ms | 125841 |
+| 50 to 100 ms | 253030 |
+| 100 to 500 ms | 333357 |
+| 500 to 1000 ms | 6083 |
+| 1000 to 5000 ms | 126 |
+| 5000 to 30000 ms | 1 |
+| >30000 ms | 0 |
+
+p50 ≤ 0.5 ms · p90 ≤ 500 ms · p99 ≤ 500 ms · max 22767 ms
+
+### kraken — 2026-08-03 — **PASS**
+
+Messages: **16653584** · recorded span: 86400s · feed gaps in span: 7 (14593 ms) · recorder downtime: 0 (0 ms) · unclean terminations: 0 (0 ms) · excluded from coverage: 14593 ms (all kinds unioned and clamped to the span)
+
+Warm start: previous-day tail replayed from 2026-08-02 03:14:18Z so books are live at midnight (state only — nothing before the day is scored).
+
+Channels: `book`: 16531206 · `heartbeat`: 86347 · `status`: 7 · `subscribe`: 28 · `trade`: 35996
+
+Integrity mechanism: **CRC32 book checksums** · sequence numbers: n/a (this feed provides none) · book checksums: 16,531,192 checked
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | cksums verified | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC/USD | 7373330 | 7 | n/a | 0 (0) | 7373330 | 0 (0) | 0 | 99.98% | 100.00% | 7 (0) | 7459736 |
+| ETH/USD | 9157862 | 7 | n/a | 0 (0) | 9157862 | 0 (0) | 0 | 99.98% | 100.00% | 7 (3) | 9244268 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 19433 |
+| 0.01 to 0.05 ms | 7734419 |
+| 0.05 to 0.1 ms | 1513951 |
+| 0.1 to 0.5 ms | 888928 |
+| 0.5 to 1 ms | 725358 |
+| 1 to 5 ms | 3220032 |
+| 5 to 10 ms | 829814 |
+| 10 to 50 ms | 1297586 |
+| 50 to 100 ms | 283405 |
+| 100 to 500 ms | 140033 |
+| 500 to 1000 ms | 600 |
+| 1000 to 5000 ms | 23 |
+| 5000 to 30000 ms | 1 |
+| >30000 ms | 0 |
+
+p50 ≤ 0.1 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 22678.1 ms
+### Venues skipped
+
+- **cme** (kind `vendor`) — vendor-backfill venue, not captured live — it has no raw data on any date by design. Stored vendor days are scored on request: `python -m data.validate --venue cme --date YYYY-MM-DD`
+
+## Validation run — 2026-08-04 08:34 UTC
+### cme MBT.c.0 — 2026-07-31 — **FAIL** (vendor, `mbp-10`)
+
+- ✗ coverage 71.49% of scheduled-open time < 99%
+
+Events: **380,358** · scheduled open: 21.00 h · covered: 15.01 h (71.49%) · unexplained quiet: 5.99 h (4 window(s)) · roll exclusions: 1 (0.00 h of open time)
+
+Ordering clock: ts_recv (Databento capture-server hardware clock) · reference only: ts_event (CME MDP3 matching-engine clock)
+
+Integrity: MDP3 sequence numbers: 380,358 checked (0 regressions) · book checksums: n/a (this feed provides none) · book snapshots: n/a (this feed provides none)
+
+Crossed: 0 (0 inside a scheduled no-match window, so expected) · locked: 0 · out of order on ts_recv: 0 · exchange-clock regressions: 0 (reference clock, not a defect)
+
+### cme MES.c.0 — 2026-07-31 — **PASS** (vendor, `mbp-10`)
+
+Events: **14,989,106** · scheduled open: 21.00 h · covered: 21.00 h (100.00%) · unexplained quiet: 0.00 h (0 window(s)) · roll exclusions: 0 (0.00 h of open time)
+
+Ordering clock: ts_recv (Databento capture-server hardware clock) · reference only: ts_event (CME MDP3 matching-engine clock)
+
+Integrity: MDP3 sequence numbers: 14,989,106 checked (0 regressions) · book checksums: n/a (this feed provides none) · book snapshots: n/a (this feed provides none)
+
+Crossed: 0 (0 inside a scheduled no-match window, so expected) · locked: 0 · out of order on ts_recv: 0 · exchange-clock regressions: 0 (reference clock, not a defect)
