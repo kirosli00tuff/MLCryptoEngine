@@ -183,3 +183,7 @@ self-evident. One deliverable or coherent change per commit.
 - `progress.md` — where the project is right now: phase checklist and dated running log.
 - `DECISIONS.md` — append-only architecture decision log; read before revisiting any
   settled question.
+- `HYPOTHESES.md` — register of every strategy hypothesis tested, with the measured
+  number that closed it and what would reopen it. **Read before proposing any new
+  strategy hypothesis**, so a settled question is not retried because the figure that
+  settled it is buried in report.md.

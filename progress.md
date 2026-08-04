@@ -1527,3 +1527,51 @@ ended.**
   the part a backtest measures worst.
 - `make lint`, `make typecheck`, `make test` clean — **256 tests**, 14 new
   (`tests/test_carry.py`). All recorders alive throughout.
+
+## 2026-08-04 — Stage C.12: hypothesis register
+
+**Consolidation only. No new analysis, no new experiments, no new data. Every
+figure in the register is transcribed from a report.md section and was checked
+against it rather than recalled.**
+
+- **Created `HYPOTHESES.md` at the repository root** — one entry per tested
+  hypothesis, ordered by close date, each carrying the measured number that
+  decided it, the sample and its limitations, the report.md section where the
+  working lives, and what would reopen it.
+- **The register's organising distinction is between two kinds of closure**,
+  because confusing them is the expensive mistake a future session would make:
+  - **cost-bound** — a real signal smaller than the cost of capturing it, which
+    reopens at a materially lower fee tier and where a better model could matter
+    *if* costs fell (H1, H3);
+  - **signal-absent** — nothing there to capture, which **does not reopen on a
+    better model, a better feature set, or lower fees** (H2, H4).
+- **Five closed:** H1 directional prediction on crypto spot (3.31 bps capture vs
+  80 bps cost, AUC 0.596 — signal real, arithmetic fails by 23×); H2 transfer to
+  CME (AUC 0.501, 0.22 bps vs 5.33 — cost solved, signal gone); H3 spread
+  capture (spread − adverse − cost negative on all 28 measurable instruments,
+  best ratio 0.98); H4 cointegration (0 of 180 persist, BTC/ETH p=0.1169,
+  deflated Sharpe 0.026, zero executable); H5 funding carry (8.07%/8.00% net on
+  capital historically, decayed ~85% to 1.94% in 2026).
+- **Two in flight, both awaiting data only, neither needing new access or
+  capital:** H6 thin-perp spread capture (closes in ~a week at zero cost on the
+  10 perps subscribed 2026-08-03) and H7 cross-venue divergence (needs months of
+  simultaneous three-venue overlap; recorders together only since 2026-08-01).
+- **Cross-cutting section records what would be lost if filed under one
+  hypothesis:** the recurring cost-exceeds-edge diagnosis across H1–H3 and the
+  fact that **H4 refuted it as a general explanation** — removing cost entirely
+  (break-even 300–550 bps vs a 3 bps venue) revealed no edge underneath; the
+  measured venue cost landscape with its per-contract CME notional effect
+  (0.41 bps MNQ to 101.76 bps MET on the same $2 ticket); and the four
+  engineering lessons that generalise, including that **the most dangerous
+  defects are success-shaped** — C.10's look-ahead produced the highest-ranked
+  result in the study.
+- **Linked, not duplicated.** `CLAUDE.md` §"Read these first" now points at
+  `HYPOTHESES.md` with one line on when to consult it. No register content was
+  copied into CLAUDE.md or progress.md — one authoritative location.
+- **Closing summary written without spin in either direction.** Five tests, no
+  deployable strategy; two produced measurable effects correctly judged
+  insufficient; the infrastructure is genuinely good and the strategy pipeline
+  has genuinely produced nothing deployable, and both are true at once. Five
+  closures is evidence about five hypotheses, not about the sixth.
+- `make lint`, `make typecheck`, `make test` clean — **256 tests**, unchanged
+  (this stage adds no code). All three recorders alive, undisturbed.
