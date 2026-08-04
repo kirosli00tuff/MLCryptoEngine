@@ -271,3 +271,32 @@ sources:
       request but pageable via start/end, so it reaches back further than
       Kraken. Like Kraken it lists only live products, so it is never used for
       universe selection.
+
+  hyperliquid_info:
+    name: Hyperliquid public info endpoint
+    kind: archive
+    venue: hyperliquid
+    base_url: https://api.hyperliquid.xyz/info
+    notes: >-
+      Historical funding rates and perp candles for the venue this project would
+      actually short on, so it is the primary source for a carry study rather
+      than a cross-check. Funding is charged HOURLY here, not every eight hours:
+      the observed baseline of 0.00125% per hour is exactly one eighth of the
+      0.01%/8h figure quoted in the literature, and confusing the two
+      misstates annualised yield by 8x in either direction. Unauthenticated
+      POST, no key, nothing purchased. Hard limit of 500 rows per
+      fundingHistory call and 5000 per candleSnapshot, so both are paged.
+      History begins 2023-05-12, the venue's launch.
+
+  binance_futures_archive:
+    name: Binance USD-M futures public data dumps
+    kind: archive
+    venue: binance
+    base_url: https://data.binance.vision
+    notes: >-
+      Monthly funding-rate and perpetual kline ZIPs under data/futures/um/.
+      Funding is charged every EIGHT hours here. Used for the longer history
+      (2019 onward) that the yield-decay question needs, and for the perp leg
+      of the basis measurement. Binance is not legally available to Canadian
+      residents (CLAUDE.md hard constraint) — research history only, and no
+      order is ever routed here.

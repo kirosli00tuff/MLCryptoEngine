@@ -26,6 +26,12 @@ DEFAULT_DELAY_S = 0.05
 MAX_CONCURRENCY = 6
 RETRIES = 3
 RETRY_BACKOFF_S = 2.0
+# A weight-based limiter (Hyperliquid allows ~1200 weight/minute per IP, and a
+# fundingHistory call costs 20) needs a slower cadence and a longer, more
+# patient backoff than an ordinary transport error does.
+RATE_LIMIT_RETRIES = 6
+RATE_LIMIT_BACKOFF_S = 10.0
+POLITE_API_DELAY_S = 1.2
 TIMEOUT_S = 60
 CHUNK_BYTES = 1 << 16
 USER_AGENT = "MLCryptoEngine/0.1 (personal quantitative research)"
@@ -33,6 +39,16 @@ USER_AGENT = "MLCryptoEngine/0.1 (personal quantitative research)"
 
 class ArchiveFetchError(RuntimeError):
     """A download failed after retries, or returned something unusable."""
+
+
+class RateLimited(ArchiveFetchError):
+    """The endpoint asked us to slow down and we ran out of patience.
+
+    Separate from a transport failure because the remedy is different: a slower
+    request cadence, not a retry. Raised only after the backoff below has been
+    exhausted, so seeing it means the configured delay is genuinely too fast
+    for the endpoint rather than that one request was unlucky.
+    """
 
 
 class NotFound(ArchiveFetchError):
@@ -48,6 +64,53 @@ class NotFound(ArchiveFetchError):
 
 def _request(url: str) -> urllib.request.Request:
     return urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+
+
+def post_bytes(url: str, payload: bytes, *, delay_s: float = DEFAULT_DELAY_S) -> bytes:
+    """POST a JSON body and return the response, retried like a GET.
+
+    Hyperliquid's info endpoint is a POST-only JSON API rather than a file
+    archive, so it needs its own verb. A 404 keeps the same meaning it has for
+    a monthly file — the archive has nothing here — and is still not retried.
+    """
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"User-Agent": USER_AGENT, "Content-Type": "application/json"},
+        method="POST",
+    )
+    last: Exception | None = None
+    throttled = False
+    for attempt in range(RATE_LIMIT_RETRIES):
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:
+                body: bytes = response.read()
+            time.sleep(delay_s)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                raise NotFound(url) from exc
+            if exc.code == 429:
+                throttled = True
+                # Honour Retry-After when the server sends one; otherwise back
+                # off geometrically. A weight-based limiter needs real seconds,
+                # not the two-second nudge an ordinary transport error gets.
+                retry_after = exc.headers.get("Retry-After") if exc.headers else None
+                wait = float(retry_after) if retry_after and retry_after.isdigit() else 0.0
+                time.sleep(max(wait, RATE_LIMIT_BACKOFF_S * (attempt + 1)))
+                last = exc
+                continue
+            last = exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last = exc
+        else:
+            return body
+        time.sleep(RETRY_BACKOFF_S * (attempt + 1))
+    if throttled:
+        raise RateLimited(
+            f"POST {url} still rate limited after {RATE_LIMIT_RETRIES} attempts. "
+            f"Increase delay_s (currently {delay_s}s) rather than retrying harder."
+        )
+    raise ArchiveFetchError(f"POST {url} failed after {RATE_LIMIT_RETRIES} attempts: {last}")
 
 
 def fetch_bytes(url: str, *, delay_s: float = DEFAULT_DELAY_S) -> bytes:

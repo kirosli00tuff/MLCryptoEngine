@@ -1430,3 +1430,144 @@ which 43 of 175 pairs cleared. Unfiltered, the table was led by a pair returning
 and the unfiltered table is kept beside it, because dropping thin results
 silently would be its own dishonesty and the gap between the two rankings is
 informative.
+
+## ADR-033: Carry is income, not prediction — and it is judged on different evidence
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** Four hypotheses closed before this one and all were predictive.
+C.8 needed a model to be right about direction; C.9 needed a resting quote to
+be filled before the market moved; C.10 needed a statistical relationship to
+persist out of sample. Each failed on a quantity a backtest measures precisely:
+edge per trade against cost per trade.
+
+Funding carry is structurally different. A perpetual trading above spot pays
+funding from longs to shorts; holding long spot against short perp collects
+that payment while price exposure cancels. **Nothing has to be predicted.** The
+income is a published, mechanical transfer.
+
+**Decision.** Carry is evaluated as income, which changes what counts as
+evidence. There is no train/test split, no cross-validation, no deflated Sharpe
+and no feature set — almost none of the Phase B research layer applies, and
+reaching for it here would be theatre. What replaces it:
+
+1. **The distribution of the payment**, not its mean. Specifically the
+   *run-length* distribution of negative funding, because a stream that is
+   negative 14% of the time in single hours is a rounding error and one that is
+   negative for 41 consecutive days (DOT, in this sample) is a financing
+   problem.
+2. **Decay**, because a published mechanical income is exactly the kind of
+   thing that gets competed away, and a trailing average that spans the
+   competition is not a forecast.
+3. **Regime dependence**, because funding correlating 0.5+ with trailing price
+   trend means a "delta-neutral" trade earns most of its income when the market
+   rises.
+4. **The failure modes as measurements**, not as a list.
+
+**Consequences.** The reporting standard for a carry stage inverts the usual
+one. In a predictive stage the headline is the metric and the caveats follow;
+here the headline number was never in doubt — funding was positive on the
+majors and paid roughly what the literature says — and the entire question is
+what takes it away. The report is weighted accordingly.
+
+**This also makes the stage the most dangerous kind of result the project has
+produced: a marginal positive.** Four clean negatives were easy to act on. An
+8%/yr figure that clears a 4% risk-free rate by a few points, on a sample that
+excludes the last bear market, invites action on the strength of arithmetic
+that is correct and insufficient. ADR-035 records the metric change that keeps
+that honest; the report records what the backtest cannot establish at all.
+
+## ADR-034: A carry position is cross-venue by construction, and the structure follows from that
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** Canadian residents get spot only on Kraken and Coinbase — no
+margin, no derivatives — and the only reachable venue offering a short is
+Hyperliquid perps. There is no single-venue version of this trade. The long leg
+costs 40 bps a side and the short leg 1.5 bps, a 27x asymmetry, and the two
+legs sit behind different credentials, different withdrawal paths and different
+failure modes.
+
+Modelling this as one venue with a blended fee would have produced a plausible
+number and hidden every decision that matters.
+
+**Decision.** The cross-venue structure is modelled explicitly, and three
+consequences are treated as findings rather than implementation details.
+
+**Equal units are already delta-flat.** A 1:1 unit hedge does not drift out of
+delta as price moves — both legs scale together, and only the perp's premium to
+index separates them, which is basis points. A model that charges "delta
+rebalancing" against price volatility is charging for work the structure does
+not require. This was found by building it: the first run reported zero
+rebalances across three years and that was correct.
+
+**What grows with price is the margin requirement, not the delta error.** The
+short's notional and its unrealised loss both scale up and are drawn from the
+same margin account. The real decision is therefore whether to bound the
+capital or bound the trading cost, and it is a genuine trade-off: on BTC a 2%
+resize band costs 10.65% of notional in fees, while never resizing needs
+**5.92x the notional in capital** — 18.55x on SOL. Because it is a trade-off
+and not an optimum, the band is **swept and reported**, never chosen.
+
+**Rebalancing is liquidation protection.** Each resize re-establishes the short
+at the current price, so a gradual rise never breaches the maintenance level
+while a gap of the same total size does. This is why the sample shows zero
+liquidations up to 5x leverage and six at 10x, and it is a property of the
+rebalancing policy rather than of the price path.
+
+**Consequences.** Rebalancing trades **both** legs, so the expensive spot leg
+dominates its cost — the one place in this trade where the 40 bps venue is
+unavoidable. Liquidation is counted **without** crediting spot-leg gains as
+perp margin: that collateral is on another venue, and moving it in time to
+rescue a position is precisely the operational assumption a backtest cannot
+validate. Counting it would convert an operational capability the operator may
+not have into a modelled certainty.
+
+## ADR-035: Return is reported on deployed capital, and funding is annualised by elapsed time
+
+**Date:** 2026-08-04 · **Status:** accepted
+
+**Context.** Two measurement choices in this stage each produced a wrong number
+first, and both were wrong in the flattering direction.
+
+**Return on notional overstates by the capital multiple.** The spot leg
+consumes its full notional on one venue and the perp margin sits on another.
+Both are tied up and neither is earning elsewhere. On this sample the two
+figures differ by 1.6x to 3.0x — a 14% "yield" is 8% on the capital it takes to
+hold it, and at the low leverage a liquidation-averse operator actually wants,
+closer to half.
+
+Worse, the first version of the model held deployed capital fixed at entry
+while crediting funding on a notional that grew with price. SOL reported
+**306% of notional collected** over three years and a 64% annual return. Both
+were arithmetically consistent and economically impossible: a short whose
+notional quintupled against fixed margin would have been liquidated long before
+collecting any of it.
+
+**Annualising by a fixed intervals-per-year constant is wrong when the venue
+changes its interval.** Hyperliquid paid eight-hourly from launch until
+2023-06-08 and hourly after. There is no constant that is correct across that
+boundary, and reading one era's rate under the other's convention is an **8x**
+error — larger than the entire effect being measured.
+
+**Decision.** Two rules, both structural rather than advisory.
+
+**Return is reported on deployed capital**, where capital is the spot notional
+plus the *peak* margin the perp leg demanded over the path — what an operator
+would actually have had to hold to never be liquidated. Return on notional is
+reported beside it, never instead of it.
+
+**Funding is annualised by dividing accumulated funding by elapsed time.**
+Interval-agnostic by construction, so it survives both the venue's interval
+change and its publication gaps. ``FundingRow`` deliberately exposes no
+``annualised`` property: a single row does not know how long it covered, and
+offering one would invite exactly the constant-multiplier error. Gaps beyond
+eight hours are clamped rather than credited, so an outage cannot be paid for
+at whatever rate preceded it.
+
+**Consequences.** On BTC the annualisation correction is small — 14.21% against
+14.50% naive — because the eight-hourly era is 27 of 1,181 days. That is the
+point worth recording: **the correction was small here by luck, not by design**,
+and on a series with a different mix it would have been eightfold. Nothing in
+the output distinguishes the two cases, which is why the rule is enforced in the
+data layer rather than left to the analysis.

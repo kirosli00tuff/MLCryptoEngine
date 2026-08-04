@@ -1633,3 +1633,232 @@ symbols over 2024-06→2026-07 and are retained for future intraday work; this
 study runs on daily bars because the holding period is days. Every file carries
 source, venue, URL, sha256 and retrieval date in
 `data/vendor/archive/manifest.jsonl`. **Nothing was purchased.**
+
+## Stage C.11 — funding rate carry — 2026-08-04
+
+**This stage evaluates a carry trade, not a machine learning strategy.** Almost
+none of the Phase B research layer is used: there are no features, no labels,
+no model, no cross-validation, no train/test split. A carry has nothing to fit.
+The income is mechanical — a perp trading above spot pays funding from longs to
+shorts, and holding long spot against short perp collects it while price
+exposure cancels. That is why it is worth testing after four predictive
+hypotheses failed, and it is also why the risks live somewhere a backtest is
+weak: in operations and across venues rather than in the arithmetic.
+
+### 1. What the sample covers, and what it does not
+
+| | |
+|---|---|
+| primary venue | **Hyperliquid perps** — the only shortable venue reachable from British Columbia |
+| funding history | **2023-05-12 to 2026-08-04**, 3.23 years, 27,761 hourly observations for BTC |
+| instruments | the 12 perps subscribed in C.9 |
+| decay history | **Binance perps 2020-01 to 2026-07**, 8-hourly, for the years Hyperliquid did not exist |
+| spot leg prices | Binance spot 1h (free archive) |
+| perp prices | `spot × (1 + Hyperliquid premium)` — the venue's candle endpoint serves only the most recent ~5,000 bars (208 days) and cannot cover the sample |
+
+**Regimes contained:** the 2023 recovery, the 2024 bull run, and the 2025–2026
+compression. **Not contained:** a full bear market. Hyperliquid launched *after*
+the 2022 drawdown, so the worst funding environment in recent crypto history is
+outside its history entirely. Every Hyperliquid figure below is therefore drawn
+from a favourable sample, and the Binance section exists to say what the missing
+years looked like.
+
+**A data hazard worth naming: the venue changed its own funding interval.**
+Hyperliquid paid **eight-hourly** from launch until 2023-06-08 and **hourly**
+after — 81 eight-hour steps, then 27,676 one-hour steps, plus three two-hour
+gaps. Any annualisation that multiplies a mean rate by a fixed
+intervals-per-year constant is silently wrong across that boundary, by a factor
+of eight. Everything here divides accumulated funding by **elapsed time**
+instead. On BTC the correction is small (14.21% vs 14.50% naive) because the
+eight-hourly era is only 27 of 1,181 days — but it would be an 8× error on a
+series with a different mix, and nothing in the output would have shown it.
+
+### 2. What funding actually paid
+
+| coin | years | annualised | % of time negative | negative runs | runs > 1 week | longest run | worst run cost |
+|---|---|---|---|---|---|---|---|
+| BTC | 3.23 | **14.21%** | 14.1% | 806 | 1 | 8.3 d | −0.41% |
+| ETH | 3.23 | **14.33%** | 14.5% | 961 | 0 | 6.0 d | −0.71% |
+| HYPE | 1.66 | **21.60%** | 6.3% | 448 | 0 | 0.6 d | −0.20% |
+| LINK | 3.22 | **15.59%** | 13.6% | 579 | 3 | 16.4 d | −2.16% |
+| PUMP | 1.07 | 14.35% | 7.2% | 280 | 0 | 1.5 d | −0.33% |
+| SOL | 3.23 | 12.28% | 25.9% | 1,142 | 1 | 10.7 d | −1.00% |
+| ARB | 3.23 | 11.64% | 22.8% | 1,286 | 0 | 6.9 d | −0.46% |
+| DOT | 2.90 | 7.27% | 25.7% | 1,103 | 1 | **41.5 d** | −5.92% |
+| NOT | 2.22 | 6.66% | 13.2% | 1,041 | 0 | 1.5 d | −1.18% |
+| GMX | 3.20 | 3.75% | 25.4% | 1,250 | 2 | 15.8 d | −5.11% |
+| MERL | 2.28 | **−22.38%** | 29.5% | 1,132 | 2 | 17.4 d | −22.65% |
+| TNSR | 2.32 | **−32.41%** | 21.2% | 959 | 1 | 19.0 d | −46.52% |
+
+The published 0.01%/8h ≈ 11% baseline is roughly right **for the liquid
+majors** and badly wrong as a general claim. Two of twelve instruments paid
+*negative* funding for years: shorting TNSR would have cost **75% of notional**
+over 2.3 years. The thin end of the perp market is where a naive screen for
+"high funding" would send an operator, and it is where the sign flips.
+
+Negative runs are mostly short — BTC's longest is 8.3 days costing 0.41% — but
+DOT's longest is **41.5 days** and GMX's worst costs **5.11%**. A strategy sized
+on the average would have been financing a six-week loss on DOT.
+
+### 3. Funding has compressed, and that is the most important number here
+
+**Binance perps, annualised by calendar year:**
+
+| | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 (part) |
+|---|---|---|---|---|---|---|---|
+| BTCUSDT | 17.19% | **30.61%** | 4.16% | 7.87% | 11.92% | 5.13% | **1.94%** |
+| ETHUSDT | 27.41% | **37.54%** | 0.79% | 8.26% | 12.96% | 4.93% | **0.97%** |
+| SOLUSDT | −12.52% | 28.59% | −35.56% | 1.30% | 13.62% | 0.35% | −2.59% |
+
+Hyperliquid tells the same story internally: BTC's first half of the sample
+annualised **20.02%** and its second half **8.15%**; ETH **21.27%** then
+**7.10%**. Fitted decay slopes are **−6.31%/yr** (BTC) and **−7.67%/yr** (ETH).
+
+**The yield is down roughly 85% from its 2021 peak and is running at 1–2%
+annualised in 2026.** This is a crowded, widely published trade and it looks
+exactly like one being competed away. Every historical average below is
+therefore an overstatement of what is available now, and that matters more than
+any of them.
+
+**And the carry is a bull-market phenomenon.** Correlation of daily funding with
+the trailing 30-day price trend is **0.57 (BTC), 0.50 (ETH), 0.54 (SOL)**. On
+BTC, uptrend days pay **5.77 bps/day** against **1.87 bps/day** in downtrends —
+a 3× difference. On SOL, downtrend days pay **−0.07 bps/day**, i.e. nothing.
+Correlation with realised volatility is near zero (0.14, −0.14, 0.17), so this
+is a direction effect, not a volatility effect. A delta-neutral trade whose
+income depends on the market rising is not as neutral as its name.
+
+### 4. Modelling both legs, and the capital nobody counts
+
+Long spot on Kraken/Coinbase at **40 bps/side**, short perp on Hyperliquid at
+**1.5 bps/side**. Two structural facts emerged from building this that a
+single-venue model would have missed:
+
+**Equal units are already delta-flat.** A 1:1 unit hedge does not drift out of
+delta as price moves — both legs scale together, and only the perp's premium to
+index separates them, which is basis points. Charging rebalancing against price
+volatility would be charging for work the structure does not require.
+
+**What actually grows is the margin requirement.** A short held while price
+rises has a notional and an unrealised loss that both scale up, drawn from the
+same margin account. So the real choice is not how to stay delta-neutral, it is
+whether to bound the capital or bound the trading cost:
+
+| BTC, band | rebalances/yr | rebalance cost | capital / notional | net on capital |
+|---|---|---|---|---|
+| 2% | 324.4 | 10.65% | 1.59× | 6.84% |
+| 5% | 66.1 | 4.87% | 1.59× | 7.97% |
+| **10%** | **19.3** | **2.70%** | **1.70×** | **8.00%** |
+| 25% | 3.5 | 1.18% | 1.87× | 7.59% |
+| never resize | 0 | 0 | **5.92×** | 6.43% |
+
+A 2% band forces over 300 resizes a year and pays 10.65% of notional to the 40
+bps spot leg. Never resizing pays nothing and needs **5.92× the notional in
+capital** — on SOL, which rose most, **18.55×**. The optimum is a loose band,
+and it is a shallow optimum.
+
+**Per instrument, at each one's best band, net of every modelled cost:**
+
+| coin | band | rebalances/yr | capital/notional | funding yield | **net on capital** | max drawdown |
+|---|---|---|---|---|---|---|
+| ETH | 10% | 29.8 | 1.63× | 14.66% | **8.07%** | −1.34% |
+| BTC | 10% | 19.3 | 1.70× | 14.55% | **8.00%** | −0.92% |
+| LINK | 25% | 9.8 | 1.97× | 15.89% | **7.43%** | −5.41% |
+| SOL | 25% | 13.3 | 1.95× | 12.59% | **5.86%** | −6.10% |
+| ARB | 25% | 12.0 | 1.92× | 11.93% | **5.57%** | −7.40% |
+| DOT | 25% | 6.9 | 1.93× | 7.27% | 3.48% | −10.42% |
+| PUMP | 25% | 15.8 | 1.90× | 9.07% | 3.26% | −5.89% |
+| NOT | 25% | 23.6 | 2.05× | 6.66% | 1.68% | −12.53% |
+| GMX | 25% | 10.5 | 2.00× | 3.81% | 1.28% | −13.87% |
+| TNSR | 25% | 30.3 | 3.02× | −32.68% | **−10.45%** | −45.44% |
+
+HYPE and MERL could not be modelled: neither has a Binance spot listing, so the
+long leg cannot be priced here. They are also the two least likely to have a
+tradeable spot leg on Kraken or Coinbase, which is the same problem in a
+different form.
+
+**Return on notional would have read 1.6–3.0× higher.** That gap is the whole
+reason this stage reports on capital: the spot leg consumes its full notional on
+one venue and the perp margin sits on another, and both are tied up.
+
+### 5. Failure modes, measured
+
+**Funding flipping negative.** BTC's worst episode was **5.3 days costing
+0.41%** of notional. Holding through it cost 0.405%; exiting and re-entering
+costs **0.83%**, because a round trip is 2 × (40 + 1.5) bps and the spot leg
+dominates. **Holding is cheaper**, and it stays cheaper for every majors
+episode in the sample — the exit option is essentially never right at these
+fees. On DOT (41.5 days, −5.92%) and TNSR (−46.52%) it flips, but by then the
+question is whether to be in the trade at all.
+
+**Basis risk.** Hyperliquid's premium to its own index on BTC: mean **0.65 bps**,
+p99 **14.59 bps**, max **52.85 bps**. The worst adverse hourly move — a widening
+premium, which hurts a short — was **38.2 bps**, or **$38.20 on a $10,000
+position**. Small. But this is measured against Hyperliquid's *index*, not
+against Kraken or Coinbase, so it **understates** the true cross-venue basis by
+whatever the index and the actual long venue differ by. That residual is not
+measured here and should not be assumed to be zero.
+
+**Liquidation of the perp leg.** At the sample's price path, with the rebalance
+band active:
+
+| leverage | margin | capital/notional | liquidation at | breaches in sample |
+|---|---|---|---|---|
+| 1× | 100% | 2.00× | +50% | 0 |
+| 2× | 50% | 1.50× | +25% | 0 |
+| 4× | 25% | 1.25× | +12.5% | 0 |
+| 5× | 20% | 1.20× | +10% | 0 |
+| **10×** | **10%** | **1.10×** | **+5%** | **6** |
+
+Zero breaches up to 5×, six at 10×. Worth noting *why* the lower leverages
+survive: **rebalancing is itself liquidation protection**, because each resize
+re-establishes the short at the current price. A gradual 18% rise never
+liquidates; an 18% gap does. The counted breaches assume no spot-leg gains are
+transferred as margin — that collateral sits on another venue, and moving it in
+time is exactly the operational assumption a backtest cannot validate.
+
+**What cannot be measured at all**, stated rather than omitted: protocol failure
+or exploit on Hyperliquid; venue insolvency or withdrawal freeze on either leg
+(FTX in November 2022 sits inside the Binance sample and outside the Hyperliquid
+one); oracle or index manipulation; operational failure by a solo operator
+running two venues with no second pair of hands; and regulatory change closing
+Canadian access to Hyperliquid, which would strand the only leg that can be
+short. None has a frequency in three years of price history, and a backtest that
+ignores them is not conservative — it is silent.
+
+### 6. Verdict
+
+**Against the honest benchmark, which is cash and not zero.** At a 4% risk-free
+rate, **5 of 10 modelled instruments clear it** on the historical sample: ETH
+8.07%, BTC 8.00%, LINK 7.43%, SOL 5.86%, ARB 5.57%. The margin over cash is
+**1.6 to 4.1 percentage points**, for a position carrying liquidation tail risk,
+cross-venue operational risk, and unmodellable venue risk.
+
+**But the historical sample is not the current regime.** Funding annualised
+1.94% (BTC) and 0.97% (ETH) in 2026 against 30%+ in 2021. At 2026 funding
+levels, net of the same costs, **the trade does not clear cash at all** — it is
+roughly break-even before any of the risks above are priced.
+
+**This is the first stage that has not produced a clean negative, and that makes
+it the most dangerous one.** The carry existed and paid. The measured 8% is
+real. What the backtest cannot establish is the part that decides it:
+
+- **It can establish** that funding was positive on the majors, what it paid,
+  how often it went negative and for how long, what the two legs cost to run,
+  and how much capital they tie up.
+- **It cannot establish** whether two legs on two venues can be held for years
+  without an operational failure — a missed rebalance, a stuck withdrawal, a
+  venue outage during a gap move, a solo operator asleep. That gap is larger
+  here than for anything previously tested, because every prior strategy failed
+  on arithmetic that a backtest measures well. This one passes the arithmetic
+  and is decided by the part it measures worst.
+
+The recommendation is not "trade this". It is that **the yield decay is the
+finding**, and any decision should rest on current funding rather than a
+three-year average that is dominated by a regime that has ended.
+
+**Data acquired this stage:** Hyperliquid funding for 12 perps (27,761 hourly
+rows for BTC), Hyperliquid perp candles, Binance USD-M funding back to 2020-01,
+and Binance spot hourly for the spot leg. All free, **nothing purchased**, every
+file carrying source, URL, sha256 and retrieval date in
+`data/vendor/archive/manifest.jsonl`.

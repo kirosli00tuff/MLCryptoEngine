@@ -1443,3 +1443,87 @@ pairs that look best cannot be shorted anywhere reachable.**
   `ComplexWarning` on some pairs — its eigenvalue solve returns a negligible
   imaginary part which the library discards. Johansen is reported alongside
   Engle-Granger, never alone, and no conclusion here rests on it.
+
+## 2026-08-04 — Stage C.11: funding rate carry
+
+**The first stage that did not produce a clean negative, which makes it the
+most dangerous one. The carry is real and paid ~8%/yr net on deployed capital
+on the majors — but the yield has decayed ~85% from its 2021 peak and is
+running at 1–2% in 2026, so the historical average describes a regime that has
+ended.**
+
+- **This is a carry trade, not a machine learning strategy.** No features, no
+  labels, no model, no cross-validation — almost none of the Phase B research
+  layer applies, and reaching for it here would be theatre. Stated in the
+  report and in ADR-033.
+- **Task 1 — free funding + basis history, nothing purchased.** Hyperliquid
+  funding for all 12 subscribed perps (27,761 hourly rows for BTC, 2023-05-12
+  to 2026-08-04), HL perp candles, Binance USD-M funding back to 2020-01 for
+  the decay question, Binance spot 1h for the long leg. Two new `archive`
+  sources declared per C.9.1; every file carries source, URL, sha256 and
+  retrieval date in the C.10 manifest.
+- **A data hazard caught before it mattered: the venue changed its own funding
+  interval.** Hyperliquid paid **eight-hourly** from launch until 2023-06-08
+  and **hourly** after (81 eight-hour steps, then 27,676 one-hour). Any
+  annualisation using a fixed intervals-per-year constant is silently wrong
+  across that boundary **by a factor of 8**. Everything now divides accumulated
+  funding by elapsed time. On BTC the correction is small (14.21% vs 14.50%)
+  because the 8h era is 27 of 1,181 days — small **by luck, not by design**.
+- **Task 2 — funding characterised, and the general claim is false.** The
+  ~11%/yr baseline holds for the majors (BTC 14.21%, ETH 14.33%, LINK 15.59%,
+  HYPE 21.60%) and fails badly elsewhere: **MERL −22.38%/yr and TNSR
+  −32.41%/yr**. Shorting TNSR would have cost **75% of notional** over 2.3
+  years. The thin end of the perp market is where a naive "high funding" screen
+  sends you and where the sign flips.
+- **Negative runs are the statistic, not the negative fraction.** BTC's longest
+  is 8.3 days costing 0.41%; **DOT's longest is 41.5 days** and GMX's worst
+  costs 5.11%. A position sized on the average would have been financing a
+  six-week loss on DOT.
+- **Yield decay is the finding.** Binance BTC by year: 2021 **30.61%** → 2024
+  11.92% → 2025 5.13% → **2026 1.94%**. ETH: 37.54% → 12.96% → 4.93% →
+  **0.97%**. Hyperliquid says the same internally — BTC first half 20.02% vs
+  second half 8.15%; decay slopes −6.31%/yr (BTC), −7.67%/yr (ETH). **Down ~85%
+  from peak.** This is a crowded published trade behaving exactly like one.
+- **The carry is a bull-market phenomenon.** Correlation of daily funding with
+  the trailing 30-day trend is **0.57 / 0.50 / 0.54** (BTC/ETH/SOL). BTC pays
+  **5.77 bps/day in uptrends vs 1.87 in downtrends**; SOL pays −0.07 bps/day in
+  downtrends. Correlation with realised vol is ~0, so it is direction, not
+  volatility. A "delta-neutral" trade earning most of its income when the market
+  rises is not as neutral as its name.
+- **Task 3 — two structural findings from building the model.** **Equal units
+  are already delta-flat**: a 1:1 unit hedge does not drift as price moves, so
+  charging delta rebalancing against volatility charges for work the structure
+  does not require. **What grows is the margin requirement**, so the real choice
+  is bound-the-capital vs bound-the-cost. On BTC a 2% band costs **10.65% of
+  notional** in fees over the sample; never resizing needs **5.92× notional in
+  capital** (18.55× on SOL). The band is swept, never chosen.
+- **Return on deployed capital, per instrument at its best band:** ETH **8.07%**,
+  BTC **8.00%**, LINK 7.43%, SOL 5.86%, ARB 5.57%, DOT 3.48%, PUMP 3.26%, NOT
+  1.68%, GMX 1.28%, TNSR **−10.45%**. Return on *notional* would have read
+  1.6–3.0× higher — that gap is why ADR-035 changed the metric.
+- **A modelling error I made and fixed.** The first version held deployed
+  capital fixed at entry while crediting funding on a notional that grew with
+  price: SOL reported **306% of notional collected and 64%/yr**. Arithmetically
+  consistent, economically impossible — that short would have been liquidated
+  long before collecting it. Now the margin account is tracked and capital is
+  the **peak** requirement over the path.
+- **Task 4 — failure modes measured.** Worst BTC negative-funding episode: 5.3
+  days, −0.41%; **holding (0.405%) is cheaper than exiting (0.83%)** because a
+  round trip pays the 40 bps spot leg twice. Basis: HL premium mean 0.65 bps,
+  p99 14.59, worst adverse hourly move **38.2 bps = $38.20 on $10k** — but
+  measured against HL's own index, so it **understates** true cross-venue basis.
+  Liquidation: **0 breaches up to 5× leverage, 6 at 10×** — and rebalancing is
+  itself the protection, since each resize re-establishes the short at the
+  current price. Counted without crediting spot gains as perp margin, because
+  that collateral is on another venue.
+- **Unmodellable risks stated, not omitted:** protocol failure, venue
+  insolvency or withdrawal freeze, oracle manipulation, solo-operator failure
+  across two venues, and regulatory loss of Hyperliquid access.
+- **Verdict.** Against a 4% risk-free rate, **5 of 10 clear it** historically by
+  1.6–4.1 points. At 2026 funding levels the trade **does not clear cash at
+  all**. A backtest can establish that the carry existed and what it paid; it
+  cannot establish whether two legs on two venues survive years without an
+  operational failure — and this is the first strategy whose verdict turns on
+  the part a backtest measures worst.
+- `make lint`, `make typecheck`, `make test` clean — **256 tests**, 14 new
+  (`tests/test_carry.py`). All recorders alive throughout.
