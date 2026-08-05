@@ -52,10 +52,22 @@ def _dates_with_samples(cfg: AppConfig, venue: str, symbol: str) -> list[str]:
     )
 
 
+# Keep every Nth retained sample. Because samples are event bars, striding by N
+# is equivalent to having sampled every N x every_n book updates: it coarsens the
+# bar, it does not bias which moments are chosen (ADR-025). It exists because the
+# full six-day cross-venue sweep is ~5 hours of LightGBM fits and this stage has
+# a deadline. **A coarser bar is a real change to the experiment, not an
+# implementation detail, so the value used is reported in every payload.**
+STRIDE = 1
+
+
 def _load(cfg: AppConfig, venue: str, symbol: str, dates: list[str]) -> dict[str, Any]:
     paths = [samples_partition_dir(cfg.processed_dir, venue, symbol, d) / PART_NAME for d in dates]
     return load_samples(
-        [p for p in paths if p.is_file()], columns=training_columns(), dtype=np.float32
+        [p for p in paths if p.is_file()],
+        columns=training_columns(),
+        dtype=np.float32,
+        stride=STRIDE,
     )
 
 
@@ -275,18 +287,31 @@ def task3_cross_venue(
     }
 
 
-def run(cfg: AppConfig, horizons: tuple[int, ...], only: str | None = None) -> dict[str, Any]:
+def run(
+    cfg: AppConfig,
+    horizons: tuple[int, ...],
+    only: str | None = None,
+    symbols: list[str] | None = None,
+) -> dict[str, Any]:
     out: dict[str, Any] = {
         "stage": "C.14",
         "pre_registration_commit": "a2d7466",
         "horizons_ms": list(horizons),
         "n_splits": N_SPLITS,
+        "sample_stride": STRIDE,
+        "stride_note": (
+            "every Nth retained event bar; equivalent to a coarser bar, not a biased "
+            "selection of moments (ADR-025). Reported because it is a change to the "
+            "experiment."
+        ),
         "venues": {},
     }
     for venue in sorted(cfg.venues):
         if only and venue != only:
             continue
         for symbol in cfg.venues[venue].symbols:
+            if symbols is not None and symbol not in symbols:
+                continue
             dates = _dates_with_samples(cfg, venue, symbol)
             if not dates:
                 continue
@@ -320,9 +345,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--horizons", type=int, nargs="*", default=list(DEFAULT_HORIZONS_MS), help="horizons in ms"
     )
+    parser.add_argument("--symbol", action="append", dest="symbols", default=None)
+    parser.add_argument(
+        "--stride", type=int, default=1, help="keep every Nth sample; reported in the payload"
+    )
     args = parser.parse_args(argv)
 
-    payload = run(load_config(), tuple(args.horizons), only=args.venue)
+    global STRIDE
+    STRIDE = max(1, args.stride)
+    payload = run(load_config(), tuple(args.horizons), only=args.venue, symbols=args.symbols)
     log_experiment(
         {
             "stage": "C.14",

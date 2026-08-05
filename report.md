@@ -1862,3 +1862,147 @@ rows for BTC), Hyperliquid perp candles, Binance USD-M funding back to 2020-01,
 and Binance spot hourly for the spot leg. All free, **nothing purchased**, every
 file carrying source, URL, sha256 and retrieval date in
 `data/vendor/archive/manifest.jsonl`.
+
+## Validation run — 2026-08-05 08:19 UTC
+
+### kraken — 2026-08-02 — **PASS**
+
+Messages: **10153342** · recorded span: 86400s · feed gaps in span: 14 (503804 ms) · recorder downtime: 0 (0 ms) · unclean terminations: 0 (0 ms) · excluded from coverage: 503804 ms (all kinds unioned and clamped to the span)
+
+Warm start: previous-day tail replayed from 2026-08-01 19:53:53Z so books are live at midnight (state only — nothing before the day is scored).
+
+Channels: `book`: 10040808 · `heartbeat`: 85277 · `status`: 14 · `subscribe`: 56 · `trade`: 27187
+
+Integrity mechanism: **CRC32 book checksums** · sequence numbers: n/a (this feed provides none) · book checksums: 10,040,780 checked
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | cksums verified | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC/USD | 4109943 | 14 | n/a | 0 (0) | 4109943 | 0 (0) | 0 | 99.42% | 100.00% | 14 (14) | 4196356 |
+| ETH/USD | 5930837 | 14 | n/a | 0 (0) | 5930837 | 0 (0) | 0 | 99.42% | 100.00% | 14 (13) | 6017250 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 19575 |
+| 0.01 to 0.05 ms | 4245426 |
+| 0.05 to 0.1 ms | 1040735 |
+| 0.1 to 0.5 ms | 424309 |
+| 0.5 to 1 ms | 492517 |
+| 1 to 5 ms | 2072794 |
+| 5 to 10 ms | 456298 |
+| 10 to 50 ms | 916467 |
+| 50 to 100 ms | 286451 |
+| 100 to 500 ms | 196268 |
+| 500 to 1000 ms | 2395 |
+| 1000 to 5000 ms | 85 |
+| 5000 to 30000 ms | 9 |
+| >30000 ms | 12 |
+
+p50 ≤ 0.1 ms · p90 ≤ 50 ms · p99 ≤ 500 ms · max 221710 ms
+
+## Validation run — 2026-08-05 08:24 UTC
+
+### coinbase — 2026-08-02 — **PASS**
+
+Messages: **3255935** · recorded span: 86400s · feed gaps in span: 16 (399708 ms) · recorder downtime: 0 (0 ms) · unclean terminations: 0 (0 ms) · excluded from coverage: 399708 ms (all kinds unioned and clamped to the span)
+
+Warm start: previous-day tail replayed from 2026-08-01 22:26:13Z so books are live at midnight (state only — nothing before the day is scored).
+
+Channels: `heartbeats`: 85318 · `l2_data`: 2980113 · `market_trades`: 190465 · `subscriptions`: 39
+
+Integrity mechanism: **envelope sequence numbers** · sequence numbers: 3,255,935 checked · book checksums: n/a (this feed provides none)
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | cksums verified | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC-USD | 1567537 | 14 | 0 (0) | n/a | n/a | 0 (0) | 0 | 99.54% | 100.00% | 14 (14) | 1653950 |
+| ETH-USD | 1412547 | 15 | 0 (0) | n/a | n/a | 0 (0) | 0 | 99.54% | 100.00% | 15 (14) | 1498961 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 0 |
+| 0.01 to 0.05 ms | 39621 |
+| 0.05 to 0.1 ms | 60817 |
+| 0.1 to 0.5 ms | 78918 |
+| 0.5 to 1 ms | 45938 |
+| 1 to 5 ms | 247512 |
+| 5 to 10 ms | 242016 |
+| 10 to 50 ms | 2237528 |
+| 50 to 100 ms | 274769 |
+| 100 to 500 ms | 28655 |
+| 500 to 1000 ms | 76 |
+| 1000 to 5000 ms | 56 |
+| 5000 to 30000 ms | 16 |
+| >30000 ms | 12 |
+
+p50 ≤ 50 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 187372 ms
+
+## Validation run — 2026-08-05 08:49 UTC
+
+### kraken — 2026-08-04 — **PASS**
+
+Messages: **17289532** · recorded span: 86400s · feed gaps in span: 15 (45523 ms) · recorder downtime: 1 (574 ms) · unclean terminations: 0 (0 ms) · excluded from coverage: 46097 ms (all kinds unioned and clamped to the span)
+
+Warm start: previous-day tail replayed from 2026-08-03 22:30:02Z so books are live at midnight (state only — nothing before the day is scored).
+
+Channels: `book`: 17170910 · `heartbeat`: 86311 · `status`: 9 · `subscribe`: 36 · `trade`: 32266
+
+Integrity mechanism: **CRC32 book checksums** · sequence numbers: n/a (this feed provides none) · book checksums: 17,170,892 checked
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | cksums verified | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC/USD | 7343776 | 9 | n/a | 0 (0) | 7343776 | 0 (0) | 0 | 99.95% | 100.00% | 9 (2) | 7430184 |
+| ETH/USD | 9827116 | 9 | n/a | 0 (0) | 9827116 | 0 (0) | 0 | 99.95% | 100.00% | 9 (5) | 9913524 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 29807 |
+| 0.01 to 0.05 ms | 7187744 |
+| 0.05 to 0.1 ms | 1886206 |
+| 0.1 to 0.5 ms | 1102247 |
+| 0.5 to 1 ms | 958592 |
+| 1 to 5 ms | 3627561 |
+| 5 to 10 ms | 769701 |
+| 10 to 50 ms | 1306046 |
+| 50 to 100 ms | 284877 |
+| 100 to 500 ms | 136129 |
+| 500 to 1000 ms | 591 |
+| 1000 to 5000 ms | 26 |
+| 5000 to 30000 ms | 4 |
+| >30000 ms | 0 |
+
+p50 ≤ 0.1 ms · p90 ≤ 10 ms · p99 ≤ 100 ms · max 22862.5 ms
+
+## Validation run — 2026-08-05 08:54 UTC
+
+### coinbase — 2026-08-04 — **PASS**
+
+Messages: **3536182** · recorded span: 86400s · feed gaps in span: 2 (2524 ms) · recorder downtime: 1 (574 ms) · unclean terminations: 0 (0 ms) · excluded from coverage: 3098 ms (all kinds unioned and clamped to the span)
+
+Warm start: previous-day tail replayed from 2026-08-03 20:47:21Z so books are live at midnight (state only — nothing before the day is scored).
+
+Channels: `heartbeats`: 86332 · `l2_data`: 3111381 · `market_trades`: 338460 · `subscriptions`: 9
+
+Integrity mechanism: **envelope sequence numbers** · sequence numbers: 3,536,182 checked · book checksums: n/a (this feed provides none)
+
+| symbol | events | snaps | seq gaps (unexpl.) | cksum fails (unexpl.) | cksums verified | crossed (unexpl.) | locked | day coverage | coverage excl. gaps | snap compares (mismatch) | rows |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| BTC-USD | 1632430 | 12 | 0 (0) | n/a | n/a | 0 (0) | 0 | 100.00% | 100.00% | 12 (6) | 1718841 |
+| ETH-USD | 1478924 | 15 | 0 (0) | n/a | n/a | 0 (0) | 0 | 100.00% | 100.00% | 15 (9) | 1565338 |
+
+| inter-message arrival | count |
+|---|---|
+| 0 to 0.01 ms | 0 |
+| 0.01 to 0.05 ms | 36637 |
+| 0.05 to 0.1 ms | 57401 |
+| 0.1 to 0.5 ms | 89297 |
+| 0.5 to 1 ms | 50783 |
+| 1 to 5 ms | 348592 |
+| 5 to 10 ms | 322326 |
+| 10 to 50 ms | 2373391 |
+| 50 to 100 ms | 237739 |
+| 100 to 500 ms | 19938 |
+| 500 to 1000 ms | 56 |
+| 1000 to 5000 ms | 18 |
+| 5000 to 30000 ms | 2 |
+| >30000 ms | 1 |
+
+p50 ≤ 50 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 47848.4 ms
