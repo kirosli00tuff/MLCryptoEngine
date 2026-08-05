@@ -94,8 +94,18 @@ module = [
     "sklearn.*",
     "statsmodels.*",
     "scipy.*",
+    "torch.*",
 ]
 ignore_missing_imports = true
+
+# torch lives in .venv-dl, not .venv, because the three live recorders execute
+# out of .venv and `uv sync` would rewrite site-packages underneath them
+# (ADR-038). mypy therefore runs without it and cannot see nn.Module, so the
+# two subclasses below resolve to Any. Relaxed for this module only.
+[[tool.mypy.overrides]]
+module = ["research.deep.*", "tests.test_deep"]
+disallow_subclassing_any = false
+disallow_any_explicit = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

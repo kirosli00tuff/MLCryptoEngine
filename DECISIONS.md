@@ -1571,3 +1571,145 @@ point worth recording: **the correction was small here by luck, not by design**,
 and on a series with a different mix it would have been eightfold. Nothing in
 the output distinguishes the two cases, which is why the rule is enforced in the
 data layer rather than left to the analysis.
+
+## ADR-036: Dollar-neutral is not delta-neutral, and the price term is reported separately
+
+**Date:** 2026-08-05 · **Status:** accepted
+
+**Context.** C.11's cash-and-carry and C.13's cross-sectional carry are both
+called "neutral", both hold a long and a short, and both collect funding. The
+resemblance is superficial and the difference decides how each one can fail.
+
+**C.11 cancelled price exposure structurally.** The same asset, long on spot and
+short as a perp, in equal units. A 1:1 unit hedge does not drift as price moves
+because both legs scale together; the only residual is the perp's premium to
+index, measured at a mean of 0.65 bps with a worst adverse hourly move of 38.2
+bps. Price risk was a rounding error *by construction*, and the backtest was
+entitled to treat the funding stream as the whole story.
+
+**C.13 cancels nothing.** Long the perps paying the most negative funding and
+short those paying the most positive, and the two baskets are different coins.
+Equalising the dollars on each side equalises exactly that — the dollars. It
+does not equalise beta, volatility, sector, or anything else. The long basket
+can fall while the short basket rises, without limit and for reasons that have
+nothing to do with funding. The price term is not a residual to be bounded; it
+is a term in the P&L that can exceed the carry it was supposed to accompany.
+
+The failure this rule prevents is a specific and inviting one: report a single
+net return, find it positive, and conclude that the carry worked. A dollar-
+neutral book with a real beta can produce a positive total during a rising
+sample entirely out of its price term, and the funding spread would then be
+decoration on a directional bet that nobody chose to take and nobody sized.
+
+**Decision.** Any strategy in this project whose legs are **different
+instruments** reports funding income and price return as **separate numbers,
+combined only at the end**, and reports alongside them the evidence that says
+which term is driving the result:
+
+- realised correlation between the long and short baskets' price returns,
+- the portfolio's beta and R² against a broad benchmark (BTC),
+- price-only return with funding excluded entirely, annualised,
+- the daily volatility of each term, so their relative size is visible.
+
+A strategy whose legs are the **same instrument** in equal units may treat price
+exposure as structurally cancelled, and must say so explicitly rather than by
+omission. The distinction is recorded in the code: `research.carry.trade`
+documents equal units as delta-flat, `research.cross.portfolio` accumulates
+`funding_pnl` and `price_pnl` into separate fields that are never summed before
+`summary()`.
+
+**Consequences.** The verdict on a cross-sectional carry cannot be read off its
+net return. It requires an explicit judgement — carry trade with a residual, or
+directional bet with a carry overlay — and the report must state which, in those
+terms. This costs nothing when the price term is genuinely small and is the
+entire finding when it is not.
+
+A second consequence is about capital, and it runs the other way. C.11's spot
+leg consumed its full notional on a venue that offers no margin, so deployed
+capital was 1.6-3.0x the notional. C.13's legs are both perps on one venue and
+both are margined, so the same gross exposure ties up materially less capital.
+That is a real structural advantage of the perp/perp form and it is reported —
+but it is an advantage in the denominator, and ADR-035 still governs: capital is
+the *peak* margin the path demanded, never the entry margin.
+
+## ADR-037: An archive page key names every request parameter that varies
+
+**Date:** 2026-08-05 · **Status:** accepted
+
+**Context.** Raw archive pages are immutable (CLAUDE.md: raw recorded data is
+immutable, processed outputs are regenerable). Hyperliquid pages were stored at
+`info/candleSnapshot/coin=BTC/start=<epoch_ms>.json` — coin and start time in
+the path, but **not the interval**, which is also a request parameter.
+
+C.11 only ever asked for `1h` candles, so the omission was invisible. C.13 needs
+`1d`, because the endpoint's limit is 5,000 *bars* rather than 5,000 hours: at
+hourly that reaches 208 days and cannot cover the sample, and at daily it reaches
+13.7 years and covers it in one request per coin. The two requests differ only in
+a field the path did not record, so a `1d` fetch would have **overwritten an
+already-archived `1h` page**, leaving the manifest with two provenance lines
+claiming the same path with different intervals and no way to tell which bytes
+were on disk.
+
+The cached `1h` pages happen to contain `[]`, since the endpoint serves nothing
+that far back at that interval. That made the collision harmless to *read* — the
+"reuse only full pages" rule re-fetches a short page — and it would still have
+been destructive to *write*.
+
+**Decision.** A page's storage key must include every request parameter that can
+vary for that dataset. Candle pages are namespaced by interval; funding pages are
+not, because the venue publishes exactly one funding series and no interval is
+ever sent. The asymmetry is the rule working, not an inconsistency.
+
+**Consequences.** Existing `1h` candle pages keep their old paths and their
+manifest lines, and are simply no longer read — correct, since they are empty and
+immutable. Nothing is rewritten or deleted. Any future interval is a new subtree
+rather than a conflict.
+
+The general form is worth stating because it recurs whenever a cache sits in
+front of a parameterised API: **a key narrower than the request is a silent
+collision**, and it fails by returning or overwriting the wrong bytes rather than
+by raising. It joins the same family as ADR-028's ordering rule and the standing
+"a check that cannot fail is not a check" lesson — defects that never announce
+themselves and are found only when a number is already wrong.
+
+## ADR-038: Heavyweight research dependencies go in a second venv, never the recorders'
+
+**Date:** 2026-08-05 · **Status:** accepted
+
+**Context.** Stage C.14 needs PyTorch to test whether model capacity, rather than
+absent signal, is what closed H2. The obvious move — add `torch` to the research
+dependency group and `uv sync` — rewrites
+`.venv/lib/python3.12/site-packages` while all three live recorders are
+executing out of that directory.
+
+That is not a theoretical hazard. A running Python process resolves lazily
+imported modules against site-packages *as it runs*, and a recorder's reconnect
+path imports code it has not touched since start-up. A resolver that also
+decides to bump `numpy` or `pyarrow` to satisfy torch changes the libraries the
+book builder and the Parquet writer are mid-way through using. The failure would
+appear as a recorder crash or, worse, as a silent gap in captured data — and
+capture is the one thing in this project that cannot be re-run, because the
+market has moved on.
+
+**Decision.** Heavyweight or single-purpose research dependencies are installed
+into a **separate virtual environment**, and `.venv` is treated as frozen for as
+long as the recorders are running.
+
+- Deep learning runs from `.venv-dl` with CPU-only wheels, reaching the project
+  packages through `PYTHONPATH` rather than installing them.
+- `make lint`, `make typecheck` and `make test` continue to point at `.venv`.
+- `tests/test_deep.py` opens with `pytest.importorskip("torch")`, so the suite
+  stays green under `.venv` and the deep tests are run explicitly with
+  `.venv-dl/bin/python -m pytest tests/test_deep.py`.
+- `pyproject.toml` adds `torch.*` to mypy's `ignore_missing_imports` and relaxes
+  `disallow_subclassing_any` for `research.deep.*` only, because mypy runs in the
+  environment that deliberately lacks torch and therefore sees `nn.Module` as
+  `Any`.
+
+**Consequences.** The deep-learning tests do not run in the default suite, which
+is a real cost and is why they are named in this ADR rather than left to be
+discovered. The gain is that no research dependency can ever take the capture
+layer down, and the rule generalises: **the recorders' environment is not a
+place to install things.** Anything that would `uv sync` `.venv` while they run
+needs either its own venv or a deliberate, logged stop-sync-restart, and the
+second option has never yet been worth it.

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,13 @@ SOURCE_KEY = "hyperliquid_info"
 INFO_URL = "https://api.hyperliquid.xyz/info"
 FUNDING_DATASET = "info/fundingHistory"
 CANDLE_DATASET = "info/candleSnapshot"
+META_DATASET = "info/meta"
+
+# Bar widths the candle endpoint serves that this project asks for. The page
+# limit is 5,000 *bars*, not 5,000 hours, so the interval decides how far one
+# request reaches: 208 days at "1h", 13.7 years at "1d". C.11 concluded the
+# endpoint "cannot cover the sample" — true at hourly, false at daily.
+INTERVAL_MS = {"1h": 3_600_000, "1d": 86_400_000}
 
 # Hourly. See the module docstring — this is the constant most likely to be
 # wrong by a factor of eight if it is ever inferred rather than read.
@@ -91,6 +99,26 @@ class Candle:
     volume: float
 
 
+@dataclass(frozen=True)
+class PerpAsset:
+    """One entry in the venue's perp universe, live or dead.
+
+    ``is_delisted`` is the field that matters. The venue addresses assets by
+    their *position* in this array, so removing a dead one would renumber every
+    asset after it — which is why delisted entries are marked in place and kept
+    forever instead. That accident of protocol design is what lets a
+    survivorship-free universe be built here at all: the funding and candle
+    endpoints still serve full history for a delisted name, so an instrument
+    whose funding went pathological before it died is visible rather than
+    silently absent.
+    """
+
+    name: str
+    sz_decimals: int
+    max_leverage: int
+    is_delisted: bool
+
+
 def source_config(cfg: AppConfig) -> SourceConfig:
     source = cfg.sources.get(SOURCE_KEY)
     if source is None:
@@ -98,10 +126,21 @@ def source_config(cfg: AppConfig) -> SourceConfig:
     return source
 
 
-def _page_path(cfg: AppConfig, dataset: str, coin: str, key: str) -> Path:
-    return (
-        manifest.archive_dir(cfg) / "hyperliquid" / dataset / f"coin={coin}" / f"start={key}.json"
-    )
+def _page_path(cfg: AppConfig, dataset: str, coin: str, interval: str, key: str) -> Path:
+    """Where one raw page lands. The key must name every varying request field.
+
+    Candles take an ``interval`` parameter and funding does not, so only the
+    candle tree is namespaced by it. That asymmetry is the point rather than an
+    inconsistency: a request field left out of the path is a collision waiting
+    to happen, and this one was live — a ``1d`` fetch would have overwritten an
+    already-archived ``1h`` page for the same coin and start, because both
+    resolve to the same ``start=`` key. Archived pages are immutable, so the
+    fix is a wider key, not a newer file.
+    """
+    root = manifest.archive_dir(cfg) / "hyperliquid" / dataset / f"coin={coin}"
+    if dataset == CANDLE_DATASET:
+        root = root / f"interval={interval}"
+    return root / f"start={key}.json"
 
 
 def _record_page(
@@ -136,7 +175,7 @@ def _fetch_page(
     freeze the study's end date silently — the data would look complete and
     simply stop.
     """
-    path = _page_path(cfg, dataset, coin, key)
+    path = _page_path(cfg, dataset, coin, interval, key)
     limit = FUNDING_PAGE_LIMIT if dataset == FUNDING_DATASET else CANDLE_PAGE_LIMIT
     if manifest.already_have(path):
         cached: list[dict[str, Any]] = orjson.loads(path.read_bytes())
@@ -228,11 +267,50 @@ def annualised(rows: list[FundingRow]) -> float:
     return accumulated(rows) / years if years > 0 else 0.0
 
 
+def parse_universe(payload: dict[str, Any]) -> list[PerpAsset]:
+    """Read a stored ``meta`` page into assets, keeping the delisted ones."""
+    return [
+        PerpAsset(
+            name=str(entry["name"]),
+            sz_decimals=int(entry.get("szDecimals", 0)),
+            max_leverage=int(entry.get("maxLeverage", 1)),
+            # Absent means live. The venue only writes the flag when it is true.
+            is_delisted=bool(entry.get("isDelisted", False)),
+        )
+        for entry in payload.get("universe", [])
+    ]
+
+
+def fetch_universe(cfg: AppConfig, as_of: str | None = None) -> list[PerpAsset]:
+    """Every perp the venue has ever listed, in asset-index order.
+
+    ``meta`` takes no time argument — it describes the universe *now* — so the
+    stored page is keyed by retrieval date and is a dated snapshot rather than
+    a point-in-time record. Nothing downstream may use its ``is_delisted`` flag
+    to decide what was tradeable on some past date; that question is answered
+    by whether the instrument has funding observations on that date, which is
+    the venue's own record of it being live.
+    """
+    day = as_of or datetime.now(UTC).strftime("%Y-%m-%d")
+    path = manifest.archive_dir(cfg) / "hyperliquid" / META_DATASET / f"date={day}.json"
+    if manifest.already_have(path):
+        cached: dict[str, Any] = orjson.loads(path.read_bytes())
+        return parse_universe(cached)
+    body = post_bytes(INFO_URL, orjson.dumps({"type": "meta"}), delay_s=POLITE_API_DELAY_S)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    _record_page(cfg, META_DATASET, "ALL", "snapshot", day, path, body)
+    return parse_universe(orjson.loads(body))
+
+
 def fetch_candles(
     cfg: AppConfig, coin: str, start_ms: int, end_ms: int, interval: str = "1h"
 ) -> list[Candle]:
     """Perp OHLCV bars for one coin, oldest first, paged to the end."""
-    span = FUNDING_INTERVAL_MS * CANDLE_PAGE_LIMIT
+    bar_ms = INTERVAL_MS.get(interval)
+    if bar_ms is None:
+        raise ValueError(f"unsupported candle interval {interval!r}; known: {sorted(INTERVAL_MS)}")
+    span = bar_ms * CANDLE_PAGE_LIMIT
     seen: dict[int, Candle] = {}
     cursor = start_ms
     while cursor < end_ms:
