@@ -1678,3 +1678,68 @@ closed on **cost** and reopens only below ~3 bps round trip. H2 closed on
 **absent signal** and reopens only on measurable AUC — which Task 4 is the test
 of. A better AUC on H1's data does not reopen H1, and a better cost on H2's
 venue does not reopen H2.
+
+## 2026-08-05 — Stage C.13: cross-sectional funding carry
+
+**Closed as H8. Funding income is real and large; the price term cancels it
+almost exactly. Net +0.11%/yr on capital against a 4% risk-free rate.**
+
+- **Task 1 — universe, survivorship-free by construction.** Hyperliquid
+  addresses perps by their **index in the `meta` array**, so a delisted asset
+  cannot be removed without renumbering every asset after it — it is flagged in
+  place and kept, and the funding and candle endpoints keep serving its full
+  history. **232 considered, 231 usable, 55 delisted, 55 dying inside the
+  sample**, 4,411,046 funding rows, 1,182 days, zero fetch failures. FTT is
+  still addressable with candles ending 2026-05-25. Cross-section grew **21 →
+  190** instruments; membership is per day, from the venue's own record.
+- **A C.11 constraint turned out to be false at a different resolution.** C.11
+  reconstructed perp prices as `spot × (1 + premium)` because the candle
+  endpoint "cannot cover the sample" — true at hourly (5,000 bars = 208 days),
+  **false at daily** (5,000 bars = 13.7 years). Both legs are now priced from
+  Hyperliquid's own book in one request per coin, and HYPE and MERL — which
+  C.11 could not model at all — are priced here.
+- **Task 2 — the gate. Dispersion has decayed, and the composition control is
+  what shows it.** All instruments: decile spread 380.58% (2023) → 156.32% →
+  164.52% → 167.54%, which reads as a 57% fall and then a plateau. **Fixed
+  cohort (38 names live at 2023-08-10): 241.50% → 163.61% → 55.80% → 53.45%, a
+  77% fall with no plateau.** The apparent flatness is the venue listing wilder
+  coins, not the spread persisting — two measures of the same market differ by
+  **3×** on composition alone. IQR falls faster than stdev (−68% vs −39%), so
+  what remains has retreated into a few extreme names.
+- **Task 3/4 — the three terms, kept apart (ADR-036).** Funding **+43.68%**,
+  price **−42.91%**, cost −0.66%, **net +0.11%** on deployed capital. The
+  funding income is real; the hedge it is wrapped in destroys it.
+- **This is not a carry trade, and the numbers say so directly.** Price daily
+  vol **1.81%** against funding daily vol **0.166%** — **10.9× wider**.
+  Long/short basket price correlation **−0.718**. Beta to BTC −0.157, R² 0.044,
+  so dollar neutrality did buy market neutrality — and nothing against the
+  cross-section. **Negative funding is compensation for holding assets that
+  keep falling**, not free income.
+- **Task 5 — capital and drawdown.** Deployed capital **1.18× gross notional**,
+  materially better than C.11's 1.6–3.0× because both legs are margined on one
+  venue. Max drawdown **−75.85%**; worst 30 days −41.49%, worst 90 days
+  −48.05%; 20 forced exits on delisting. A −75.85% drawdown for +0.11% a year
+  is not a trade-off worth taking.
+- **Cost is nearly binding, unlike H4.** Break-even **1.76 bps a side against
+  1.5 modelled** at **51.7× annual turnover**. H4 had 300–550 bps against 3 —
+  a 100–180× margin. Here the margin is 17%, and a fee change or a taker fill
+  closes it.
+- **The parameter surface is noise.** Net swings from −10.15% to +51.61% across
+  the sweep with no stable optimum (3-day +21.51%, 7-day +0.11%, 14-day
+  −8.62%). The best cell — 3 names a side, +51.61% — carries a **−124.43%
+  drawdown**, i.e. equity fell further than the capital behind it. A result
+  that moves 60 points on the choice of rebalance interval is fitted.
+- **Regimes absent:** the venue launched after the 2022 drawdown, so **no bear
+  market is inside this history**, and a dollar-neutral book's price term is
+  exactly what an untested regime moves.
+- **Two defects fixed rather than worked around.** The archive page key omitted
+  `interval`, so a `1d` candle fetch would have **overwritten an archived `1h`
+  page** (ADR-037); and a held instrument with a missing print was
+  indistinguishable from a delisting, now counted separately (measured: 0 gaps,
+  20 real delistings).
+- **Nothing purchased.** All 232 perps from the free unauthenticated info
+  endpoint, every page with source, URL, sha256 and retrieval date.
+- ADR-036 (dollar-neutral ≠ delta-neutral; terms reported separately) and
+  ADR-037 (a cache key names every varying request parameter) appended.
+- `make lint`, `make typecheck`, `make test` clean — **290 tests**, 22 new
+  (`tests/test_cross.py`). All three recorders alive throughout.

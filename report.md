@@ -2006,3 +2006,244 @@ Integrity mechanism: **envelope sequence numbers** · sequence numbers: 3,536,18
 | >30000 ms | 1 |
 
 p50 ≤ 50 ms · p90 ≤ 50 ms · p99 ≤ 100 ms · max 47848.4 ms
+
+## Stage C.13 — cross-sectional funding carry — 2026-08-05
+
+C.11 tested cash-and-carry and found the yield real but decayed ~85%. This
+stage tests a different structure on the same income stream: **long the perps
+paying the most negative funding, short those paying the most positive, dollar
+neutral, both legs on Hyperliquid at 1.5 bps a side.** No spot leg exists, so
+the 80 bps venue that dominated every C.11 cost figure leaves the trade
+entirely. The motivating observation was dispersion rather than level — C.11
+measured TNSR at −32.41% annualised against HYPE at +21.60%, 54 points apart on
+one venue at one moment.
+
+**The finding is that the funding income is real and large, and the price term
+eats all of it.** Net of everything the trade returns **+0.11% a year on
+deployed capital** against a 4% risk-free rate.
+
+### 1. The gate: has dispersion decayed?
+
+This had to be answered before any construction, because a cross-sectional
+strategy does not care about the funding *level* — long the cheap and short the
+rich and the level cancels. What is left is the spread between instruments, and
+that is a different quantity from the one C.11 measured.
+
+**All instruments live each day, annualised, means of daily cross-sections:**
+
+| year | mean cross-section | level | **decile spread** | stdev | IQR |
+|---|---|---|---|---|---|
+| 2023 | 52.5 | −2.65% | **380.58%** | 131.54% | 47.88% |
+| 2024 | 129.9 | 24.87% | 156.32% | 60.96% | 19.46% |
+| 2025 | 173.3 | −6.48% | 164.52% | 80.00% | 15.45% |
+| 2026 (part) | 184.9 | −9.23% | 167.54% | 77.62% | 17.35% |
+
+Read alone this says dispersion fell 57% from its 2023 peak and then **stopped
+falling** — flat at 156–168% across three years. That reading is wrong, and the
+control that shows why is the most useful thing this stage built.
+
+**The same measure on a fixed cohort — the 38 instruments already live at
+2023-08-10, holding universe composition constant:**
+
+| year | cross-section | **decile spread** | IQR |
+|---|---|---|---|
+| 2023 | 33.8 | **241.50%** | 45.28% |
+| 2024 | 36.7 | 163.61% | 19.27% |
+| 2025 | 32.2 | **55.80%** | 10.22% |
+| 2026 (part) | 30.0 | **53.45%** | 11.57% |
+
+**Within a stable set of names dispersion collapsed 77%, and it did not
+plateau.** The apparent flatness in the all-instruments series is the venue
+listing new and wilder coins — the cross-section grew from 21 instruments to
+190 — not the spread persisting. Two measurements of the same market disagree
+by a factor of three, and the difference is entirely composition.
+
+That is the same story C.11 told about the level (−85%), measured on a
+different quantity, and it means the strategy is being tested on a spread that
+has largely closed. Everything below is therefore a historical measurement, and
+the 2023-heavy portion of it is not available now.
+
+The IQR falls faster than the standard deviation in both series (−68% against
+−39%), which says the remaining dispersion has retreated into a few extreme
+names rather than being spread across the book. A strategy relying on it needs
+those specific names to be tradeable at size, which this study does not
+establish.
+
+### 2. Universe, and why it is survivorship-free by construction
+
+**232 perps considered, 231 usable, 55 of them delisted, 55 dying inside the
+sample.** 4,411,046 funding observations, 1,182 trading days, zero fetch
+failures.
+
+Hyperliquid addresses perps by their **index in the `meta` universe array**, so
+a delisted asset cannot be removed without renumbering every asset after it —
+it is flagged in place and kept forever, and the funding and candle endpoints
+keep serving its full history. FTT is still addressable with candles ending
+2026-05-25; so are MATIC, UNIBOT, FRIEND and JELLY. The instruments whose
+funding went pathological and then died are therefore *in* the screen, which is
+exactly the population a survivorship-biased universe drops and precisely the
+population a dispersion measurement is most sensitive to.
+
+Membership is per day: an instrument is in the universe on a day the venue
+published both a funding rate and a daily close for it. No rule consults the
+end of the sample.
+
+**Cross-section over time** — a strategy on 21 instruments is a different thing
+from one on 190:
+
+| | 2023-05 | 2023-12 | 2024-06 | 2025-01 | 2025-08 | 2026-08 |
+|---|---|---|---|---|---|---|
+| instruments live | 21 | 96 | 134 | 162 | 171 | 176 |
+
+**The residual bias, stated plainly:** an asset purged from the array outright
+would be invisible here and no check in this project could detect it. Positional
+indices make that structurally unlikely and 55 retained delisted entries are the
+empirical evidence, but that is evidence and not proof — and any residual bias
+points toward *understating* dispersion, since the missing names would be the
+extreme ones.
+
+A second data note: C.11 reconstructed perp prices as `spot × (1 + premium)`
+because the candle endpoint "cannot cover the sample". That is true at hourly
+resolution — the 5,000-bar page limit is 208 days — and **false at daily**,
+where 5,000 bars is 13.7 years. This stage therefore prices both legs from
+Hyperliquid's own book in one request per coin, and HYPE and MERL, which C.11
+could not model at all for lack of a Binance spot listing, are priced here.
+
+### 3. The result, with the three terms kept apart
+
+Base specification: 7-day trailing funding signal, weekly rebalance, bottom and
+top decile of the live cross-section, dollar neutral, 1.5 bps maker a side.
+
+| term | % of deployed capital, annualised |
+|---|---|
+| funding income | **+43.68%** |
+| price return | **−42.91%** |
+| trading cost | −0.66% |
+| **net** | **+0.11%** |
+
+**The funding income is real, large, and almost exactly cancelled by the price
+term.** That is not a rounding artefact — it is the whole result, and it is why
+ADR-036 requires these to be reported separately. A single net figure would
+have hidden two effects of 40+ points each.
+
+Deployed capital is **1.18× gross notional**, materially better than C.11's
+1.6–3.0×, because both legs are margined on one venue rather than one leg
+consuming its full notional on a second. That structural advantage is real and
+it is not enough to matter here.
+
+### 4. Why the price term loses, and what that makes this trade
+
+| | |
+|---|---|
+| long/short basket price correlation | **−0.718** |
+| beta to BTC | −0.157 (R² 0.044) |
+| price-only return | **−25.85%/yr** of gross |
+| funding-only return | **+51.36%/yr** of gross |
+| price daily volatility | **1.81%** |
+| funding daily volatility | **0.166%** |
+
+**The price term is 10.9× more volatile than the funding term.** A trade whose
+dominant source of variance is the leg that was supposed to be incidental is
+not a carry trade with a residual.
+
+The mechanism is visible and unsurprising once stated. Going long the
+most-negative-funding perps means going long the instruments the market is
+paying to be short — and those instruments keep falling. The negative funding is
+**compensation for holding a falling asset, not a free income stream.** The
+−0.718 correlation between the baskets says they diverge, and they diverge in
+the direction that costs money.
+
+The book is *not* a disguised market bet: beta to BTC is −0.157 with R² 0.044,
+so BTC explains 4% of its price variance. That is the one thing dollar
+neutrality did buy. It bought neutrality to the market and no protection at all
+from the cross-section.
+
+**Per year, funding and price apart:**
+
+| year | funding | price | gross |
+|---|---|---|---|
+| 2023 | +69.30% | **−103.40%** | −34.09% |
+| 2024 | +33.10% | −43.27% | −10.17% |
+| 2025 | +40.89% | −19.62% | +21.26% |
+| 2026 (part) | +39.41% | −18.19% | +21.22% |
+
+The price drag was worst in 2023, when the cross-section was smallest and most
+dominated by newly listed coins, and has shrunk since. Gross turns positive in
+2025–26 — but gross excludes cost, and the base specification's *net* over the
+whole sample is +0.11%.
+
+### 5. Turnover, cost, and the break-even that decides it
+
+| rebalance | turnover/rebalance | turnover/yr | funding | price | cost | **net** | max DD |
+|---|---|---|---|---|---|---|---|
+| 1 d | 27.5% | 100.9× | +94.20% | −84.63% | −2.25% | **+7.32%** | −72.4% |
+| 3 d | 58.0% | 71.1× | +91.41% | −68.18% | −1.72% | **+21.51%** | −87.6% |
+| **7 d** | **98.1%** | **51.7×** | **+43.68%** | **−42.91%** | **−0.66%** | **+0.11%** | **−75.9%** |
+| 14 d | 123.4% | 32.7× | +36.28% | −44.54% | −0.36% | −8.62% | −76.3% |
+| 30 d | 138.9% | 17.7× | +22.70% | −32.69% | −0.17% | −10.15% | −57.9% |
+
+**Break-even transaction cost at the base specification is 1.76 bps a side
+against 1.5 bps modelled** — a margin of 17%. This is the opposite of H4, where
+break-even was 300–550 bps against a 3 bps venue and cost was nowhere near
+binding. Here cost is *nearly* binding: a fee tier change, or the taker fills a
+51× annual turnover would realistically incur, erases the result outright.
+
+**And the parameter surface is noise.** Net ranges from −10.15% to +51.61%
+across the sweep with no stable optimum: 3-day rebalancing returns +21.51%,
+7-day +0.11%, 14-day −8.62%. The best cell in the whole sweep — 3 names a side,
++51.61%/yr, break-even fee 58.63 bps — carries a **−124.43% drawdown**, meaning
+the equity fell further than the capital deployed against it. A concentrated
+3-versus-3 book across a 138-instrument cross-section is variance, not edge.
+**A result that swings 60 points on the choice of rebalance interval is being
+fitted to the sample.**
+
+### 6. Deployed capital, drawdown, and the regimes this cannot see
+
+| | |
+|---|---|
+| deployed capital / gross notional | **1.18×** |
+| net on capital | **+0.11%/yr** |
+| net on notional | +0.14%/yr |
+| **max drawdown** | **−75.85% of capital** |
+| worst 30 days | −41.49% (from 2023-10-17) |
+| worst 90 days | −48.05% (from 2023-10-16) |
+| forced exits on delisting | 20 |
+| held days with no price while still listed | 0 |
+
+A −75.85% drawdown for +0.11% a year is not a trade-off anyone should take.
+
+**Regimes absent, stated rather than omitted:** Hyperliquid launched 2023-05-12,
+*after* the 2022 drawdown, so **no bear market sits inside this history at
+all**. The sample holds the 2023 recovery, the 2024 bull run and the 2025–26
+compression. A dollar-neutral book's price term is exactly what an untested
+regime moves, and the one regime most likely to move it is the one missing.
+
+### 7. Verdict
+
+**Against cash at 4%, not against zero: the strategy returns +0.11% and fails
+to clear the benchmark by 3.89 points.** It does not survive at current
+dispersion levels, and it did not survive at historical ones either.
+
+Three findings, in the order that matters:
+
+1. **Dispersion has decayed like the level did.** 77% within a fixed cohort,
+   from 241.5% to 53.45%. The all-instruments series looks flat only because the
+   venue kept listing wilder coins; two measures of the same market differ by
+   3× and the difference is entirely composition. The spread this stage set out
+   to harvest has largely closed.
+
+2. **This is not a carry trade.** The price term is 10.9× more volatile than
+   the funding term and cancels it almost exactly (+43.68% against −42.91%).
+   Negative funding is compensation for holding assets that keep falling, and
+   the long/short basket correlation of −0.718 says the two legs diverge in the
+   costly direction. Dollar neutrality bought market neutrality — beta −0.157,
+   R² 0.044 — and bought nothing at all against the cross-section.
+
+3. **Cost is nearly binding, unlike H4.** Break-even 1.76 bps against 1.5 bps
+   modelled at 51.7× annual turnover. There is no margin for a fee change, a
+   taker fill, or slippage.
+
+**Data acquired this stage: nothing purchased.** 232 perps of funding history
+and daily candles from Hyperliquid's free unauthenticated info endpoint, every
+page stored immutably with source, URL, sha256 and retrieval date in
+`data/vendor/archive/manifest.jsonl`.

@@ -2,8 +2,8 @@
 
 **Read this before proposing any new strategy hypothesis.**
 
-Five strategy hypotheses have been tested and closed. `report.md` runs past
-1,800 lines across fourteen stage sections, each written for the moment it
+Six strategy hypotheses have been tested and closed. `report.md` runs past
+2,200 lines across sixteen stage sections, each written for the moment it
 landed rather than for someone reading months later. The failure mode this file
 exists to prevent is **retrying a settled question because the number that
 closed it is buried** — nobody remembers six weeks later that BTC/ETH
@@ -105,6 +105,23 @@ This file contains no analysis. It records what other stages established.
 | **Limitations** | **Contains no full bear market.** Hyperliquid launched *after* the 2022 drawdown, so the worst funding environment in recent crypto history is outside its history entirely — every Hyperliquid figure is drawn from a favourable sample. Perp prices reconstructed as `spot × (1 + premium)` because the venue's candle endpoint serves only the most recent ~5,000 bars. |
 | **Working** | `report.md` §"Stage C.11 — funding rate carry" (line 1637). ADR-033, ADR-034, ADR-035. |
 | **What would reopen it** | **Current funding above roughly 10% annualised sustained for a quarter**, measured live rather than from a trailing average — the three-year average describes a regime that has ended. Two standing qualifiers travel with any reopening: funding correlates **0.5+ with trailing price trend** (BTC pays 5.77 bps/day in uptrends against 1.87 in downtrends), so this is a bull-market income stream wearing a delta-neutral label; and it is **not a general property of perps** — MERL paid **−22.38%/yr** and TNSR **−32.41%/yr**, so shorting TNSR would have cost 75% of notional over 2.3 years. |
+
+---
+
+### H8 — Cross-sectional funding carry
+
+> Going long the perps paying the most negative funding and short those paying
+> the most positive, dollar-neutral on one venue, harvests the dispersion
+> between instruments even after the funding *level* has been competed away.
+
+| | |
+|---|---|
+| **Status** | **Closed — signal present, cancelled by its own hedge** · 2026-08-05 |
+| **Deciding number** | Funding income **+43.68%/yr on deployed capital**, price return **−42.91%**, cost −0.66% — **net +0.11%** against a 4% risk-free rate, a shortfall of 3.89 points. Max drawdown **−75.85%**. The price term's daily volatility is **10.9× the funding term's** (1.81% vs 0.166%). |
+| **Sample** | Hyperliquid, **232 perps considered / 231 usable / 55 delisted and retained**, 4,411,046 hourly funding observations, 1,182 days 2023-05-12 → 2026-08-05. Both legs priced from the venue's own daily candles. Survivorship-free by construction. |
+| **Limitations** | **Contains no bear market** — the venue launched after the 2022 drawdown, and a dollar-neutral book's price term is exactly what an untested regime moves. Delisted perps are assumed to liquidate at their last printed price; the venue settles them at an oracle price this study cannot see. |
+| **Working** | `report.md` §"Stage C.13 — cross-sectional funding carry" (2026-08-05). ADR-036, ADR-037. |
+| **What would reopen it** | **Not a better signal and not lower fees.** Two independent things would each have to change. First, **dispersion would have to widen back**: measured on a fixed cohort it fell **77%**, from a 241.50% decile spread in 2023 to **53.45%** in 2026, and the all-instruments series looks flat only because the venue kept listing wilder coins — the cross-section grew 21 → 190, and the two measures differ by 3× purely on composition. Second, and more fundamentally, **the price term would have to stop cancelling the carry**. Negative funding is compensation for holding assets that keep falling; the long and short baskets correlate **−0.718** and diverge in the costly direction. A version of this trade that hedged the cross-sectional price exposure rather than only the dollar exposure would be a different hypothesis, and would need its own test. Note also that break-even cost is **1.76 bps a side against 1.5 modelled** at 51.7× annual turnover — a 17% margin, so unlike H4 cost here is *nearly* binding and any fee change closes it. |
 
 ---
 
