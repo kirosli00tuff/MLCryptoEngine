@@ -270,7 +270,14 @@ def verdict(reports: list[ConfidenceReport], round_trip_cost_bps: float) -> dict
     """
     if not reports:
         return {"error": "no horizons produced a report"}
-    rho_max = max(abs(r.spearman_conf_vs_magnitude) for r in reports)
+    rhos = [r.spearman_conf_vs_magnitude for r in reports]
+    # SIGNED, because the registered text says "rho >= 0.10" and means it. The
+    # branch it gates is "high-confidence predictions concentrate in LARGER
+    # moves"; a large negative rho is the opposite claim and must not satisfy
+    # it. Magnitude is kept separately for the confirms-closure test, which is
+    # a statement about the absence of any relationship in either direction.
+    rho_signed_max = max(rhos)
+    rho_abs_max = max(abs(v) for v in rhos)
     ratios = [r.top_slice_ratio.get("decile", float("nan")) for r in reports]
     finite = [r for r in ratios if not np.isnan(r)]
     best_ratio = max(finite) if finite else float("nan")
@@ -278,16 +285,34 @@ def verdict(reports: list[ConfidenceReport], round_trip_cost_bps: float) -> dict
 
     if best_decile_capture >= round_trip_cost_bps:
         outcome = "FILTER IS ECONOMIC (strong)"
-    elif rho_max >= 0.10 and best_ratio >= 2.0:
+    elif rho_signed_max >= 0.10 and best_ratio >= 2.0:
         outcome = "FILTER EXISTS (weak)"
-    elif rho_max < 0.05 and (np.isnan(best_ratio) or best_ratio < 2.0):
+    elif rho_abs_max < 0.05 and (np.isnan(best_ratio) or best_ratio < 2.0):
         outcome = "CONFIRMS CLOSURE"
     else:
         outcome = "INCONCLUSIVE"
 
+    # The pre-registration imagined two worlds — no relationship, or confidence
+    # concentrating in larger moves. A strongly NEGATIVE rho is a third, and it
+    # supports the closure more firmly than the "uncorrelated" case the bar was
+    # written for. The bar is not moved to accommodate it; the direction is
+    # reported beside the bar's own verdict so the reader sees both.
+    direction = (
+        "confidence concentrates in SMALLER moves (rho negative) — the model is surest "
+        "exactly where there is least to win"
+        if min(rhos) <= -0.10
+        else "confidence concentrates in larger moves (rho positive)"
+        if rho_signed_max >= 0.10
+        else "no material relationship in either direction"
+    )
+
     return {
         "outcome": outcome,
-        "max_abs_spearman": round(rho_max, 4),
+        "direction": direction,
+        "signed_spearman_by_horizon": [round(v, 4) for v in rhos],
+        "max_signed_spearman": round(rho_signed_max, 4),
+        "min_signed_spearman": round(min(rhos), 4),
+        "max_abs_spearman": round(rho_abs_max, 4),
         "best_top_decile_capture_ratio": None if np.isnan(best_ratio) else round(best_ratio, 3),
         "best_top_decile_capture_bps": round(best_decile_capture, 4),
         "round_trip_cost_bps": round_trip_cost_bps,

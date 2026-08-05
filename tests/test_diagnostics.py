@@ -135,6 +135,29 @@ def test_verdict_calls_a_filter_economic_only_when_it_clears_the_round_trip() ->
     assert cf.verdict(reports, round_trip_cost_bps=80.0)["outcome"] == "FILTER IS ECONOMIC (strong)"
 
 
+def test_a_large_negative_rho_does_not_satisfy_the_filter_exists_branch() -> None:
+    # Arrange — this is the world that actually occurred on Kraken: confidence
+    # strongly ANTI-correlated with magnitude, while the top-confidence decile
+    # still captures more than twice the mean because its calls are far more
+    # accurate. The registered text gates that branch on "rho >= 0.10", whose
+    # stated meaning is "high-confidence predictions concentrate in LARGER
+    # moves". A rho of -0.31 is the opposite claim and must not pass it.
+    reports = [
+        _report(100, rho=-0.31, decile_capture=0.096, all_capture=0.032),
+        _report(1000, rho=-0.21, decile_capture=0.344, all_capture=0.101),
+    ]
+
+    # Act
+    found = cf.verdict(reports, round_trip_cost_bps=80.0)
+
+    # Assert — not a filter, and not "confirms closure" either, since |rho| is
+    # nowhere near zero. The bar says inconclusive, and the direction field is
+    # what carries the actual finding.
+    assert found["outcome"] == "INCONCLUSIVE"
+    assert "SMALLER moves" in found["direction"]
+    assert found["min_signed_spearman"] == pytest.approx(-0.31)
+
+
 def test_verdict_refuses_to_round_an_ambiguous_result_toward_either_side() -> None:
     # Arrange — rho above the confirms-closure ceiling, below the filter floor.
     reports = [_report(900_000, rho=0.07, decile_capture=4.5, all_capture=3.31)]
