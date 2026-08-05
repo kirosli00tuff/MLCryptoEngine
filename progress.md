@@ -1575,3 +1575,106 @@ against it rather than recalled.**
   closures is evidence about five hypotheses, not about the sixth.
 - `make lint`, `make typecheck`, `make test` clean — **256 tests**, unchanged
   (this stage adds no code). All three recorders alive, undisturbed.
+
+## 2026-08-05 — Stage C.14: pre-registered bars (written BEFORE any result)
+
+**This entry is the pre-registration commit required by the C.14 prompt: "A bar
+chosen after seeing the numbers is not a bar." Nothing in C.14 has been
+computed at the time of writing.** What I have read is the *existing* Phase B
+and C.8 output already in report.md — the numbers this stage is diagnosing, not
+the numbers it will produce. Stage C.13 is in flight concurrently (its universe
+download is still running), so its results section will land in this log after
+this pre-registration and before C.14's results. That ordering is chronological
+and deliberate.
+
+The figures being diagnosed, restated so the bars below are legible:
+
+| run | horizon | AUC | gross capture | round-trip cost | net EV |
+|---|---|---|---|---|---|
+| Kraken BTC/USD, 2026-07-31 | 100 ms | **0.941** | **~0.03 bps** | 80.00 | −79.97 |
+| Coinbase BTC-USD, 2026-07-31 | 100 ms | 0.886 | ~0.01 bps | 80.00 | −80.00 |
+| Coinbase BTC-USD, 2026-07-31 | 900 s | 0.596 | **3.31 bps** | 80.00 | −76.69 |
+| CME MBT, 53 days | 100 ms | 0.664 | +0.005 bps | 5.33 | −5.32 |
+| CME MBT, 53 days | 900 s | **0.501** | +0.215 bps | 5.33 | −5.11 |
+
+### Task 1 — confidence versus magnitude
+
+Confidence is `|p − 0.5|`. Magnitude is realised `|move|` in bps over the
+horizon. Correlation is **Spearman**, on ranks, because the magnitude
+distribution is heavy-tailed and a Pearson coefficient would report the tail
+rather than the relationship.
+
+- **CONFIRMS CLOSURE** — `|rho| < 0.05` at every horizon **and** gross capture
+  in the top-confidence decile `< 2x` the all-sample gross capture at the same
+  horizon. Reported as: the model calls the sign of moves too small to pay, and
+  AUC 0.941 is magnitude-blind rather than informative.
+- **FILTER EXISTS (weak)** — `rho >= 0.10` at one or more horizons **and**
+  top-decile gross capture `>= 2x` all-sample at that horizon.
+- **FILTER IS ECONOMIC (strong)** — top-decile gross capture `>= 80.0 bps` on
+  Kraken/Coinbase spot, i.e. net EV at maker `>= 0`. This is the only outcome
+  that would reopen H1 on evidence rather than on cost.
+- Anything between weak and confirms-closure is reported as **inconclusive**,
+  named as such, not rounded toward either.
+- **Calibration** — pass is `|mean predicted − mean realised| <= 0.02` in every
+  decile bin of predicted probability, plus a reported Brier score. Failing
+  calibration while passing AUC is itself a finding: rank-ordered but not
+  accurate.
+
+### Task 2 — sample stability
+
+Per-day, per-venue, per-horizon AUC across every validated day.
+
+- **STABLE** — `max(AUC) − min(AUC) <= 0.05` at each horizon, **and** the sign
+  of gross capture at the best horizon is the same on every day.
+- **MATERIALLY UNSTABLE** — range `> 0.10` at any horizon, **or** any day
+  flipping the sign of gross capture at the best horizon.
+- Between 0.05 and 0.10 is reported as **mildly unstable** with the range given.
+- Per-day tables are reported even where pooled figures exist. A pooled number
+  that hides a range is not permitted to stand alone.
+
+### Task 3 — cross-venue feature delta
+
+Same pipeline, same days, same folds, cross-venue features on versus off.
+
+- **MATERIAL** — `dAUC >= +0.010` at half or more of the horizons, **or**
+  `dgross capture >= +0.50 bps` at the best horizon.
+- **IMMATERIAL** — `dAUC < +0.005` at every horizon.
+- Between is **marginal**, reported with the deltas.
+- Availability is read from the capability matrix per venue and per contract.
+  Every skip is reported with its reason; a feature that is 100% NaN is
+  reported as absent, never as zero.
+
+### Task 4 — deep learning, bar stated before training
+
+Baseline is the existing LightGBM under identical purged K-fold and embargo, on
+the identical expanded sample and feature set. Two architectures only: an MLP
+and one sequential model. No hyperparameter search beyond what is needed to
+train stably.
+
+**Stated horizon: 900 s** (where H1's best gross capture sits and where H2's one
+apparent positive appeared). Secondary reporting at 1000 ms.
+
+To pass, a deep model must clear **both** at 900 s, out of sample:
+
+- **AUC** `>= baseline + 0.020` absolute, and
+- **gross capture** `>= baseline + 1.00 bps`.
+
+**Both are required. An improvement on AUC without gross capture is a FAILURE**,
+and is the specific outcome this stage expects given Task 1's premise that
+classification metrics are magnitude-blind.
+
+- Any improvement that fails the leakage suite — including the planted-future-
+  value test and prefix invariance — **is treated as a leak, not a discovery**,
+  and is reported as a leak regardless of its size.
+- Clearing this bar settles that **capacity** was the constraint on H2. It does
+  **not** reopen H1, which is cost-bound: +1.00 bps on a 3.31 bps capture
+  against 80 bps of fees changes nothing economic, and no C.14 outcome can
+  change that. Said now so it cannot be quietly forgotten later.
+
+### What no result in C.14 is permitted to do
+
+Reopen a closed hypothesis on a metric other than the one that closed it. H1
+closed on **cost** and reopens only below ~3 bps round trip. H2 closed on
+**absent signal** and reopens only on measurable AUC — which Task 4 is the test
+of. A better AUC on H1's data does not reopen H1, and a better cost on H2's
+venue does not reopen H2.
