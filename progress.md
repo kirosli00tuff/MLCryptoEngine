@@ -1743,3 +1743,75 @@ almost exactly. Net +0.11%/yr on capital against a 4% risk-free rate.**
   ADR-037 (a cache key names every varying request parameter) appended.
 - `make lint`, `make typecheck`, `make test` clean — **290 tests**, 22 new
   (`tests/test_cross.py`). All three recorders alive throughout.
+
+## 2026-08-05 — Stage C.14: diagnosing the directional prediction failure
+
+**Diagnostic, not a rescue. Both closures confirmed with better explanations,
+and H1 is now on firmer ground than the number that originally closed it. All
+bars were committed in a2d7466 BEFORE any figure was computed.**
+
+- **Scope actually run, stated rather than omitted.** Six validated days
+  (2026-07-30 → 2026-08-04) on Kraken BTC/USD and Coinbase BTC-USD at **stride
+  3** (ADR-025 — coarsens the bar, does not bias which moments are sampled).
+  **The ETH pair was not run**: the full four-symbol stride-1 sweep is ~5 hours
+  of LightGBM fits.
+- **Task 1 — the priority. AUC is magnitude-blind, and the correlation is not
+  zero but strongly NEGATIVE.** Spearman confidence-vs-|move| = **−0.3175**
+  (Kraken) and **−0.3665** (Coinbase) at 100 ms, staying negative out to 5 s.
+  **The model is surest exactly where there is least to win**, at precisely the
+  horizons where AUC looks best (Kraken 0.9432 @100 ms with 0.0291 bps capture).
+  This is a **third world the pre-registration did not anticipate** — it imagined
+  rho≈0 or rho>0 — and it supports the closure more firmly than the
+  uncorrelated case would have.
+- **A correction to my own instrument, recorded because it matters.** The
+  registered text gates the filter branch on `rho >= 0.10` SIGNED, meaning
+  "concentrates in LARGER moves"; the code tested `max|rho|`, which a large
+  negative value would satisfy while asserting the opposite. **Fixed the code to
+  match the registered text, not the reverse** (5430eba), with a regression
+  test. Outcome by the bar as written: **INCONCLUSIVE** on both venues. The bar
+  was mis-specified for the world that occurred; the finding is not ambiguous.
+- **No usable filter.** Top-confidence deciles capture 2–24× the all-sample
+  mean, but via **accuracy, not magnitude**. The best decile in the study
+  captures **5.00 bps against an 80 bps round trip** — the economic bar missed
+  by **16×**. Calibration is poor: worst gap **0.6086** (Kraken @300 s), mean
+  Brier 0.163. Rank-ordered, not accurate.
+- **Task 2 — MATERIALLY UNSTABLE, and H1's headline number does not reproduce.**
+  Two degraded days named rather than averaged in: 07-30 has 56 samples, and
+  **08-01 is missing hours 02–06 on both venues** — a host outage with no
+  feed-gap record, since the recorder was down rather than disconnected — 1,204
+  valid samples against ~30,000 on neighbours. On the **four full days**: short
+  horizons are remarkably stable (Kraken AUC @100 ms varies **0.0044**), long
+  horizons do not reproduce at all. **Coinbase 900 s gross capture ranges
+  −2.4378 to +3.0497 bps.** Phase B's **3.31 bps at 900 s was 2026-07-31**,
+  the +3.05 day. **The number that defined H1 is a single-day draw from a
+  distribution centred near zero** — which closes H1 harder, not softer.
+- **Task 3 — cross-venue features are IMMATERIAL where they can be computed.**
+  Coverage 67–100% (vs 100% NaN in C.8). Max **ΔAUC +0.0044** (Kraken),
+  **+0.0037** (Coinbase); max Δcapture +0.04 bps. The best-scoring feature class
+  in Phase B importance is worth four ten-thousandths of AUC. **Feature
+  importance measured what the model leaned on, not what it gained.** This
+  closes the loose end on H2: C.8's failure was not caused by their absence.
+- **Task 4 — deep learning FAILS the pre-registered bar, and by more than the
+  margin.** Bar: at 900 s, AUC ≥ baseline +0.020 **AND** capture ≥ baseline
+  +1.00 bps, both required. Baseline LightGBM AUC 0.5301 / +0.0843 bps. **MLP
+  0.4949 / −0.2894. GRU 0.4908 / −0.3018.** Both deep models are *worse than
+  the tree on both metrics at both horizons* — at 900 s both post AUC under
+  0.50 and negative capture. No search; 2-layer MLP and 1-layer GRU over 16
+  bars, 64 hidden, 6 epochs.
+- **The leakage suite passed, and the canary proves that means something.**
+  window causality 0 offenders; **planted-future canary AUC 0.9714** (≥0.90);
+  label-shift control **0.5268** (≤0.55). The first run's canary could not fire
+  at production training settings — it would have certified the path while
+  blind — so probes now train harder than the models they police (ADR-040).
+- **Verdict.** H1 stays closed as cost-bound, with the mechanism now named and
+  its headline number withdrawn as a single-day artefact. H2 stays closed as
+  signal-absent, with both escape routes — the missing feature class and
+  insufficient capacity — measured and eliminated.
+- **What this did NOT establish:** six days is not six regimes; the ETH pair was
+  not run; CME was not re-run, because Task 3 could not have rescued it and
+  Task 4 was tested where signal is strongest rather than weakest.
+- ADR-039 (classification metrics ship beside a capture figure) and ADR-040 (a
+  leakage probe must be shown capable of firing) appended. `.venv-dl` holds
+  CPU-only torch so the recorders' `.venv` is never mutated (ADR-038).
+- `make lint`, `make typecheck`, `make test` clean. All three recorders alive
+  throughout; the 08-01 outage predates this stage and was not caused by it.

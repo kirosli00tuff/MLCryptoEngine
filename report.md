@@ -2247,3 +2247,251 @@ Three findings, in the order that matters:
 and daily candles from Hyperliquid's free unauthenticated info endpoint, every
 page stored immutably with source, URL, sha256 and retrieval date in
 `data/vendor/archive/manifest.jsonl`.
+
+## Stage C.14 — diagnosing the directional prediction failure — 2026-08-05
+
+Two different failures were filed under one heading. On crypto spot AUC reached
+0.941 at 100 ms against roughly 0.03 bps of gross capture — real discrimination
+that could never pay 80 bps. On CME MBT AUC was 0.501 at 900 s, a coin flip.
+This stage is a diagnostic, not a rescue attempt, and it confirms both closures
+with better explanations than existed before.
+
+### 0. The bars, as written before anything was computed
+
+All thresholds below were committed to `progress.md` in **commit a2d7466**,
+before a single C.14 figure was produced. The commit order is the evidence. No
+bar was moved afterwards, and one place where the *code* disagreed with the
+registered text was fixed in favour of the text (see §1).
+
+| task | pass condition, as registered |
+|---|---|
+| 1 confidence vs magnitude | **confirms closure**: \|rho\| < 0.05 everywhere AND top-decile capture < 2× all-sample · **filter (weak)**: rho ≥ +0.10 AND ratio ≥ 2× · **filter (economic)**: top-decile capture ≥ 80 bps |
+| 2 sample stability | **stable**: max AUC range ≤ 0.05 across days AND no capture sign flip · **materially unstable**: range > 0.10 at any horizon OR any sign flip |
+| 3 cross-venue delta | **material**: ΔAUC ≥ +0.010 at half the horizons OR Δcapture ≥ +0.50 bps · **immaterial**: ΔAUC < +0.005 everywhere |
+| 4 deep learning | at **900 s**, out of sample: AUC ≥ baseline **+0.020** AND gross capture ≥ baseline **+1.00 bps**. **Both required.** Any improvement failing the leakage suite is a **leak**, not a discovery |
+
+**Scope actually run, and what was not.** Six validated days (2026-07-30 →
+2026-08-04) on Kraken BTC/USD and Coinbase BTC-USD, at **stride 3** — every
+third retained event bar, which coarsens the bar without biasing which moments
+are sampled (ADR-025). The ETH pair on both venues was **not run**: the full
+four-symbol stride-1 sweep is roughly five hours of LightGBM fits and this
+stage had a deadline. That is a real reduction in coverage and it is stated
+rather than omitted.
+
+### 1. Confidence versus magnitude — the priority, and the explanation that was missing
+
+AUC 0.94 beside 0.03 bps of capture is not a contradiction. **AUC is
+magnitude-blind**: it asks only whether up-moves score higher than down-moves.
+A model that calls the sign of every 0.01 bps flicker while being useless on the
+5 bps moves posts a superb AUC and captures nothing. The test is whether
+confidence (`|p − 0.5|`) tracks realised `|move|`.
+
+**Kraken BTC/USD, 6 days, 165,075 samples:**
+
+| horizon | AUC | gross capture | **Spearman rho** | top decile | ratio |
+|---|---|---|---|---|---|
+| 100 ms | 0.9432 | 0.0291 bps | **−0.3175** | 0.0720 | 2.47× |
+| 500 ms | 0.9079 | 0.0576 | **−0.2407** | 0.2223 | 3.86× |
+| 1 s | 0.8876 | 0.0850 | **−0.2150** | 0.2922 | 3.44× |
+| 5 s | 0.8299 | 0.3053 | **−0.1572** | 0.6192 | 2.03× |
+| 30 s | 0.7132 | 0.7237 | −0.0465 | 1.3139 | 1.82× |
+| 900 s | 0.5401 | 0.2093 | +0.0606 | 5.0020 | 23.9× |
+
+**Coinbase BTC-USD, 6 days, 41,780 samples:** rho = −0.3665, −0.3936, −0.3855,
+−0.2987 at 100 ms / 500 ms / 1 s / 5 s, on AUC of 0.8917 → 0.7202.
+
+**The correlation is not zero. It is strongly negative.** Confidence
+concentrates in the *smallest* moves — the model is surest exactly where there
+is least to win — and it does so at precisely the horizons where AUC looks best.
+This is a **third world the pre-registration did not anticipate**, which
+imagined either no relationship or confidence concentrating in larger moves. It
+supports the closure of H1 more firmly than the "uncorrelated" case the bar was
+written for, because it identifies a mechanism rather than an absence.
+
+**A correction to my own instrument, recorded because it matters.** The
+registered text gates the filter branch on `rho >= 0.10`, and the branch it
+gates means "high-confidence predictions concentrate in **larger** moves". The
+code tested `max|rho|`, which a large *negative* correlation would satisfy while
+asserting the opposite. The code was fixed to match the registered text, not the
+reverse (commit 5430eba), with a regression test. Under the bar as written, the
+outcome is **INCONCLUSIVE on both venues** — neither the closure branch
+(|rho| < 0.05) nor the filter branch (rho ≥ +0.10) fires.
+
+**The honest reading is that the bar was mis-specified for the world that
+occurred, and the finding is not ambiguous at all.** The pre-registration is
+reported as it stands rather than rewritten, which is the point of having one.
+
+**Is there a usable filter?** No. Top-confidence deciles do capture more than
+the all-sample mean — 2× to 24× — but the mechanism is **accuracy, not
+magnitude**: in the top decile the model is almost always right, so capture
+approaches the mean absolute move there, while the full sample is diluted by
+wrong calls. The absolute numbers settle it: the best top-decile capture across
+both venues and all horizons is **5.00 bps against an 80 bps round trip**. The
+economic bar is missed by 16×. **H1 does not reopen.**
+
+**Calibration: rank-ordered, not accurate.** Worst calibration gap 0.6086
+(Kraken) and 0.4628 (Coinbase), mean Brier 0.163 and 0.181. Kraken is well
+calibrated at short horizons (gap 0.03–0.05 out to 5 s) and badly calibrated at
+long ones (0.61 at 300 s). So the model knows which way more often than it knows
+how sure it is, and the probabilities should never be read as probabilities at
+the horizons where a position would actually be held.
+
+### 2. Sample stability — the headline number does not reproduce
+
+Phase B's figures rest on 2026-07-31, one day. Six validated days now exist.
+
+**Two days are degraded and are named rather than averaged in:** 2026-07-30 has
+56 samples (the recorder started mid-day), and **2026-08-01 is missing hours
+02–06 on both venues** — a host-level outage with no feed-gap record, since the
+recorder was down rather than disconnected — leaving 1,204 valid samples against
+~30,000 on neighbouring days.
+
+**On the four full days, Kraken BTC/USD:**
+
+| horizon | AUC min | AUC max | range | capture min | capture max | sign flip |
+|---|---|---|---|---|---|---|
+| 100 ms | 0.9345 | 0.9389 | **0.0044** | 0.0185 | 0.0322 | no |
+| 1 s | 0.8769 | 0.8887 | 0.0118 | 0.0466 | 0.1077 | no |
+| 30 s | 0.6671 | 0.7246 | 0.0575 | 0.5001 | 0.7324 | no |
+| 300 s | 0.5003 | 0.5587 | 0.0584 | **−0.6502** | **+1.5379** | **yes** |
+| 900 s | 0.5132 | 0.5438 | 0.0306 | 0.5809 | 2.3370 | no |
+
+**On the four full days, Coinbase BTC-USD:**
+
+| horizon | AUC min | AUC max | range | capture min | capture max | sign flip |
+|---|---|---|---|---|---|---|
+| 100 ms | 0.8613 | 0.8911 | 0.0298 | 0.0009 | 0.0055 | no |
+| 1 s | 0.7559 | 0.8065 | 0.0506 | 0.0084 | 0.0210 | no |
+| 300 s | 0.4484 | 0.5474 | 0.0990 | **−0.3863** | **+0.4817** | **yes** |
+| 900 s | **0.3612** | **0.5931** | **0.2319** | **−2.4378** | **+3.0497** | **yes** |
+
+**Verdict: MATERIALLY UNSTABLE on both venues**, and the two venues fail
+differently, which is worth separating:
+
+- **Short horizons are remarkably stable.** Kraken's AUC at 100 ms varies by
+  **0.0044** across four full days (0.9345–0.9389). The 0.94 figure is real and
+  it reproduces. It is also, per §1, the horizon where confidence is most
+  strongly anti-correlated with magnitude.
+- **Long horizons do not reproduce at all.** Coinbase's 900 s gross capture
+  ranges **−2.4378 to +3.0497 bps across four full days.** Phase B's headline
+  **3.31 bps at 900 s came from 2026-07-31**, which is the +3.05 day here. On
+  the other three full days the same measurement is +0.15, −2.44 and +0.74.
+
+**That is the most consequential finding in this stage.** The number that
+defined H1 is a single-day draw from a distribution centred near zero. This does
+not reopen H1 — it makes the closure stronger, because the capture was not
+merely too small to pay, it was **not reliably positive at all**.
+
+### 3. Cross-venue features — worth essentially nothing where they can be computed
+
+Cross-venue lead-lag and divergence z-score ranked near the top of Phase B
+feature importance and were **100% NaN in the C.8 CME run**, so that test ran
+without its best-scoring feature class. Kraken and Coinbase have overlapped
+since 2026-07-31, so the A/B is now computable: same days, same folds, same
+splits, the seven `xv_*` columns on versus off.
+
+**Coverage first, because absent is not zero:** `xv_mid_diff_bps` 100%,
+`xv_diff_z` 99.8–100%, the lead-lag ladder 67–83% non-NaN. The features were
+genuinely present, unlike C.8.
+
+| | Kraken BTC/USD | Coinbase BTC-USD |
+|---|---|---|
+| max ΔAUC | **+0.0044** | **+0.0037** |
+| max Δgross capture | +0.0088 bps | +0.0426 bps |
+| **outcome** | **IMMATERIAL** | **IMMATERIAL** |
+
+Both clear the registered "immaterial" threshold of ΔAUC < +0.005 at every
+horizon. **The best-scoring feature class in Phase B is worth four
+ten-thousandths of AUC when actually computed.** Feature importance measured
+what the model leaned on, not what the model gained — a distinction this project
+should carry forward.
+
+This closes a loose end on H2: **C.8's CME failure was not caused by the missing
+cross-venue features.** Had they been present they would have contributed
+nothing detectable, so AUC 0.501 on MBT stands as measured.
+
+### 4. Deep learning — the capacity question, settled
+
+The register closed H2 on **absent signal** rather than model capacity, so more
+capacity was unlikely to help. Tested once, properly, against a bar written
+before training: at 900 s, out of sample, under the same purged CV and embargo,
+**AUC ≥ baseline + 0.020 AND gross capture ≥ baseline + 1.00 bps.**
+
+Two architectures only — a 2-layer MLP and a single-layer GRU over a 16-bar
+window, both 64 hidden units, 6 epochs, **no hyperparameter search**. Coinbase
+BTC-USD, six days, 123,864 samples at 900 s.
+
+| horizon | model | AUC | ΔAUC | gross capture | Δcapture | passes bar |
+|---|---|---|---|---|---|---|
+| **900 s** | LightGBM (baseline) | 0.5301 | — | +0.0843 bps | — | — |
+| | MLP | 0.4949 | **−0.0352** | **−0.2894** | −0.3737 | **no** |
+| | GRU | 0.4908 | **−0.0393** | **−0.3018** | −0.3862 | **no** |
+| **1 s** | LightGBM (baseline) | 0.8119 | — | +0.0215 bps | — | — |
+| | MLP | 0.7944 | −0.0174 | +0.0092 | −0.0123 | no |
+| | GRU | 0.7957 | −0.0161 | +0.0122 | −0.0093 | no |
+
+**Both deep models are worse than the tree on both metrics at both horizons.**
+Not short of the bar — *below the baseline*. At 900 s both post AUC under 0.50
+and negative gross capture, which is to say they are worse than not trading.
+
+**The leakage suite passed, and the canary proves that means something.**
+
+| probe | result | threshold | passed |
+|---|---|---|---|
+| window causality | 0 offenders in 512 rows | none may read ahead | **yes** |
+| planted-future canary | AUC **0.9714** with a future column added | ≥ 0.90 | **yes** |
+| label-shift control | AUC **0.5268** on labels rolled 5,000 rows forward | ≤ 0.55 | **yes** |
+
+The canary matters more than the other two. A clean leakage result from a probe
+that cannot detect a deliberate leak certifies nothing — this project's standing
+"a check that cannot fail is not a check" rule, turned on the check itself. The
+canary reached 0.9714 on a planted future column, so it was capable of firing;
+it did not fire on the real path, and the label-shift control collapsed to
+0.5268 as an honest windowed model must.
+
+Since no model cleared the bar, the leak-versus-discovery rule never had to be
+invoked. It is recorded anyway, because the value of stating it in advance is
+that it applies to results not yet seen.
+
+**This settles the capacity question for H2.** Model capacity was not the
+constraint. It also settles it for H1 in the same breath: on the venue and
+instrument where H1's edge was measured, a sequential model with 16 bars of
+history does not find more than a gradient-boosted tree does — and neither finds
+enough.
+
+### 5. Verdict
+
+**Both closures are confirmed, with better explanations than existed before, and
+one of them is now on firmer ground than the number that originally closed it.**
+
+**H1 — cost-bound, and the mechanism is now named.** AUC 0.94 at 100 ms is real
+and it reproduces across days to within 0.0044. It is also **magnitude-blind**:
+confidence is anti-correlated with realised move size at rho ≈ **−0.32**, so the
+model is surest exactly where there is least to win. The best top-confidence
+decile in the study captures **5.00 bps against an 80 bps round trip**. There is
+no selection filter hiding in the predictions, and the probabilities are
+rank-ordered rather than accurate (worst calibration gap 0.61).
+
+**And H1's headline number does not reproduce.** The 3.31 bps at 900 s that
+defined the hypothesis came from a single day; across four full days the same
+measurement ranges **−2.44 to +3.05 bps**. That does not reopen H1 — it closes
+it harder, because the capture was not merely below cost, it was not reliably
+positive.
+
+**H2 — signal-absent, and neither of the two obvious escape routes exists.** The
+cross-venue features that were 100% NaN in C.8 are worth **+0.004 AUC** where
+they can actually be computed, so their absence did not cause that failure. And
+neither an MLP nor a GRU beats the tree — both are worse — on the very instrument
+where the pipeline works best, with the leakage suite passing and its canary
+demonstrably able to fire.
+
+**What this stage did not establish.** Six days is not six regimes; the sample
+spans one week of one market condition, and the research-honesty rule in
+CLAUDE.md applies to every figure above. The ETH pair was not run. CME was not
+re-run, because Task 3 could not have rescued it and Task 4 was tested where the
+signal was strongest rather than where it was weakest — if capacity cannot help
+at AUC 0.94, it will not help at 0.50.
+
+**The one thing that would change the reading** is the top-confidence decile
+clearing a round trip at some venue, which would make the filter economic rather
+than merely real. It missed by 16× here.

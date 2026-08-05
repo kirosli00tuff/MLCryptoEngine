@@ -1713,3 +1713,100 @@ layer down, and the rule generalises: **the recorders' environment is not a
 place to install things.** Anything that would `uv sync` `.venv` while they run
 needs either its own venv or a deliberate, logged stop-sync-restart, and the
 second option has never yet been worth it.
+
+## ADR-039: AUC is magnitude-blind, so every classification metric ships beside a capture figure
+
+**Date:** 2026-08-05 · **Status:** accepted
+
+**Context.** Phase B reported AUC **0.941** at 100 ms on Kraken BTC/USD beside a
+model EV of −79.97 bps against 80.00 bps of cost — roughly **0.03 bps of gross
+capture**. Read together those numbers look contradictory, and the contradiction
+was never resolved; the project carried "AUC 0.941" as evidence of a strong
+signal for three stages.
+
+C.14 resolved it. **AUC asks only whether up-moves score higher than down-moves.
+It never asks how large the moves are.** A model that calls the sign of every
+0.01 bps flicker while being useless on the 5 bps moves posts a superb AUC and
+captures nothing, and that is measurably what this model does: Spearman
+correlation between confidence and realised move size is **−0.32** on Kraken and
+**−0.37** on Coinbase at 100 ms. Confidence concentrates in the *smallest*
+moves, and it does so most strongly at exactly the horizons where AUC looks
+best.
+
+This is not a subtlety about a metric. It is the difference between "we have a
+signal that costs too much to trade" and "we have a signal that is
+systematically about the part of the distribution that cannot pay".
+
+**Decision.** Any classification metric reported in this project — AUC, hit
+rate, precision — is reported **beside a magnitude-aware figure computed on the
+same samples**: gross capture in basis points, `mean(sign(p − 0.5) × ret_bps)`.
+Neither is permitted to appear alone. Where confidence is available, the
+correlation between confidence and realised `|move|` is reported too, because
+that is the statistic that distinguishes the two readings above.
+
+Calibration is reported separately from discrimination. A model can win on AUC
+while being badly calibrated, since AUC reads only the ordering — measured here
+at a worst calibration gap of **0.61** on Kraken at 300 s against 0.03 at 1 s.
+"Knows which way" and "knows how sure" are different claims and are no longer
+allowed to travel under one number.
+
+**Consequences.** Some previously reported figures read differently in
+hindsight, and that is the point of writing this down. The specific casualty is
+H1's headline: **3.31 bps of gross capture at 900 s came from a single day**,
+and across four full days the same measurement ranges **−2.44 to +3.05 bps**.
+Under this rule that figure would have shipped with a per-day range beside it
+from the start, and would never have been quotable as a point estimate.
+
+The rule generalises past this project's own instruments. Rank-based metrics are
+the default in classification because they are threshold-free and robust, and
+those same properties make them blind to the thing a trading system is paid on.
+Anywhere the payoff scales with the magnitude of what is being predicted, a
+rank metric alone is close to uninformative.
+
+## ADR-040: A leakage probe must be shown capable of firing
+
+**Date:** 2026-08-05 · **Status:** accepted
+
+**Context.** C.14 Task 4 needed leakage probes aimed at a windowed sequential
+model, which has a leak surface a tabular model does not: one misaligned index
+in the window construction and a sample's own future sits inside its input.
+Nothing raises when that happens. AUC simply improves.
+
+The obvious probe design — run the model, check the result looks sane — has a
+failure mode that this project has already been bitten by in another form: **a
+check that cannot fail is not a check.** An underpowered probe reports "clean"
+for the wrong reason, and every result behind it inherits that false assurance.
+In the first run here the canary did exactly that: at the production training
+settings (6 epochs, batch 1024) it could not reach the detection threshold on a
+40,000-row subsample, and would have certified the path while being unable to
+see a deliberately planted leak.
+
+**Decision.** Every leakage probe in this project ships with a **positive
+control that must fire**, and the control's result is reported beside the
+probe's. Concretely, for the deep path:
+
+- **planted-future canary** — a column equal to the future return is added to
+  the features; the model must reach AUC ≥ 0.90. Reported: **0.9714**.
+- **label-shift control** — labels are rolled 5,000 rows forward so each sample
+  trains against a label belonging to a much later one; AUC must collapse to
+  ≤ 0.55. Reported: **0.5268**.
+- **window causality** — structural, exhaustive: no windowed input row index may
+  exceed the sample's own. Reported: 0 offenders in 512 rows.
+
+Probes may be trained harder than the models they police (here 20 epochs at
+batch 256 with dropout off). That is not hyperparameter search and does not
+touch the models being compared against the bar — it makes the *detector*
+sensitive, which is its entire job.
+
+**Consequences.** A null leakage result is now interpretable: it means the probe
+looked and found nothing, rather than that the probe was incapable of looking.
+Any future probe added without a positive control should be treated as
+unverified, and any clean result it produced re-examined.
+
+The companion rule was pre-registered rather than decided afterwards: **any
+improvement that fails the leakage suite is reported as a leak, not a
+discovery.** It did not have to be invoked in C.14, because no model cleared the
+bar. It is recorded because the value of stating such a rule in advance is
+precisely that it binds results not yet seen — and C.10's look-ahead defect,
+which produced the highest-ranked result in that study, is what happens without
+one.
