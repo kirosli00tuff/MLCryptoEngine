@@ -1911,3 +1911,36 @@ seventh straight closure, bought for zero new data.**
 - ADR-041 (grids registered whole; benchmark is the dominant beta, not zero).
 - `make lint`, `make typecheck`, `make test` clean — **300 tests**, 10 new. All
   three recorders alive throughout; nothing bought.
+
+## 2026-08-06 — Stage C.15: liquidation aftermath — the data does not exist
+
+**Closed as H10 at Task 1, per the stage's own stopping rule. Zero identifiable
+liquidations in the recorded data; no proxy permitted or used.**
+
+- **Checked bytes, not documentation** (the C.1 discipline). Full recorded
+  week swept: **2,639,510 trade fills, 116 hour files, 2026-08-01 → 08-06, 12
+  instruments.**
+- **Four facts, each independently fatal:** (1) every fill shares ONE key-set —
+  `(coin, hash, px, side, sz, tid, time, users)` — no liquidation field; (2)
+  zero occurrences of any `liquidat` string in ANY channel all week; (3) the
+  one anomalous value, all-zeros hash at **18.0%** of fills, ground-truths via
+  `userFillsByTime` to **TWAP fills** (`twapId`, `dir='Close Short'`, no
+  `liquidation` key) — prevalence alone had already ruled out liquidations; (4)
+  no public global history: three plausible info-endpoint types → HTTP 422, and
+  the venue's per-user `liquidation` label requires already knowing the
+  liquidated address — the enumeration query the public API does not offer.
+- **Sample size stated before any conclusion: zero identifiable events.** Not
+  "low hundreds" — the events are presumably in the data and carry no mark.
+- **Task 2's bar was never registered** because Task 2 was never reachable;
+  registering a bar for an impossible comparison would be ceremony. The full
+  matched-control design is pre-specified in H10's reopening condition instead:
+  ≥ **300 labeled liquidations**, size/instrument/time-of-day matching, mid
+  moves at 1/10/60/300 s, 95% CI, economics vs spread-at-event + 3 bps.
+- **A third closure kind enters the register:** unidentifiable-in-available-
+  data, distinct from cost-bound and signal-absent. The reversion may exist;
+  nothing reachable can measure it, and large-trade proxies would erase the
+  mechanical/informed distinction that IS the hypothesis.
+- Seven single-shot probes to the free info endpoint; nothing bought, no new
+  code, no new tests needed (the stage produced a finding, not a pipeline).
+- `make lint`, `make typecheck`, `make test` clean — 301 tests unchanged. All
+  three recorders alive and writing at the current second throughout.

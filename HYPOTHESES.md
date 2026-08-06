@@ -2,8 +2,9 @@
 
 **Read this before proposing any new strategy hypothesis.**
 
-Seven strategy hypotheses have been tested and closed. `report.md` runs past
-2,600 lines across seventeen stage sections, each written for the moment it
+Eight strategy hypotheses are closed — seven tested, one closed as untestable
+on available data. `report.md` runs past 2,700 lines across eighteen stage
+sections, each written for the moment it
 landed rather than for someone reading months later. The failure mode this file
 exists to prevent is **retrying a settled question because the number that
 closed it is buried** — nobody remembers six weeks later that BTC/ETH
@@ -138,6 +139,23 @@ This file contains no analysis. It records what other stages established.
 | **Limitations** | The measured book is **net short (−0.275 mean exposure) with negative beta in every cell** (−0.03 to −0.43), earning **+56.9%/yr in down-trending periods against −14.7%/yr in up** — a short-alt-decline position, not trend discovery. Its income requires an alt bear market to exist. |
 | **Working** | `report.md` §"Stage C.16 — time-series momentum" (2026-08-06). ADR-041. Bars pre-registered in commit 88b69d8. |
 | **What would reopen it** | **Not lower fees** — break-even costs run **66–265 bps a side** against 1.5 modelled, so cost was never within two orders of magnitude of binding (the H4 pattern). Reopens only if, on data that includes a full bear regime, **at least half the registered grid** beats buy-and-hold BTC risk-adjusted with **deflated Sharpe ≥ 0.95**, **and** the effect survives on the executable subset — the full-universe result is dominated by shorting coins that no reachable venue lists. A single cell clearing any bar reopens nothing; the grid was registered precisely so one cell cannot. |
+
+---
+
+### H10 — Liquidation aftermath reversion
+
+> A liquidation print is mechanical rather than informed flow, so price
+> overshoots and reverts afterward by more than it does after ordinary trades
+> of similar size.
+
+| | |
+|---|---|
+| **Status** | **Closed — unidentifiable in available data** · 2026-08-06 |
+| **Deciding number** | **Zero identifiable liquidations** in 2,639,510 recorded fills (2026-08-01 → 2026-08-06, 12 instruments). One key-set across every fill — `(coin, hash, px, side, sz, tid, time, users)` — no flag; zero occurrences of any `liquidat` string in any channel; the one anomalous value (all-zeros hash, 18.0% of fills) ground-truths via `userFillsByTime` to **TWAP fills**, not liquidations; the three plausible global-history endpoint names return HTTP 422. |
+| **Sample** | The full recorded Hyperliquid week, every channel (`l2Book`, `bbo`, `trades`, `activeAssetCtx`), checked against recorded bytes rather than documentation (the C.1 discipline). |
+| **Limitations** | This is a data-availability closure, not an evidence-of-absence closure — a **third kind**, distinct from cost-bound and signal-absent. The reversion may exist; nothing reachable can measure it. Large-trade proxies were declined by design: the hypothesis *is* the mechanical/informed distinction, and a proxy erases it. |
+| **Working** | `report.md` §"Stage C.15 — liquidation aftermath: the data does not exist" (2026-08-06). |
+| **What would reopen it** | A liquidation-labeled source: the venue flagging liquidations in the public trades stream, a global history endpoint, or labeled vendor data — covering **≥ 300 labeled liquidations across the subscribed instruments** with timestamps alignable to recorded BBO mids at ≤ 1 s. The test then runs as pre-specified: liquidations matched to ordinary trades by size, instrument and time of day; post-event mid moves at 1 s / 10 s / 60 s / 300 s; 95% CI sized to the actual count; economics judged against spread-at-event **plus** the 3 bps round trip. Below 300 events the answer is "too thin" by prior declaration, not a stretched result. The venue's per-user `liquidation` field makes a future flag plausible; nothing reopens on proxied labels. |
 
 ---
 

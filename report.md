@@ -2627,3 +2627,76 @@ insignificant effect measured here.
 **Data acquired this stage: none.** Everything read from C.10's archive; the
 one network touch was the cached Hyperliquid universe snapshot for the
 executability count.
+
+## Stage C.15 — liquidation aftermath: the data does not exist — 2026-08-06
+
+The hypothesis was that reversion after liquidation prints exceeds reversion
+after ordinary trades of similar size, because a margin engine's order is
+mechanical rather than informed. The stage never reached the hypothesis. Task 1
+— establish whether liquidations are identifiable at all — returned a clean
+negative, and the instruction for that outcome was to stop and report it as the
+finding rather than proxy the label away.
+
+### 1. Data availability, checked against the recorded bytes rather than the documentation
+
+Four facts, in decreasing order of generality:
+
+**The recorded feed carries no liquidation field.** Every trade fill in the
+recorded week — **2,639,510 fills across 116 hour files, 2026-08-01 →
+2026-08-06, twelve instruments** — has exactly one key-set:
+`(coin, hash, px, side, sz, tid, time, users)`. One key-set, 2.64 million
+observations, no flag.
+
+**No channel mentions liquidations at all.** A string sweep for `liquidat` (any
+case) across every recorded message in every subscribed channel — `l2Book`,
+`bbo`, `trades`, `activeAssetCtx` — returns **zero occurrences** for the week.
+
+**The one anomalous field value is not a liquidation marker.** 18.0% of fills
+(473,824) carry an all-zeros `hash`. That prevalence alone rules out
+liquidations, and ground truth confirms it: cross-referencing a recorded
+zero-hash fill against the venue's own `userFillsByTime` endpoint matched it by
+`tid` to a fill carrying `twapId` and `dir='Close Short'` with **no
+`liquidation` key** — zero-hash marks scheduled/TWAP-style executions, not
+forced ones.
+
+**No public historical source exists.** Probing the info endpoint for
+`liquidations`, `recentLiquidations` and `liquidationHistory` returns HTTP 422
+(unknown type). The venue *does* label liquidations — `userFillsByTime` fills
+carry a `liquidation` object when the fill was one — but only **per user**: you
+must already know the liquidated address to ask. Enumerating liquidations you
+have not yet identified is exactly the query the public API does not offer, and
+labeling the recorded week through per-user queries would take one polite
+request per fill-participant against 2.64M fills — weeks of querying to label
+seven days of history, and nothing before 2026-08-01 at any price.
+
+This is the C.1 lesson applied again: the check was run against recorded bytes,
+not documentation, and the answer was decided by a field inventory rather than
+by an assumption in either direction.
+
+### 2. Sample size, stated honestly
+
+**Identifiable liquidations in the recorded data: zero.** Not "low hundreds" —
+the events are presumably *in* the 2.64M fills, but they carry no mark that
+distinguishes them, and the entire hypothesis rests on the distinction between
+mechanical and informed flow. Proxying liquidations with large trades would
+erase the very thing under test, and was declined per the stage's own
+instruction.
+
+Consequently no control was computed, no reversion was measured, and **the
+Task 2 bar was never registered** — registration attaches to a comparison this
+data cannot support, and registering a bar for an impossible test would be
+ceremony rather than discipline.
+
+### 3. What would make this testable
+
+Any one of: the venue adding a liquidation flag to the public trades stream; a
+public global liquidation-history endpoint; or labeled vendor history covering
+the subscribed instruments with timestamps alignable to recorded BBO mids at
+one-second precision. The matched-control design is fully specified and waiting
+in HYPOTHESES.md (H10): match by size, instrument and time of day; mid moves at
+1 s / 10 s / 60 s / 300 s; 95% confidence interval sized to the actual count;
+reversion judged against spread-at-event plus the 3 bps round trip, never cost
+alone.
+
+**Data acquired this stage: none.** Seven single-shot probes to the free info
+endpoint; nothing purchased, nothing subscribed, recorders untouched.
