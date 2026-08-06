@@ -1944,3 +1944,85 @@ liquidations in the recorded data; no proxy permitted or used.**
   code, no new tests needed (the stage produced a finding, not a pipeline).
 - `make lint`, `make typecheck`, `make test` clean — 301 tests unchanged. All
   three recorders alive and writing at the current second throughout.
+
+## 2026-08-06 — Stage C.17: pre-registered bars (written BEFORE touching any data)
+
+**Nothing in C.17 has been probed, fetched, or computed at the time of writing.
+This registration is the stage's first commit, per its own Task 1.**
+
+**The end condition, agreed in advance and binding: if this stage fails its
+registered bars, the alpha search of this project ends by decision.** That
+sentence is recorded here, before any result exists, so the conclusion is a
+choice made ahead of the evidence rather than a reaction to it.
+
+### Candidate feature classes (Task 2 may drop, never add)
+
+(A) **stablecoin flows** — net supply changes and flow proxies; (B) **exchange
+netflows** — genuine flow data only, dropped C.15-style if no free source at
+usable history/granularity exists, never proxied; (C) **funding-regime state**
+— level, trailing percentile, 30-day slope, from the C.11 archive on disk;
+(D) **basis state** — trailing Hyperliquid perp premium, from the same archive;
+(E) **combined** — all surviving classes together, included only if ≥ 2
+survive.
+
+### The grid, fixed now
+
+Surviving classes (+ E) × horizons **{1, 2, 4, 8} weeks** × variants
+**{long-only, long-short}**, **weekly rebalance**, universe **BTC and ETH**
+(extendable only where a class's data natively covers more; none is expected
+to). **n_trials for deflation = the full registered cell count** — every cell
+computed counts, and no cell may be dropped from the denominator.
+
+Model, fixed to kill the search dimension: per cell, **ridge regression
+(λ = 1.0, no search)** of the h-week forward return on the class's features,
+**walk-forward expanding window** with minimum 52 training weeks, purged, with
+**embargo ≥ the cell's horizon**. Position = sign of the current prediction,
+equal weight across assets; long-only clips negatives to zero (in cash).
+No threshold search, no feature selection, no second model.
+
+### Publication-lag discipline, registered per source
+
+A metric dated day T is not knowable during day T. `usable_at = metric_date +
+lag`; a decision at the close of week-end t may use only features with
+`usable_at ≤ t`. Registered lags: **unknown-lag daily sources +1 day beyond
+the metric date** (the conservative default); Coin Metrics community **+1 day**;
+DefiLlama stablecoin supplies **+1 day**; funding and basis from this project's
+own archive **+0 days** (exchange-published at interval end). Revision
+behaviour recorded per source in the report. The planted-future canary and
+prefix-invariance probes run against this pipeline at daily cadence, and any
+improvement failing them is a leak, not a discovery.
+
+### The six bars — ALL required for PASS, anything short is FAIL
+
+1. **Net Sharpe at Hyperliquid cost ≥ buy-and-hold BTC** on the identical
+   scored window (Sharpes excess of 4%/yr, both sides, √52 annualisation on
+   weekly returns).
+2. **Alpha vs BTC > 0 with t ≥ 2** (weekly OLS).
+3. **Deflated Sharpe ≥ 0.95** over the full registered trial count, C.10's
+   estimator, computed on net-of-HL-cost returns.
+4. **Net annualised return > 4.5%** — the cash-and-staking floor.
+5. **Present in the executable subset**: the winning cell must execute as
+   specced — long-only as Kraken/Coinbase spot, long-short shorts on
+   Hyperliquid — with no leg on an unreachable venue.
+6. **Consistency: positive net Sharpe in ≥ 2/3 of the winning class's
+   registered cells.**
+
+### Fitting-artifact patterns, named in advance (the C.16 lesson)
+
+An effect at **only one horizon**; an effect in **only one variant**; a
+long-only effect with **beta ≥ 0.5** in a net-rising sample (that is beta, and
+will be named as beta); an effect earning in **only one trend direction**
+(reported plainly, whichever direction); the **combined class passing while
+every component fails** (that is the grid finding a lucky rotation, not a
+signal).
+
+### Costs, registered
+
+Hyperliquid legs 1.5 bps/side (venues.yaml, verified 2026-08-01). Spot legs
+reported at **both 40 bps/side** (venues.yaml base tier, the pessimistic bound)
+**and 25 bps/side** (the commonly cited current base maker tier the audit
+flagged as ~2× apart) — the operator's actual account tier cannot be read from
+here by design (no account API in Stage 1), so reconciliation is recorded as an
+operator action and both columns ship. At weekly rebalance the cost column
+should be nearly irrelevant; if it is not, turnover exceeds design and that is
+itself reportable.
