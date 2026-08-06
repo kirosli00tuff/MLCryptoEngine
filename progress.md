@@ -2148,3 +2148,47 @@ other (ADR-040).
   (`tests/test_registered_census.py`); `make lint`, `make typecheck`,
   `make test` clean — **319 tests**. Recorders alive; nothing bought; the ten
   thin perps untouched.
+
+## 2026-08-06 — Stage C.19: rug-detection audit bars, registered before probing
+
+**Nothing has been probed at the time of writing. This is a detection-track
+stage, not an alpha stage — the C.17 decision stands and is not reopened.**
+
+### The go bar, fixed before any source is touched
+
+**GO requires ≥ 5,000 labeled tokens obtainable free, with pre-event feature
+coverage.** Below that the finding is **too thin by prior declaration**, in the
+C.15 pattern. The floor is stated now so it cannot move after the counts exist.
+
+### The known-answer bar for heuristic labels
+
+A heuristic label set (mint authority, freeze authority, LP burn/lock, holder
+concentration, liquidity-removal events) must be spot-checked against ~10
+publicly documented Solana rug pulls with well-attested on-chain histories,
+**from pre-event chain state alone**. The hit count is reported plainly as a
+sanity count, not a detection result. **A heuristic scheme that misses
+documented rugs fails the audit regardless of how many tokens it can label**;
+a 5,000-token dataset built from labels that cannot recover ground truth does
+not clear the go bar. Cases whose public documentation is too vague to fix the
+on-chain facts are dropped, never forced.
+
+### The economics caveat, unhedged, to lead the report
+
+The detection layer has standalone value as a safety scorer. The profit arms
+mostly re-enter measured territory: launch-speed competition and 50–200 bps
+AMM round trips were both documented in the week-one report; the scam-adjacent
+base rate among pump.fun tokens runs near **98.7% per Solidus Labs**; and
+memecoins have no borrow, so **no short side exists**. The unclosed profit
+mechanisms are **avoidance and exit-timing for positions otherwise held, and
+the tool itself**. The report says exactly that rather than implying a trading
+strategy is waiting at the end.
+
+### Standing disciplines applied from the first probe
+
+Survivorship: a source that prunes dead tokens is close to useless here —
+**dead tokens are the positive class**. Leakage: labels are defined by future
+events, so every feature is strictly pre-event, and the planted-future canary
+and prefix-invariance disciplines apply from the first feature ever computed.
+Measured beats documented (C.1): rate limits recorded as observed, not as
+published. Everything retrieved is snapshotted immutable with the C.10
+manifest; new sources are declared per the C.9.1 scheme. Buy nothing.
