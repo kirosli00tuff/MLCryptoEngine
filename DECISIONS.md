@@ -1854,3 +1854,74 @@ the primary to 0.446. And the executable-subset rule showed the residual
 effect living entirely in coins that cannot be traded. Three separate
 disciplines, each of which would have been easy to skip, each of which changed
 the conclusion a naive read would have reached.
+
+## ADR-042: Publication lag is a property of the feature, measured beats documented, and living snapshots are dated
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+**Context.** Medium-horizon on-chain backtests classically lie in one place: a
+daily metric dated day T is treated as knowable during day T, when it exists
+only after the day closes plus the provider's computation delay — and providers
+revise. C.17 met the sharpened form of this hazard immediately: the free Coin
+Metrics community snapshot retrieved on 2026-08-06 ends on 2026-05-23. The
+documented lag rounds to a day; the **measured** lag is 75 days.
+
+**Decision.** Three rules, all mechanical:
+
+- **Every feature carries a lag.** ``usable_at = metric_date + lag_days``; a
+  decision dated t may read only observations with ``usable_at ≤ t``. Unknown
+  delays default to one full day beyond the metric date; the lag applied per
+  feature is recorded in the report.
+- **A measured delay overrides a documented one, in whichever direction.** The
+  75-day CM staleness went into the study as 75 days, not as the +1 default the
+  registration guessed. "Freely available" means available as measured.
+- **Living snapshots are archived dated.** A source that regenerates its whole
+  file (CM) or reconstructs its history (DefiLlama) cannot land at a stable
+  path without hiding revisions. Each retrieval is an immutable dated snapshot
+  with sha256 in the manifest, so yesterday's view of last year remains
+  inspectable after today's revision.
+
+The planted-future canary and prefix-invariance probes run against any pipeline
+consuming lagged features, at that pipeline's own cadence (ADR-040's
+capable-of-firing rule applies).
+
+**Consequences.** The exchange-netflow class survived the availability audit
+and then carried its honest 75-day lag into the grid — where its long-only
+cells reduced to beta and its long-short cells to noise. Without the measured
+override, class B would have shown the freshest signal in the study on data no
+free operator could have had. The rule costs nothing when providers are prompt
+and is the whole result when they are not.
+
+## ADR-043: A terminal stage binds its consequence in advance, and the alpha search ended under one
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+**Context.** After ten register entries, the remaining failure mode was not a
+bad backtest but an unfalsifiable search: one more feature class, one more
+horizon, forever. C.16 established grids-registered-whole (ADR-041). C.17
+needed one further mechanism — a stage whose outcome binds a project-level
+decision, agreed before the outcome exists.
+
+**Decision.** A stage may carry a **binding end condition**: a consequence
+stated in the pre-registration commit, before any data is touched, that
+executes mechanically on the registered verdict. For C.17 (commit 370ba41):
+FAIL on the six bars ends the alpha search by decision. The stage failed —
+0 of 40 cells, best deflated Sharpe 0.499, best alpha t 1.35 — and the
+consequence executed: **the alpha search concluded on 2026-08-06.** H7 closed
+under the same decision with its design preserved; the census (H6) remains the
+sole open item; the recorders and archive continue.
+
+Two properties make this a rule rather than an event. The consequence must be
+**written before the evidence** — a conclusion adopted after seeing a near-miss
+grid (two cells at 4/6 here) would be a judgment call, and judgment calls
+regress to one-more-stage. And the consequence binds **the search, not the
+operator**: reversing it is an explicit operator decision that reopens nothing
+retroactively, while every register entry keeps its own evidence-based
+reopening condition independently.
+
+**Consequences.** The project's research phase has a dated, pre-committed end
+rather than a fade-out. Any future search of comparable scope should carry the
+same mechanism from its first stage: the register's honest reading — that five,
+then nine closures are evidence about those hypotheses and not about the next
+one — is only compatible with ever stopping if the stopping rule predates the
+last result.

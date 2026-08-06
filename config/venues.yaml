@@ -288,6 +288,32 @@ sources:
       fundingHistory call and 5000 per candleSnapshot, so both are paged.
       History begins 2023-05-12, the venue's launch.
 
+  coinmetrics_community:
+    name: Coin Metrics community data (daily asset CSVs)
+    kind: archive
+    venue: coinmetrics
+    base_url: https://raw.githubusercontent.com/coinmetrics/data/master/csv
+    notes: >-
+      Daily network metrics per asset, regenerated whole-file each day — past
+      rows revise, so each retrieval is stored as a dated immutable snapshot
+      and every derived feature carries a +1 day publication lag beyond the
+      metric date (C.17 registration). License CC BY-NC 4.0: personal research
+      only, recorded so a commercial use trips over this note. History reaches
+      each chain's genesis. The community tier's column set decides whether
+      exchange-flow features exist at all; the C.17 audit records the answer.
+
+  defillama_stablecoins:
+    name: DefiLlama stablecoin supply history
+    kind: archive
+    venue: defillama
+    base_url: https://stablecoins.llama.fi
+    notes: >-
+      Daily total stablecoin circulating supply (peggedUSD), free
+      unauthenticated JSON. The history is a reconstruction and revises with
+      methodology, so retrievals are dated immutable snapshots and features
+      carry a +1 day lag beyond the metric date. Aggregator data, not venue
+      prints — nothing here is ever a price source.
+
   binance_futures_archive:
     name: Binance USD-M futures public data dumps
     kind: archive

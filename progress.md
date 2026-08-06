@@ -2026,3 +2026,44 @@ here by design (no account API in Stage 1), so reconciliation is recorded as an
 operator action and both columns ship. At weekly rebalance the cost column
 should be nearly irrelevant; if it is not, turnover exceeds design and that is
 itself reportable.
+
+## 2026-08-06 — Stage C.17: the final research door — FAIL, and the search ends by decision
+
+**0 of 40 registered cells pass the six bars (370ba41). Under the end condition
+agreed before any data was touched, the alpha search of this project concluded
+by decision on 2026-08-06.**
+
+- **Task 2 — audit, C.15 style.** Coin Metrics community: genuine
+  `FlowInEx*/FlowOutEx*/SplyEx*` exist free for BTC/ETH to genesis — class B
+  survives — **but the snapshot ends 2026-05-23: a measured 75-day staleness**,
+  and the registered measured-beats-documented rule sent it into the grid at
+  **+75 days**. DefiLlama stablecoins: daily 2017-11→today, +1d. CryptoQuant:
+  401 even free-tier. Blockchain.com: no flow series. CoinGecko: not needed.
+  No exchange publishes flows free. Both new sources declared in venues.yaml
+  (kind archive), every retrieval a dated immutable snapshot with sha256.
+- **Task 3 — lag discipline central.** `usable_at = metric_date + lag`; lags
+  A +1d, B +75d, C 0d, D 0d, recorded per feature. Planted-future canary and
+  prefix-invariance green at weekly cadence (`tests/test_medium.py`, 10 tests).
+- **Tasks 4–6 — the grid in full.** 40/40 cells scored, weekly 2020-08 →
+  2026-07, ridge λ=1 walk-forward, purge+embargo ≥ horizon, n_trials=40.
+  **Best DSR 0.499 vs 0.95; best alpha t 1.35 vs 2.** Class A negative 8/8
+  under honest lags. B and C: the pre-named beta artifact — LO beta 0.43–0.56,
+  alpha t ≤ 0.95, LS collapses. **D (basis): Sharpe to 1.62 on 45–59 weeks of
+  pure bull-compression where BTC's own Sharpe was 1.16–2.06** — beta to 0.96,
+  one trend direction, three pre-named artifacts at once. E diluted D. Costs
+  decided nothing: BE 22–1,059 bps/side vs 1.5; turnover 1.5–16.8 RT/yr —
+  the one prediction that held. Two cells hit 4/6, failing exactly the two
+  evidence bars.
+- **Task 7 — the consequence, executed as written.** Register updated: **H11
+  closed (FAIL)** with data-threshold reopening (free flow source ≤2d lag ≥3y
+  history, or basis at DSR ≥0.95 / t ≥2 over ≥156 weeks incl. a bear); **H7
+  closed by decision**, design preserved; header and closing summary record
+  the search's end, dated, with **the census (H6) as the sole remaining open
+  item** and the infrastructure as the durable output.
+- ADR-042 (publication lag: measured beats documented; living snapshots dated)
+  and ADR-043 (a terminal stage binds its consequence in advance).
+- **Kraken tier note shipped as registered:** LO cells carry both 25 and 40
+  bps/side columns; actual tier reconciliation is an operator action (no
+  account API in Stage 1 by design). Changed no verdict.
+- Nothing purchased. `make lint`, `make typecheck`, `make test` clean — **311
+  tests**, 10 new. All three recorders alive and writing throughout.

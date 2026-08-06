@@ -2,9 +2,11 @@
 
 **Read this before proposing any new strategy hypothesis.**
 
-Eight strategy hypotheses are closed — seven tested, one closed as untestable
-on available data. `report.md` runs past 2,700 lines across eighteen stage
-sections, each written for the moment it
+**The alpha search concluded by decision on 2026-08-06** (C.17, bars and end
+condition pre-registered in commit 370ba41 before any data). Eleven entries
+stand: nine tested and closed, one untestable on available data (H10), one
+closed by the decision itself (H7). **The census (H6) is the sole remaining
+open item.** `report.md` runs past 2,850 lines across nineteen stage sections, each written for the moment it
 landed rather than for someone reading months later. The failure mode this file
 exists to prevent is **retrying a settled question because the number that
 closed it is buried** — nobody remembers six weeks later that BTC/ETH
@@ -159,6 +161,23 @@ This file contains no analysis. It records what other stages established.
 
 ---
 
+### H11 — Medium-horizon prediction on untested feature classes
+
+> Freely available on-chain, stablecoin, funding-regime and basis information
+> predicts BTC/ETH returns at 1–8 week horizons well enough to beat holding
+> BTC, at horizons where weekly turnover makes cost structurally irrelevant.
+
+| | |
+|---|---|
+| **Status** | **Closed — FAIL on all six pre-registered bars; the closure that ended the alpha search by decision** · 2026-08-06 |
+| **Deciding number** | **0 of 40 registered cells pass.** Best deflated Sharpe in the grid **0.499** vs the 0.95 bar; best alpha t **1.35** vs 2. Stablecoin class: negative in **8/8** cells under honest lags. Netflow and funding classes: long-only beta 0.43–0.56 artifacts, alpha t ≤ 0.95, long-short collapses. Basis class: Sharpe up to 1.62 on **45–59 weeks** of pure bull-compression where **BTC's own Sharpe was 1.16–2.06**, beta to 0.96, earnings in one trend direction only — three pre-named artifact patterns at once. Costs decided nothing: break-even 22–1,059 bps/side vs 1.5. |
+| **Sample** | Weekly 2020-08-02 → 2026-07-26 (spans the 2022 collapse, 2024 bull, 2025–26 compression); BTC+ETH; ridge λ=1 walk-forward, purge+embargo ≥ horizon; publication lags applied per source — **A +1d, B +75d (measured: the free Coin Metrics snapshot ends 75 days before retrieval), C 0d, D 0d**; planted-future canary and prefix-invariance green. |
+| **Limitations** | Class D scored only 45–59 weeks (series begins 2023-05). The exchange-netflow class is tested as *freely available* — 75 days stale — not as funds consume it; that IS the question this project can ask. |
+| **Working** | `report.md` §"Stage C.17 — the final research door" (2026-08-06). ADR-042, ADR-043. Bars in commit 370ba41, before any data. |
+| **What would reopen it** | A data or evidence threshold, not a revisit: **(a)** a free exchange-flow source at **≤ 2-day** publication lag with **≥ 3 years** of history — the measured 75-day staleness is the binding data constraint on class B; or **(b)** the basis class sustaining **DSR ≥ 0.95 and alpha t ≥ 2 over ≥ 156 scored weeks including a full bear regime** — three times its current window. Reopening H11 does not reopen the alpha search; that decision (below) is the operator's to reverse, not a threshold's. |
+
+---
+
 ### H6 — Spread capture on thin perpetuals *(in flight)*
 
 > On instruments too thin for the majors' competition, the spread-to-cost ratio
@@ -174,17 +193,18 @@ This file contains no analysis. It records what other stages established.
 
 ---
 
-### H7 — Cross-venue divergence *(in flight)*
+### H7 — Cross-venue divergence *(closed by decision)*
 
 > The same asset diverges between Kraken, Coinbase and Hyperliquid by enough,
 > and for long enough, to be worth trading against.
 
 | | |
 |---|---|
-| **Status** | **In flight — awaiting data** |
+| **Status** | **Closed by decision — the C.17 end condition, not evidence** · 2026-08-06 |
 | **Deciding number so far** | None measured directly. The nearest evidence is Hyperliquid's perp-to-*own-index* premium: mean **0.65 bps**, p99 **14.59 bps**, worst adverse hourly move **38.2 bps**. This is explicitly **not** the cross-venue number — it understates true divergence by whatever Hyperliquid's index and the actual long venue differ by, which has never been measured here. |
 | **What it is waiting for** | Simultaneous multi-venue recorded history. All three recorders have only run together since **2026-08-01**, so the overlap is measured in weeks. Any divergence claim needs enough overlap to span more than one regime. |
 | **How to close it** | Measure the realised basis between the three venues on the same clock, then charge it against the round-trip cost of both legs — 80 bps at Kraken/Coinbase, 3 bps at Hyperliquid. The asymmetry means any spot-to-spot arbitrage carries 160 bps of cost, which is the bar to clear. |
+| **Closure note** | The alpha search concluded by decision on 2026-08-06 (C.17, pre-registered in 370ba41) before this hypothesis's data condition matured. The three-venue overlap keeps accumulating at zero cost; reopening requires the operator reversing that decision, at which point the original design above stands unchanged. |
 | **Working** | `report.md` §Stage C.11 "Basis risk"; ADR-034 on the cross-venue structure. |
 
 ---
@@ -368,3 +388,22 @@ What has not been demonstrated is that this approach will eventually find
 something tradeable. Five closures is evidence about five hypotheses, not about
 the sixth. The infrastructure is genuinely good and the strategy pipeline has
 genuinely produced nothing deployable, and both remain true at the same time.
+
+### The conclusion, by decision — 2026-08-06
+
+**The alpha search of this project ended by decision on 2026-08-06**, under the
+condition pre-registered in commit 370ba41 before C.17 touched any data: a FAIL
+on that stage's six bars concludes the search. C.17 failed all six on every one
+of forty registered cells. Eleven register entries stand — nine hypotheses
+tested and closed on measured figures, one (H10) closed as untestable on
+available data, one (H7) closed by this decision with its design preserved.
+**The census (H6) is the sole remaining open item**, accruing at zero cost on
+data the recorders already capture.
+
+The durable output is the infrastructure: three continuously validated
+recorders, a provenance-complete archive of free historical data, a validation
+harness that has found real defects in its own inputs, and this register —
+which documents, to a standard each entry could be closed on, why nine strategy
+families do not work for a solo operator at these venues, fees, and data
+access. The conclusion is recorded as a choice made before its evidence, which
+is the only way a search this long ends honestly rather than by exhaustion.

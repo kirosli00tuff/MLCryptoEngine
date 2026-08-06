@@ -2700,3 +2700,163 @@ alone.
 
 **Data acquired this stage: none.** Seven single-shot probes to the free info
 endpoint; nothing purchased, nothing subscribed, recorders untouched.
+
+## Stage C.17 — medium-horizon prediction on untested feature classes: the final research door — 2026-08-06
+
+Ten register entries preceded this stage. The external audit identified exactly
+one closure that was feature-limited rather than cost-proven: days-to-weeks
+prediction, where weekly turnover makes cost structurally irrelevant, on
+information classes no model here had seen. This stage tested that door with
+six bars registered before any data was touched, and a condition agreed in
+advance: **a FAIL ends the alpha search of this project by decision.**
+
+**The verdict is FAIL. Zero of forty cells pass all six bars. The alpha search
+of this project concluded by decision on 2026-08-06** — a choice recorded in
+commit 370ba41 before the result existed, executed here exactly as written.
+
+### 0. The bars, as registered (commit 370ba41, before any data)
+
+Grid: feature classes surviving the availability audit (+ a combined class) ×
+horizons {1, 2, 4, 8} weeks × {long-only, long-short}, weekly rebalance, BTC
+and ETH, ridge λ=1 walk-forward with purge and embargo ≥ horizon, **n_trials =
+40**. PASS required all six: (1) net Sharpe at Hyperliquid cost ≥ buy-and-hold
+BTC on the identical window; (2) alpha vs BTC > 0 with t ≥ 2; (3) deflated
+Sharpe ≥ 0.95 over 40 trials; (4) net annualised return > 4.5%; (5) executable
+as specced; (6) positive net Sharpe in ≥ 2/3 of the winning class's cells.
+Artifact patterns named in advance: one-horizon effects, one-variant effects,
+long-only beta ≥ 0.5 in a rising sample, single-regime earnings, a combined
+class outrunning its components.
+
+### 1. Availability audit — what free actually means
+
+| source | verdict | granularity / history | measured reality |
+|---|---|---|---|
+| Coin Metrics community | **usable, with a caveat that becomes the story** | daily, to genesis; BTC 6,350 obs, ETH 3,951 | `FlowInEx*/FlowOutEx*/SplyEx*` exist — genuine netflows, class B survives. **But the snapshot retrieved 2026-08-06 ends 2026-05-23: a measured 75-day staleness.** Registered rule says measured lag wins, so every CM feature carries **+75 days**. CC BY-NC 4.0. Whole-file regeneration; past rows revise. |
+| DefiLlama stablecoins | usable | daily, 2017-11 → today (3,173 obs) | current through retrieval day; reconstructed history revises; lag +1 day |
+| CryptoQuant free tier | **out** | — | HTTP 401 without an account key; not freely scriptable |
+| Blockchain.com charts | **out** | — | reachable, but no exchange-flow series exists on the API |
+| CoinGecko | not needed | — | price already on disk from the C.10 Binance archive |
+| exchange-published flows | **none exists** | — | no reachable exchange publishes wallet-flow history free |
+
+Both new sources are declared in `config/venues.yaml` (kind `archive`, ADR-031
+scheme) and every retrieval is a dated immutable snapshot with sha256 in the
+C.10 manifest. Funding and basis classes came from archives already on disk at
+zero cost. **Lags applied: A +1d, B +75d (measured), C 0d, D 0d** — recorded
+per the registration, with the planted-future canary and prefix-invariance
+probes green against this pipeline (`tests/test_medium.py`).
+
+### 2. The grid, in full — 40 cells, nothing dropped
+
+Sample: weekly, 2020-08-02 → 2026-07-26; scored windows begin after 52 training
+weeks plus embargo. Net = 1.5 bps/side. Classes: A stablecoin, B netflow,
+C funding, D basis, E combined.
+
+| cell | weeks | net %/yr | net Sharpe | DSR | beta | alpha %/yr | alpha t | BTC Sharpe same window |
+|---|---|---|---|---|---|---|---|---|
+| A/h1w/LO | 207 | −1.8 | −0.178 | 0.000 | 0.32 | −14.0 | −0.98 | 0.667 |
+| A/h1w/LS | 207 | −37.8 | −0.733 | 0.000 | −0.38 | −23.0 | −0.85 | 0.667 |
+| A/h2w/LO | 205 | −15.1 | −0.657 | 0.000 | 0.27 | −24.7 | −1.92 | 0.614 |
+| A/h2w/LS | 205 | −62.1 | −1.166 | 0.000 | −0.48 | −44.9 | −1.74 | 0.614 |
+| A/h4w/LO | 201 | −23.7 | −0.920 | 0.000 | 0.30 | −34.7 | −2.62 | 0.643 |
+| A/h4w/LS | 201 | −79.6 | −1.493 | 0.000 | −0.42 | −63.8 | −2.42 | 0.643 |
+| A/h8w/LO | 193 | −22.1 | −0.841 | 0.000 | 0.32 | −31.5 | −2.30 | 0.492 |
+| A/h8w/LS | 193 | −68.2 | −1.280 | 0.000 | −0.39 | −56.9 | −2.06 | 0.492 |
+| B/h1w/LO | 207 | +28.4 | 0.657 | 0.032 | **0.53** | +7.9 | 0.63 | 0.667 |
+| B/h1w/LS | 207 | +22.6 | 0.426 | 0.010 | 0.04 | +21.0 | 0.95 | 0.667 |
+| B/h2w/LO | 205 | +23.5 | 0.534 | 0.018 | **0.51** | +5.2 | 0.41 | 0.614 |
+| B/h2w/LS | 205 | +15.1 | 0.248 | 0.004 | 0.00 | +15.0 | 0.66 | 0.614 |
+| B/h4w/LO | 201 | +13.2 | 0.273 | 0.005 | 0.46 | −3.8 | −0.31 | 0.643 |
+| B/h4w/LS | 201 | −5.8 | −0.229 | 0.000 | −0.10 | −2.0 | −0.09 | 0.643 |
+| B/h8w/LO | 193 | +14.3 | 0.308 | 0.007 | 0.43 | +1.7 | 0.13 | 0.492 |
+| B/h8w/LS | 193 | +4.5 | 0.011 | 0.001 | −0.17 | +9.4 | 0.40 | 0.492 |
+| C/h1w/LO | 207 | +22.6 | 0.460 | 0.011 | **0.56** | +1.1 | 0.08 | 0.667 |
+| C/h1w/LS | 207 | +11.0 | 0.135 | 0.002 | 0.10 | +7.3 | 0.28 | 0.667 |
+| C/h2w/LO | 205 | +14.4 | 0.268 | 0.004 | **0.53** | −4.5 | −0.33 | 0.614 |
+| C/h2w/LS | 205 | −3.3 | −0.142 | 0.000 | 0.04 | −4.5 | −0.18 | 0.614 |
+| C/h4w/LO | 201 | +19.3 | 0.468 | 0.014 | 0.41 | +4.0 | 0.32 | 0.643 |
+| C/h4w/LS | 201 | +6.3 | 0.045 | 0.001 | −0.20 | +13.7 | 0.54 | 0.643 |
+| C/h8w/LO | 193 | +6.1 | 0.059 | 0.002 | 0.47 | −7.8 | −0.60 | 0.492 |
+| C/h8w/LS | 193 | −12.0 | −0.306 | 0.000 | −0.08 | −9.6 | −0.35 | 0.492 |
+| D/h1w/LO | **59** | +41.7 | 0.894 | 0.206 | 0.55 | +9.6 | 0.30 | **1.162** |
+| D/h1w/LS | **59** | +37.4 | 0.634 | 0.140 | −0.04 | +39.9 | 0.79 | **1.162** |
+| D/h2w/LO | **57** | +71.1 | 1.417 | 0.413 | **0.73** | +20.7 | 0.64 | **1.386** |
+| D/h2w/LS | **57** | +86.6 | 1.616 | **0.499** | 0.31 | +65.1 | **1.35** | **1.386** |
+| D/h4w/LO | **53** | +62.3 | 1.117 | 0.296 | **0.84** | +7.7 | 0.21 | **1.353** |
+| D/h4w/LS | **53** | +72.0 | 1.155 | 0.310 | 0.51 | +38.9 | 0.70 | **1.353** |
+| D/h8w/LO | **45** | +86.6 | 1.532 | 0.464 | **0.96** | −0.4 | −0.01 | **2.055** |
+| D/h8w/LS | **45** | +82.2 | 1.325 | 0.384 | 0.70 | +19.2 | 0.33 | **2.055** |
+| E/h1w/LO | 59 | +34.6 | 0.633 | 0.144 | 0.73 | −8.4 | −0.26 | 1.162 |
+| E/h1w/LS | 59 | +23.2 | 0.352 | 0.087 | 0.33 | +3.9 | 0.08 | 1.162 |
+| E/h2w/LO | 57 | +31.7 | 0.581 | 0.142 | 0.76 | −21.2 | −0.69 | 1.386 |
+| E/h2w/LS | 57 | +7.8 | 0.078 | 0.056 | 0.38 | −18.6 | −0.42 | 1.386 |
+| E/h4w/LO | 53 | +57.5 | 1.058 | 0.280 | 0.84 | +2.6 | 0.08 | 1.353 |
+| E/h4w/LS | 53 | +62.5 | 1.117 | 0.300 | 0.52 | +28.8 | 0.60 | 1.353 |
+| E/h8w/LO | 45 | +36.4 | 0.729 | 0.200 | 0.61 | −18.3 | −0.44 | 2.055 |
+| E/h8w/LS | 45 | −18.3 | −0.390 | 0.032 | −0.02 | −16.6 | −0.26 | 2.055 |
+
+Class consistency (fraction of cells with positive net Sharpe): A **0/8**,
+B 7/8, C 6/8, D 8/8, E 7/8. **The best deflated Sharpe in the grid is 0.499
+against a bar of 0.95; the best alpha t is 1.35 against a bar of 2.**
+
+### 3. The beta control — every apparent success is a named artifact
+
+**Class A (stablecoin) is worse than useless under honest lags**: negative in
+all eight cells, alpha reliably negative. The free stablecoin-supply signal, as
+actually available, subtracts value.
+
+**Classes B and C are the pre-registered beta artifact.** Their positive cells
+are long-only with **beta 0.43–0.56** in a net-rising sample, alpha t never
+above 0.95, and up-trend returns of +29% to +68% against down-trend returns of
+−15% to −30%. That is the market, sampled through a lagged feature. The
+long-short variants — where beta cancels — collapse toward zero, which is the
+one-variant artifact pattern named in advance.
+
+**Class D (basis) is the seduction this registration existed to survive.**
+Sharpe 0.89–1.62, returns 37–87%/yr — and **45–59 scored weeks**, because the
+Hyperliquid premium series begins 2023-05 and the walk-forward consumes 52
+training weeks plus embargo. Its scored window is mid-2024 onward: the bull
+compression, and nothing else. On those same windows **buy-and-hold BTC's
+Sharpe is 1.16–2.06** — the benchmark column, not the strategy column, is doing
+the work. Beta runs to 0.96 at the long horizons; the up/down split shows
++98% to +166% in up-trends against −4% to −63% in down; the best cell's
+deflated Sharpe is 0.499 — a coin flip's credibility after 40 trials. Three
+registered artifact patterns at once: short single-regime window, beta-carried
+long-only, and earnings in exactly one trend direction.
+
+**Class E (combined) inherits D's window and underperforms D** — the
+combined-class-outruns-components pattern did not even occur; combination
+diluted.
+
+Costs, as designed, decided nothing: break-even fees on positive cells run 22
+to 1,059 bps a side against 1.5 modelled, and the long-only spot columns at 25
+vs 40 bps a side change no verdict — turnover of 1.5–16.8 round trips a year
+makes the cost column an afterthought, which is the one thing this stage
+predicted that came true. The two cells reaching four of six bars (D/h2w, both
+variants) fail precisely the two bars that measure evidence rather than
+return: alpha significance and deflation.
+
+### 4. Verdict, and the decision it triggers
+
+**FAIL.** No cell passes all six registered bars; no cell passes the two
+statistical ones individually. The prompt's requirement to say it plainly:
+**no specification beats buy-and-hold BTC on risk-adjusted terms with a
+deflated Sharpe at or above 0.95 — or even 0.5 — and the cells that beat it on
+raw Sharpe are beta on a short window, per the artifact patterns registered in
+advance.**
+
+**Accordingly, and by the condition agreed before any data was touched: the
+alpha search of this project ends by decision, dated 2026-08-06.** Eleven
+register entries stand — nine tested and closed, one untestable on available
+data (H10), and H7 closed by this same decision. **The census (H6) is the sole
+remaining open item**, running at zero cost on data the recorders are already
+capturing. The durable output of this project is the standing infrastructure:
+three continuously validated recorders, a provenance-complete free-data
+archive, a validation harness that has caught real defects in its own inputs,
+and a register documenting to a closable standard why each of nine strategy
+families does not work for a solo operator at these venues, fees, and data
+access. That is the conclusion, recorded as a choice made before the result
+rather than a reaction to it.
+
+**Data acquired this stage: nothing purchased.** Two new free archives
+(Coin Metrics community, DefiLlama stablecoins) declared, snapshotted, and
+manifested; ~26 Binance kline months backfilled from the free dumps.
