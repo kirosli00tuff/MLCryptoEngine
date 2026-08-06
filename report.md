@@ -2860,3 +2860,66 @@ rather than a reaction to it.
 **Data acquired this stage: nothing purchased.** Two new free archives
 (Coin Metrics community, DefiLlama stablecoins) declared, snapshotted, and
 manifested; ~26 Binance kline months backfilled from the free dumps.
+
+## Stage C.18 — the thin-perp census bars, registered before the data exists — 2026-08-06
+
+H6 is the sole open register entry, and its scored window closes 2026-08-11.
+This stage fixes the verdict criteria while the answer is still unknowable and
+validates the machinery on the closed end of the book only. **The ten thin
+instruments were not read: no figure below derives from them**, and the guard
+that enforces that is a raise, not a comment.
+
+### The bars, verbatim (progress.md, commit 6025f5c)
+
+- **Scored window** 2026-08-04T00:00Z → 2026-08-11T00:00Z, validated coverage
+  only; never extended to chase significance.
+- **Economics bar, per instrument:** time-weighted captured spread at
+  trade-time spread state, minus signed adverse mid move after aggressor
+  trades at 1 s, 5 s and 60 s, minus 3.0 bps round trip — **95% CI lower bound
+  above zero at the worst of the three horizons**.
+- **Multiplicity:** Benjamini–Hochberg across the ten instruments at q = 0.10;
+  expected false positives ≤ 0.1 × discoveries (≤ 1 at the maximum), stated
+  beside any survivor.
+- **Sample floor:** ≥ 300 aggressor trades per instrument, else **too thin by
+  prior declaration** — never stretched, never pooled.
+- **Robustness:** positive in **both halves** of the window independently;
+  thin-perp income is episodic and one spike is not an edge.
+- **Capacity tier:** ≥ 150 trades/day AND ≥ $100,000 median daily volume, else
+  **positive-but-rare** whatever the per-trade economics.
+- **Upper bound, stated plainly:** every quote is credited with a fill it has
+  not earned; queue position, fill probability and fill conditioning are
+  unmodelled and all point down.
+- **Outcome-to-action map:** all fail → H6 closes and the register's closing
+  summary updates to zero open items · survivors below capacity → report the
+  fill-frequency arithmetic and stop · survivors within noise of zero → extend
+  recording 30 days and re-run under these same bars, no building · survivors
+  clearing everything → **input to a D.1 fill-simulation decision, not a
+  strategy**.
+
+### Known-answer validation: the pipeline reproduces the closed answer
+
+Machinery validated on BTC and ETH only — C.9's own window (2026-08-01 →
+08-03), C.9's own measure, through the same reader and accumulators, with the
+thin coins excluded by allowlist **at the parse level** so no accumulator ever
+saw them:
+
+| coin | tw spread | adverse @1s | net | C.9 target | **delta** | resolved trades |
+|---|---|---|---|---|---|---|
+| BTC | 0.1636 | 0.2146 | **−3.0510** | −3.05 | **−0.001 bps** | 491,950 |
+| ETH | 0.5451 | 0.2984 | **−2.7533** | −2.75 | **−0.0033 bps** | 278,805 |
+
+Both within the registered 0.5 bps tolerance by three orders of magnitude.
+The registered measure itself (trade-time spread state, 60 s horizon, CI, BH,
+halves, capacity) is held down by eight synthetic tests, including an
+adverse-selection canary that fires **in both directions** — the census can
+detect informed flow and can detect reversion, so whatever it reports on
+2026-08-11 will mean something (ADR-040).
+
+One measurement note recorded now, before it can look like an excuse later:
+the registered spread measure credits the fill with the spread **standing at
+the trade**, where C.9's time-weighted mean blends in quiet periods. On thin
+books that widen exactly when trades arrive, the registered measure will read
+higher than C.9's — by construction, and it is still an upper bound.
+
+The August 10 answer will be read against these bars. Nothing else in this
+stage was computed.

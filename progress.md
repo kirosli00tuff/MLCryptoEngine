@@ -2130,3 +2130,21 @@ window (2026-08-01 → 08-03) to within **0.5 bps**. A pipeline that cannot
 reproduce the closed answer does not get to produce the open one. The planted
 canary and prefix-invariance disciplines apply to this pipeline as to every
 other (ADR-040).
+
+## 2026-08-06 — Stage C.18 complete: machinery validated, thin tail untouched
+
+- **Registration landed first** (6025f5c, above) — bars, floor, multiplicity,
+  halves, capacity, upper-bound statement and outcome map all predate the data.
+- **Known-answer reproduction:** the pipeline reproduces C.9's closed nets on
+  C.9's own window through the same reader — **BTC −3.0510 vs −3.05 (Δ −0.001
+  bps), ETH −2.7533 vs −2.75 (Δ −0.0033 bps)**, tolerance 0.5, on 491,950 /
+  278,805 resolved trades — with thin coins excluded by allowlist at the parse
+  level (`run_census(coins=...)`).
+- **The scored population stays unread.** `run_registered_census` raises before
+  2026-08-11T00:00Z (tested to the nanosecond); every test is synthetic; the
+  adverse canary fires in BOTH directions so the census verdict will mean
+  something (ADR-040).
+- H6's register entry now carries the registration commit. 8 new tests
+  (`tests/test_registered_census.py`); `make lint`, `make typecheck`,
+  `make test` clean — **319 tests**. Recorders alive; nothing bought; the ten
+  thin perps untouched.

@@ -82,12 +82,19 @@ def run_census(
     venue: str = "hyperliquid",
     horizons_ms: tuple[int, ...] = DEFAULT_HORIZONS_MS,
     result: CensusResult | None = None,
+    coins: set[str] | None = None,
 ) -> CensusResult:
     """Accumulate spread and adverse-selection statistics for one recorded day.
 
     Pass an existing ``result`` to accumulate across days: the histograms and
     running sums are additive, so a multi-day census is the same object fed
     each day in order.
+
+    ``coins`` restricts accumulation to an allowlist. ``None`` keeps the C.9
+    behaviour (every coin in the stream). The restriction exists for C.18's
+    hard rule: the known-answer validation runs on BTC and ETH only, and the
+    ten thin instruments must not be *computed on* — not ingested-and-
+    discarded, not summarised, not touched — before their census runs.
     """
     result = result if result is not None else CensusResult()
     last_ns = 0
@@ -106,6 +113,8 @@ def run_census(
             quote = _quote(data.get("bbo") or [])
             if not isinstance(symbol, str) or quote is None:
                 continue
+            if coins is not None and symbol not in coins:
+                continue
             result.bbo_messages += 1
             inst = result.instruments.setdefault(
                 symbol, InstrumentCensus.for_symbol(symbol, horizons_ms)
@@ -122,6 +131,8 @@ def run_census(
                 symbol = print_.get("coin")
                 sign = AGGRESSOR_SIGN.get(str(print_.get("side")))
                 if not isinstance(symbol, str) or sign is None:
+                    continue
+                if coins is not None and symbol not in coins:
                     continue
                 inst = result.instruments.setdefault(
                     symbol, InstrumentCensus.for_symbol(symbol, horizons_ms)
