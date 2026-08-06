@@ -1815,3 +1815,63 @@ bars were committed in a2d7466 BEFORE any figure was computed.**
   CPU-only torch so the recorders' `.venv` is never mutated (ADR-038).
 - `make lint`, `make typecheck`, `make test` clean. All three recorders alive
   throughout; the 08-01 outage predates this stage and was not caused by it.
+
+## 2026-08-05 — Stage C.16: pre-registered bars (written BEFORE any result)
+
+**Nothing in C.16 has been computed at the time of writing. What has been read
+is C.10's existing output — its universe cache, its exclusion machinery, its
+deflated-Sharpe estimator — because reuse is the instruction. Expect this to
+fail: momentum is among the most published anomalies in finance, crypto results
+have been poor since 2021, and the value here is closing a family cheaply.**
+
+### The strategy, fixed before running
+
+Time-series momentum, classic form: at each rebalance, each live asset is
+scored by its own trailing L-day return; **long if positive, short if
+negative**, equal weight 1/N of gross, gross notional 1.0. Net exposure floats
+with the fraction of assets trending up — that float is exactly why the beta
+control exists. No skip window, no volatility targeting, no cross-sectional
+ranking: each added refinement is a free parameter this registration refuses.
+
+### The grid, registered in full
+
+Lookbacks **{14, 30, 90, 180} days** × holding periods **{7, 30, 90} days** =
+**12 specifications**, all reported, none dropped. **Primary specification:
+lookback 90, hold 30** — the closest small-sample analogue of the literature's
+12-month/1-month convention, named now so no cell can be promoted after the
+fact. The deflated Sharpe uses C.10's estimator (`research.pairs.validation`,
+Bailey & López de Prado) with **n_trials = 12** and the cross-specification
+Sharpe dispersion, computed on **net-of-3bps** daily returns.
+
+### Bars
+
+All Sharpes are excess of a **4%/yr risk-free rate**, strategy and BTC alike,
+annualised √365. Benchmark window is identical to the strategy's scored window.
+
+- **PASS** — all four, on the primary spec: (1) net-of-3bps Sharpe **≥
+  buy-and-hold BTC Sharpe** on the identical window; (2) deflated Sharpe
+  probability **≥ 0.95**; (3) alpha vs BTC (daily OLS, annualised) **> 0 with
+  t ≥ 2**; (4) consistency: **≥ 8 of 12** specs post positive net-of-3bps
+  Sharpe. An anomaly at one lookback only is a fitting artifact regardless of
+  its own numbers.
+- **WEAK** — beats BTC risk-adjusted with deflated Sharpe in (0.5, 0.95);
+  reported as suggestive, not as a pass, and closes the hypothesis anyway.
+- **BETA IN DISGUISE** — beats zero but not BTC risk-adjusted, or alpha ≤ 0
+  with beta ≥ 0.5. Reported in exactly those words.
+- **FAIL** — everything else. The prompt's literal criterion — "beats
+  buy-and-hold BTC on risk-adjusted terms with a deflated Sharpe above zero"
+  (probability > 0.5) — is reported alongside whichever verdict lands.
+
+### Controls and costs, fixed now
+
+- Beta/alpha vs BTC from daily OLS on the scored window; up/down split by the
+  sign of BTC's trailing 30-day return (the C.11 convention).
+- Universe is **C.10's cached construction reused verbatim** — top 60 by
+  2021-08 quote volume from 291 listed, spliced series excluded by the same
+  detector. Rebuilding from today's listings would reintroduce the bias C.10
+  removed, so a missing cache is an error, never a rebuild.
+- Costs: 1.5 bps/side (Hyperliquid maker) and 40 bps/side (Kraken spot,
+  pessimistic bound; longs only there, and only BTC/ETH are configured).
+  Break-even cost per spec = gross P&L / notional traded, per side, as C.10
+  ranked. Executable subset = universe members with a live Hyperliquid perp
+  today; the statistical result and the executable one are reported separately.
