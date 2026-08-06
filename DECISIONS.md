@@ -1925,3 +1925,40 @@ same mechanism from its first stage: the register's honest reading — that five
 then nine closures are evidence about those hypotheses and not about the next
 one — is only compatible with ever stopping if the stopping rule predates the
 last result.
+
+## ADR-044: The detection track sits outside the closed alpha register
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+**Context.** The alpha search concluded by decision on 2026-08-06 (ADR-043)
+under a condition registered before its final stage ran. C.19 opens a
+detection track — a classifier for Solana memecoin rug-pull behaviour — and
+the two must not blur: reopening per-trade-edge research under a new name
+would void the discipline that ended it.
+
+**Decision.** Detection is a separate track with a separate objective, and the
+boundary is drawn by what success means. An alpha hypothesis succeeds by
+net-of-cost capture against a benchmark; every family of those is closed and
+stays closed. A detection stage succeeds by **label quality and
+minority-class precision** on a task whose value is a safety scorer and
+avoidance/exit tooling. The economics caveat is part of the track's charter,
+stated unhedged in every report: the profit arms re-enter measured territory
+(launch-speed competition, 50–200 bps AMM round trips, a ~98.7% scam-adjacent
+base rate, no borrow and hence no short side), and the unclosed mechanisms are
+avoidance, exit-timing for positions otherwise held, and the tool itself.
+
+The track inherits the full method stack unchanged: bars registered before
+data (C.19's 5,000-token floor predates its first probe, commit 35e3466),
+measured-beats-documented probing, survivorship treated as a first-class
+threat — **dead tokens are the positive class**, so a pruned index is
+disqualifying — the C.10 manifest for every retrieved artifact, C.9.1 source
+declarations, and the leakage disciplines (ADR-040, ADR-042) from the first
+feature ever computed, since labels here are defined by future events.
+
+**Consequences.** HYPOTHESES.md remains the alpha register and gains no
+detection entries; detection stages carry their registrations in progress.md
+and their findings in report.md like any other stage. The census (H6) remains
+the register's sole open item. If detection work ever produces something that
+looks like a trading edge, that observation does not reopen the alpha search —
+ADR-043's reversal rule applies, and the observation waits for an explicit
+operator decision.

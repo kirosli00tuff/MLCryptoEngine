@@ -2923,3 +2923,117 @@ higher than C.9's — by construction, and it is still an upper bound.
 
 The August 10 answer will be read against these bars. Nothing else in this
 stage was computed.
+
+## Stage C.19 — Solana rug-detection data availability audit — 2026-08-06
+
+**The economics caveat, first and unhedged.** The detection layer has
+standalone value as a safety scorer. The profit arms mostly re-enter measured
+territory: launch-speed competition and 50–200 bps AMM round trips were both
+documented in the week-one report; the scam-adjacent base rate among pump.fun
+tokens runs near **98.7% per Solidus Labs**; and memecoins have no borrow, so
+**no short side exists**. The unclosed profit mechanisms are **avoidance and
+exit-timing for positions otherwise held, and the tool itself.** No trading
+strategy is waiting at the end of this track, and this report does not imply
+one. This is a detection-track stage; the C.17 decision that ended the alpha
+search stands and is not reopened (ADR-044).
+
+Bars registered before any probe (commit 35e3466): **GO requires ≥ 5,000
+labeled tokens obtainable free with pre-event feature coverage**; a heuristic
+scheme that misses documented rugs fails the audit; vague cases are dropped,
+never forced.
+
+### 1. The inventory, measured against reality (all probes 2026-08-06)
+
+| source | measured | dead-token retention | usable for |
+|---|---|---|---|
+| **SolRPDS** (DeFiLabX/SolRPDS, CODASPY 2025) | **alive, keyless**: 4 CSVs, 35 MB, snapshotted whole. **116,308 pools, 2021 → Nov 2024** (1,703 / 3,695 / 15,477 / 95,433 by year). Schema: pool, mint, liquidity added/removed, add/remove counts, first/last activity, `INACTIVITY_STATUS` (93,749 Active / 22,555 Inactive). No explicit license; citation requested | **retains dead pools by construction** | **the label backbone** — but its aggregates are end-of-life summaries: labels, never features |
+| **RugCheck API** | alive, keyless; ~0.85 s/report, 6-burst → zero 429s. Full heuristic set per token: authorities, LP-lock % per market, top holders, insider networks, lockers, risks, `rugged`, live new-token feed | serves dead tokens (all four spot-check rugs returned full reports) | heuristic label inputs + live-feed capture. **Not ground truth: `rugged` = False on all four documented rugs probed, including LIBRA** |
+| **DexScreener API** | alive, keyless, ~0.4 s | **retains dead pairs** — LIBRA (2025-02-14), HAWK (2024-12-04), kid-QUANT (2024-11-20) all resolve with launch timestamps | mint resolution for the positive class |
+| **GoPlus API** | alive, keyless | serves dead tokens | **the honeypot axis**: `freezable`, `non_transferable`, `transfer_hook`, `transfer_fee`, `default_account_state`, `mintable`, `lp_holders` |
+| **Solana public RPC** | alive, keyless (`getHealth` ok) | n/a | **current** account state only; historical state and deep signature history need an indexer |
+| MELT (arXiv 2602.13480) | paper live: 41k+ launches, 200M+ txns, typed behavioral traces, bundle-linked wallets (36.5% coordinated supply on average) | — | **no public data link in the abstract; availability UNVERIFIED** — recorded, not designed around |
+| arXiv 2603.24625 | paper live ("From Hype to Collapse") | — | context only; no dataset found |
+| pump.fun frontend API | **HTTP 530** — dead in practice whatever docs say (the C.1 point) | — | none |
+| Bitquery / Dune / Birdeye | 401 / 401 / 401 — free tiers require signup keys | — | not freely scriptable, C.17 CryptoQuant treatment |
+| Helius | 404 without key; free tier requires signup | — | **the named unlock for pre-event history** (free key, not keyless) |
+| HuggingFace search | alive; zero hits for "solana rug" | — | none |
+
+Fourteen artifacts snapshotted immutable with sha256 + retrieval date in the
+C.10 manifest; six new sources declared in `config/venues.yaml` (kind
+`archive`, C.9.1 scheme). Nothing bought.
+
+### 2. Heuristic labels, and the known-answer spot-check
+
+**Cost, measured:** SolRPDS labels are already on disk — zero queries. A
+RugCheck sweep at the measured ~0.85 s/report prices a MELT-scale 41,470-token
+labeling pass at **~9.8 hours single-threaded, free**; GoPlus adds the same
+order for the honeypot fields. Free-tier feasible by a wide margin.
+
+**Known-answer spot-check** — four media-attested rugs resolved on-chain by
+symbol + launch date (further candidates whose public documentation could not
+fix the on-chain facts were dropped per the registration, not forced):
+
+| case | mechanism (documented) | pre-event-valid signal from current chain state | verdict |
+|---|---|---|---|
+| **LIBRA** (2025-02) | insider LP pull, Meteora | LP locked **0%** on every DLMM market — the never-locked LP is pre-event knowable | **HIT** |
+| HAWK (2024-12) | launch-time insider/sniper concentration, dump | authorities renounced; LP now locked/burned; current top-holders are **post-dump residue** | **indeterminate without historical state** |
+| QUANT, kid (2024-11) | pump.fun dev-allocation dump | RugCheck score 1, zero risks now | **indeterminate without historical state** |
+| M3M3 (2024-12) | insider pre-accumulation (lawsuit-attested) | current holders post-event | **indeterminate without historical state** |
+
+**Hit 1, indeterminate 3, missed 0.** The plain reading: no documented rug
+shows pre-event signals *provably absent* — the scheme as designed misses
+nothing — but only the hard-rug (LP-pull) mechanism is verifiable end-to-end
+from **current** keyless state. The three concentration-mechanism rugs need
+launch-time holder snapshots, which is exactly the historical indexing the
+keyless tier does not serve. Two audit findings fall out: **(a)** pre-event
+features for the concentration classes require an indexer (Helius free key, or
+SolRPDS-style transaction parsing); **(b)** vendor `rugged` labels recovered
+**0 of 4** documented rugs and are disqualified as ground truth.
+
+### 3. Taxonomy and the base rate
+
+No single source distinguishes all four classes. Coverage by mechanism:
+**hard rug / LP pull** — SolRPDS liquidity-removal aggregates (**75,996 of
+116,308 pools show ≥ 99% of added liquidity later removed**) and RugCheck
+LP-lock state; **honeypot / freeze / sell-block** — GoPlus (`freezable`,
+`non_transferable`, `transfer_hook`, `default_account_state`); **soft rug /
+dev dump** and **slow rug** — no source labels these; they require
+launch-window holder flows (MELT's bundle traces are precisely this, if its
+data ever ships). One conflated label makes precision meaningless, so the
+recommended construction is a **four-class label built per mechanism**, not a
+binary.
+
+**The base rate, plainly:** with rugs near 99% of launches, the hard and
+valuable class is the small honest minority. A classifier that says "rug" to
+everything scores 98.7% accuracy and is worthless. **Any scorer on this track
+is judged on minority-class (honest-token) precision, never accuracy** — and
+SolRPDS's own distribution (65% of pools with ≥ 99% liquidity removal, before
+counting other mechanisms) says the same thing from the data side.
+
+### 4. The leakage trap, named for this domain
+
+Labels here are **defined by future events**. Liquidity removal is the label
+event; holder concentration and authority state must be read strictly as of a
+point before it, never after. The spot-check demonstrated the trap in the
+data itself: LIBRA's current top-5 concentration of 98.2% is post-dump
+residue, not a feature. The planted-future canary and prefix-invariance
+disciplines (ADR-040/042) apply from the first feature ever computed, not
+once a model exists — and SolRPDS's whole-life aggregates sit on the label
+side of that line by construction.
+
+### 5. Verdict: GO, with the binding constraint named
+
+Against the registered floor of 5,000: **the hard-rug class alone provides
+~76,000 labeled pools free, 15× the floor** — the audit is a **GO**. What the
+first modeling stage needs, stated as requirements rather than assumptions:
+
+1. **A free Helius (or equivalent) API key** — signup, not payment — for
+   launch-window holder snapshots and signature history; keyless RPC serves
+   only current state. Without it, the tractable scope is the hard-rug class.
+2. **Labels rebuilt from SolRPDS raw aggregates + GoPlus honeypot fields**,
+   four-class; RugCheck as feature vendor only, its `rugged` flag discarded.
+3. **Strictly pre-event feature windows** with the canary/prefix suite wired
+   before the first feature, and evaluation reported as minority-class
+   precision/recall at the 98.7% base rate.
+4. **The economics caveat carried forward verbatim** — the deliverable is a
+   safety scorer and avoidance/exit tooling, not a strategy.

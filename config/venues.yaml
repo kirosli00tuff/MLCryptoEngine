@@ -288,6 +288,76 @@ sources:
       fundingHistory call and 5000 per candleSnapshot, so both are paged.
       History begins 2023-05-12, the venue's launch.
 
+  solrpds_github:
+    name: SolRPDS rug-pull dataset (DeFiLabX/SolRPDS, CODASPY 2025)
+    kind: archive
+    venue: github
+    base_url: https://raw.githubusercontent.com/DeFiLabX/SolRPDS/main
+    notes: >-
+      Peer-reviewed Solana rug-pull dataset derived from 3.69B transactions:
+      116,308 pools 2021 - Nov 2024 with liquidity add/remove aggregates and an
+      inactivity label. Retains dead pools by construction, which is the whole
+      point - dead tokens are the positive class (C.19). No explicit license in
+      the repo; citation requested; treat as research-only. Labels are
+      END-OF-LIFE aggregates: usable as labels, never as pre-event features.
+
+  rugcheck_api:
+    name: RugCheck public token-report API
+    kind: archive
+    venue: rugcheck
+    base_url: https://api.rugcheck.xyz/v1
+    notes: >-
+      Keyless token security reports: mint/freeze authority, LP lock per
+      market, top holders, insider networks, risks, a `rugged` flag and a live
+      new-token feed. Measured 2026-08-06 at ~0.85 s/report over a 6-request
+      burst with zero 429s. CAUTION from the C.19 spot-check: `rugged` was
+      False on all four documented rugs probed, including LIBRA - vendor
+      labels here are heuristic inputs, never ground truth.
+
+  dexscreener_api:
+    name: DexScreener public search/pairs API
+    kind: archive
+    venue: dexscreener
+    base_url: https://api.dexscreener.com
+    notes: >-
+      Keyless pair search and metadata. Verified 2026-08-06 to RETAIN dead
+      pairs (LIBRA 2025-02, HAWK 2024-12, the Nov-2024 pump.fun QUANT all
+      resolve with launch timestamps), so it is usable for mint resolution of
+      the positive class. Cross-chain results; filter chainId=solana.
+
+  goplus_api:
+    name: GoPlus Solana token-security API
+    kind: archive
+    venue: goplus
+    base_url: https://api.gopluslabs.io/api/v1
+    notes: >-
+      Keyless per-token security fields covering the honeypot axis the other
+      sources miss: freezable, non_transferable, transfer_hook, transfer_fee,
+      default_account_state, mintable, lp_holders, holder_count. Probed
+      2026-08-06.
+
+  solana_public_rpc:
+    name: Solana public mainnet RPC
+    kind: archive
+    venue: solana
+    base_url: https://api.mainnet-beta.solana.com
+    notes: >-
+      Keyless JSON-RPC, getHealth ok 2026-08-06. Serves CURRENT account state;
+      historical (pre-event) state and deep signature history require an
+      indexer - the gap that makes pre-event features the binding constraint
+      in C.19's verdict.
+
+  arxiv_abstracts:
+    name: arXiv abstract pages (dataset papers)
+    kind: archive
+    venue: arxiv
+    base_url: https://arxiv.org/abs
+    notes: >-
+      Snapshotted abstract pages for MELT (2602.13480, 41k+ launches, 200M+
+      transactions - no public data link in the abstract as of 2026-08-06, so
+      availability is UNVERIFIED) and 2603.24625. Paper metadata only, never a
+      data source itself.
+
   coinmetrics_community:
     name: Coin Metrics community data (daily asset CSVs)
     kind: archive

@@ -2192,3 +2192,40 @@ and prefix-invariance disciplines apply from the first feature ever computed.
 Measured beats documented (C.1): rate limits recorded as observed, not as
 published. Everything retrieved is snapshotted immutable with the C.10
 manifest; new sources are declared per the C.9.1 scheme. Buy nothing.
+
+## 2026-08-06 — Stage C.19 complete: rug-detection availability audit — GO
+
+**Verdict: GO against the pre-registered floor (35e3466) — the hard-rug class
+alone yields ~76,000 labeled pools free, 15× the 5,000 floor.** Detection
+track only; the C.17 decision stands (ADR-044).
+
+- **Inventory, measured:** SolRPDS alive and snapshotted whole (116,308 pools
+  2021→Nov-2024, 4 CSVs, keyless; labels are end-of-life aggregates — label
+  side only). RugCheck keyless at ~0.85 s/report, zero 429s in a burst — but
+  its `rugged` flag recovered **0 of 4 documented rugs** and is disqualified
+  as ground truth. DexScreener **retains dead pairs** (LIBRA/HAWK/kid-QUANT
+  resolve with launch timestamps). GoPlus covers the honeypot axis keyless.
+  Public RPC = current state only. pump.fun API **HTTP 530 in practice**;
+  Bitquery/Dune/Birdeye 401 (keyed); Helius free-key-required; **MELT paper
+  live but no public data link — availability unverified**, recorded rather
+  than designed around.
+- **Known-answer spot-check: hit 1 (LIBRA — Meteora LP locked 0%, pre-event
+  knowable), indeterminate 3 (HAWK, kid-QUANT, M3M3 — concentration-mechanism
+  rugs whose launch-time holdings need historical indexing), missed 0.**
+  Further candidates with vague documentation were dropped, not forced. The
+  binding constraint is named: pre-event features for concentration classes
+  need a free Helius key or SolRPDS-style parsing.
+- **Taxonomy:** no source distinguishes all four mechanisms; recommended
+  construction is a four-class label (hard rug ← SolRPDS liquidity removal,
+  honeypot ← GoPlus freeze/transfer fields, soft/slow rug ← launch-window
+  holder flows, unlabeled today). Base rate stated plainly: at ~98.7%
+  scam-adjacent, accuracy is worthless and the scorer is judged on
+  honest-minority precision.
+- **Leakage trap named:** labels are future events; LIBRA's current 98.2%
+  top-5 concentration is post-dump residue, not a feature. Canary + prefix
+  disciplines apply from the first feature (ADR-040/042).
+- 14 artifacts snapshotted with sha256 + retrieval date; six sources declared
+  in venues.yaml. **Buy-nothing held: zero spent, zero keys created.**
+  Economics caveat led the report, unhedged, per the registration. ADR-044.
+- `make lint`, `make typecheck`, `make test` clean — 319 tests (config-only
+  changes). All three recorders alive throughout.
