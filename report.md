@@ -2495,3 +2495,135 @@ at AUC 0.94, it will not help at 0.50.
 **The one thing that would change the reading** is the top-confidence decile
 clearing a round trip at some venue, which would make the filter economic rather
 than merely real. It missed by 16× here.
+
+## Stage C.16 — time-series momentum on the daily archive — 2026-08-06
+
+Every closed hypothesis assumed mean reversion or microstructure prediction.
+This tested the opposite premise — trends persist, recent winners keep winning
+— on C.10's survivorship-free daily universe, expecting failure and pricing the
+stage accordingly: nothing bought, everything read from disk.
+
+**Verdict up front, by the registered bars: FAIL.** No specification beats
+buy-and-hold BTC on risk-adjusted terms with a deflated Sharpe above 0.95;
+three beat it with deflated Sharpe barely above 0.5, all at the same holding
+period, which is the registered fitting-artifact pattern. And the effect, such
+as it is, lives in the untradeable tail of the universe.
+
+### 0. The bars, as registered (commit 88b69d8, before any result)
+
+Grid **{14, 30, 90, 180}d lookback × {7, 30, 90}d hold = 12 specifications**,
+primary **L90/H30**, all cells reported. PASS required all four: net-of-3bps
+Sharpe ≥ BTC buy-and-hold on the identical window; deflated Sharpe ≥ 0.95
+(n_trials = 12, C.10's estimator); alpha vs BTC > 0 with t ≥ 2; ≥ 8 of 12
+specs positive. Sharpes excess of 4%/yr, both sides.
+
+### 1. Universe — C.10's, reused verbatim
+
+Loaded from `data/processed/pairs/universe_2021-08_2026-07.json`: **60 members,
+58 in the matrix** — `LUNAUSDT` excluded by the splice detector (the 177,400×
+ticker-reuse bar), `BTTUSDT` at 170 observations < 200 — identical exclusions
+to C.10, which is the point of reusing the construction rather than repeating
+it. **12 members died in-sample** and each shows up in the simulation as a
+forced exit at its last print, charged one side of fees. Universe size decays
+60 → 48 live members across the sample; a universe built from today's listings
+would contain none of the deaths, and momentum is the strategy most flattered
+by that omission, because dead coins are past losers and this book shorts past
+losers.
+
+### 2. The grid, in full — nothing dropped
+
+Net = 1.5 bps/side (Hyperliquid maker). BE = break-even fee per side.
+
+| spec | gross Sharpe | net HL | net Kraken | gross %/yr | RT/yr | BE bps | beta | alpha %/yr | alpha t | **DSR** | maxDD % |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| L14/H7 | 0.383 | 0.372 | 0.110 | 25.40 | 19.0 | 66.7 | −0.206 | 29.4 | 1.19 | 0.506 | −84.0 |
+| L14/H30 | 0.276 | 0.272 | 0.182 | 19.60 | 6.6 | 147.9 | −0.150 | 22.5 | 0.90 | 0.417 | −100.1 |
+| L14/H90 | −0.018 | −0.020 | −0.052 | 2.89 | 2.6 | 55.6 | −0.029 | 3.4 | 0.13 | 0.192 | −178.4 |
+| **L30/H7** | **0.653** | **0.647** | 0.472 | 41.90 | 13.1 | 159.6 | −0.340 | 48.6 | 1.95 | **0.732** | −49.0 |
+| L30/H30 | 0.266 | 0.263 | 0.172 | 19.02 | 6.6 | 143.8 | −0.197 | 22.9 | 0.91 | 0.409 | −60.6 |
+| L30/H90 | 0.071 | 0.070 | 0.037 | 8.21 | 2.5 | 164.0 | −0.105 | 10.3 | 0.39 | 0.253 | −111.4 |
+| L90/H7 | 0.390 | 0.385 | 0.276 | 26.40 | 8.1 | 162.2 | −0.383 | 31.5 | 1.27 | 0.515 | −77.2 |
+| **L90/H30 (primary)** | 0.304 | **0.302** | 0.247 | 20.76 | 3.9 | 265.0 | **−0.290** | 24.6 | **1.01** | **0.446** | −79.9 |
+| L90/H90 | −0.269 | −0.270 | −0.304 | −10.85 | 2.4 | 0.0 | −0.199 | −8.2 | −0.33 | 0.083 | −158.0 |
+| L180/H7 | −0.076 | −0.080 | −0.170 | −0.15 | 6.4 | 0.0 | −0.431 | 10.5 | 0.45 | 0.173 | −169.0 |
+| L180/H30 | −0.112 | −0.113 | −0.160 | −1.99 | 3.2 | 0.0 | −0.377 | 7.3 | 0.31 | 0.156 | −165.8 |
+| L180/H90 | −0.013 | −0.014 | −0.040 | 3.27 | 1.9 | 85.8 | −0.367 | 12.3 | 0.49 | 0.210 | −139.4 |
+
+Buy-and-hold BTC on the primary window (1,736 days): **+13.40%/yr, vol 51.33%,
+Sharpe 0.183**.
+
+**Consistency: 7 of 12 positive net Sharpe, median 0.167, and the sign flips
+with both parameters.** L90/H30 earns +20.8%/yr; L90/H90 loses −10.9%; every
+L180 cell is flat-to-negative. The three specifications that clear the literal
+criterion — beat BTC with deflated Sharpe above 0.5 — are **L14/H7, L30/H7,
+L90/H7: all three at the 7-day hold**. An anomaly that appears only at one
+holding period is the fitting artifact the registration named in advance. The
+best single cell, L30/H7 at net Sharpe 0.647, deflates to **0.732** against
+twelve trials — a 27% chance of being noise even before asking whether picking
+it after the fact is legitimate, which it is not.
+
+### 3. The beta control — the expected failure did not happen, and what did is worse for the hypothesis
+
+The registered concern was momentum-as-beta: a net-long book riding a rising
+market. The measured book is the opposite. **Beta to BTC is negative in every
+cell** (−0.03 to −0.43), mean net exposure at the primary is **−0.275** — the
+book is net short on average — and the up/down split runs:
+
+| primary spec | BTC trailing 30d up (872 d) | down (834 d) |
+|---|---|---|
+| annualised return | **−14.73%** | **+56.89%** |
+
+The mechanism is legible: over 2021-08 → 2026-07 most alts spent most of the
+sample below their trailing price, so trailing-sign momentum held them short
+and collected the bleed. This is not a trend-following discovery — it is a
+**short-the-alt-decline position with a long-BTC hedge missing**, earning only
+while the market fell. Alpha against BTC is positive at the primary (+24.6%/yr)
+but at **t = 1.01** it is one standard error from zero, and no cell in the grid
+reaches t = 2.
+
+### 4. Costs are irrelevant, exactly as predicted — which sharpens the failure
+
+Turnover runs 1.9–19.0 round trips a year; break-even costs run **66–265 bps a
+side** on positive-gross cells against 1.5 bps modelled (Hyperliquid) and 40
+(Kraken, longs-only bound). Cost changes the Kraken column and nothing about
+the verdict: this is the H4 pattern again — remove the cost constraint entirely
+and there is no significant edge underneath. The failure is signal
+significance, not friction.
+
+### 5. Statistical versus executable — the effect lives in the untradeable tail
+
+Of the 58-symbol matrix, **27 have a live Hyperliquid perp today**; the other
+31 include every dead coin and most of the small caps whose decline the short
+leg was harvesting. Kraken adds nothing (BTC/ETH spot, no shorts).
+
+| primary L90/H30 | full universe (58) | executable subset (27) |
+|---|---|---|
+| net HL Sharpe | 0.302 | **0.013** |
+| alpha vs BTC %/yr | 24.6 | 8.0 |
+| deflated Sharpe | 0.446 | 0.223 |
+
+**The statistical result and the executable result are different results.** On
+the symbols an order could actually reach, the strategy is indistinguishable
+from flat. The part of the book doing the earning is precisely the part that
+cannot be traded — echoing C.10, where five of twelve subscribed perps did not
+exist at the sample start, in mirror image.
+
+### 6. Verdict
+
+**FAIL against the registered bars**: primary beats BTC's Sharpe (0.302 vs
+0.183) but fails deflation (0.446 < 0.95, and < 0.5 — the literal criterion),
+fails alpha significance (t = 1.01 < 2), and fails consistency (7/12 < 8/12).
+Stated plainly, as the registration requires: **no specification beats
+buy-and-hold BTC on risk-adjusted terms with a deflated Sharpe above 0.95; the
+three that beat it with deflated Sharpe above 0.5 are all at the 7-day hold,
+deflate to noise, and evaporate on the executable subset.**
+
+The regime caveat cuts both ways and is stated: the sample contains the 2022
+collapse, the 2024 bull and the 2025–26 compression — more regime diversity
+than any tick-level stage — but the strategy's entire income arrived in
+down-trending periods, so a future without an alt bear removes even the
+insignificant effect measured here.
+
+**Data acquired this stage: none.** Everything read from C.10's archive; the
+one network touch was the cached Hyperliquid universe snapshot for the
+executability count.

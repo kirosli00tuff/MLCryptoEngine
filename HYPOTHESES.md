@@ -2,8 +2,8 @@
 
 **Read this before proposing any new strategy hypothesis.**
 
-Six strategy hypotheses have been tested and closed. `report.md` runs past
-2,200 lines across sixteen stage sections, each written for the moment it
+Seven strategy hypotheses have been tested and closed. `report.md` runs past
+2,600 lines across seventeen stage sections, each written for the moment it
 landed rather than for someone reading months later. The failure mode this file
 exists to prevent is **retrying a settled question because the number that
 closed it is buried** — nobody remembers six weeks later that BTC/ETH
@@ -122,6 +122,22 @@ This file contains no analysis. It records what other stages established.
 | **Limitations** | **Contains no bear market** — the venue launched after the 2022 drawdown, and a dollar-neutral book's price term is exactly what an untested regime moves. Delisted perps are assumed to liquidate at their last printed price; the venue settles them at an oracle price this study cannot see. |
 | **Working** | `report.md` §"Stage C.13 — cross-sectional funding carry" (2026-08-05). ADR-036, ADR-037. |
 | **What would reopen it** | **Not a better signal and not lower fees.** Two independent things would each have to change. First, **dispersion would have to widen back**: measured on a fixed cohort it fell **77%**, from a 241.50% decile spread in 2023 to **53.45%** in 2026, and the all-instruments series looks flat only because the venue kept listing wilder coins — the cross-section grew 21 → 190, and the two measures differ by 3× purely on composition. Second, and more fundamentally, **the price term would have to stop cancelling the carry**. Negative funding is compensation for holding assets that keep falling; the long and short baskets correlate **−0.718** and diverge in the costly direction. A version of this trade that hedged the cross-sectional price exposure rather than only the dollar exposure would be a different hypothesis, and would need its own test. Note also that break-even cost is **1.76 bps a side against 1.5 modelled** at 51.7× annual turnover — a 17% margin, so unlike H4 cost here is *nearly* binding and any fee change closes it. |
+
+---
+
+### H9 — Time-series momentum on daily bars
+
+> Trends persist: recent winners keep winning over horizons of weeks to months,
+> by enough to beat holding BTC on risk-adjusted terms.
+
+| | |
+|---|---|
+| **Status** | **Closed — insignificant after deflation, and untradeable where it appears** · 2026-08-06 |
+| **Deciding number** | Primary spec (L90/H30) net-of-3bps Sharpe **0.302 vs BTC buy-and-hold 0.183** — beats the benchmark, but **deflated Sharpe 0.446** against 12 registered trials, **alpha t = 1.01**, and **7/12** specs positive. The three specs clearing the literal bar (beat BTC, DSR > 0.5) are **all at the 7-day hold** — the registered fitting-artifact pattern. On the **27 executable symbols** the primary collapses to **Sharpe 0.013**. Best single cell (L30/H7, net Sharpe 0.647) deflates to **0.732**. |
+| **Sample** | C.10's universe **reused verbatim**: 60 members from 291 listed at 2021-08, 58 in matrix (LUNA splice + BTT excluded identically), **12 died in-sample**, 2021-08 → 2026-07 daily bars, universe 60 → 48 over the window. Contains the 2022 collapse, 2024 bull, 2025–26 compression. |
+| **Limitations** | The measured book is **net short (−0.275 mean exposure) with negative beta in every cell** (−0.03 to −0.43), earning **+56.9%/yr in down-trending periods against −14.7%/yr in up** — a short-alt-decline position, not trend discovery. Its income requires an alt bear market to exist. |
+| **Working** | `report.md` §"Stage C.16 — time-series momentum" (2026-08-06). ADR-041. Bars pre-registered in commit 88b69d8. |
+| **What would reopen it** | **Not lower fees** — break-even costs run **66–265 bps a side** against 1.5 modelled, so cost was never within two orders of magnitude of binding (the H4 pattern). Reopens only if, on data that includes a full bear regime, **at least half the registered grid** beats buy-and-hold BTC risk-adjusted with **deflated Sharpe ≥ 0.95**, **and** the effect survives on the executable subset — the full-universe result is dominated by shorting coins that no reachable venue lists. A single cell clearing any bar reopens nothing; the grid was registered precisely so one cell cannot. |
 
 ---
 

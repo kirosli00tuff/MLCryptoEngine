@@ -1810,3 +1810,47 @@ bar. It is recorded because the value of stating such a rule in advance is
 precisely that it binds results not yet seen — and C.10's look-ahead defect,
 which produced the highest-ranked result in that study, is what happens without
 one.
+
+## ADR-041: A parameter grid is registered whole, and the benchmark is the dominant beta, not zero
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+**Context.** Time-series momentum has two free parameters, lookback and holding
+period. Testing a 6×6 grid and reporting the best cell is the same artifact
+C.10's false-discovery correction existed to catch — 36 draws from noise
+produce an impressive maximum reliably. And a momentum book in a crypto sample
+is presumed to be market beta wearing a signal's name until shown otherwise:
+beating zero in a market that rose is not evidence of anything.
+
+**Decision.** Any strategy study with free specification parameters, in this
+project, does all of the following, fixed **before** any result is computed and
+committed to progress.md so the order is provable:
+
+- **The grid is registered whole and reported whole.** Every cell appears in
+  the report; no cell may be promoted after the fact. A **primary
+  specification** is named in advance and the pass bars are judged on it.
+- **The deflated Sharpe corrects for the grid size**, using C.10's estimator
+  (`research.pairs.validation.deflated_sharpe`) with n_trials equal to the
+  registered cell count and the dispersion measured across the cells searched.
+- **Consistency outranks the best cell.** A result that appears at one
+  lookback or one holding period is a fitting artifact by prior declaration,
+  whatever its own numbers say.
+- **The benchmark is buy-and-hold of the dominant beta asset on the identical
+  window, risk-adjusted** — for this project's universes, BTC — never zero.
+  Alpha and beta from daily OLS, plus the up/down-trend split (C.11's 30-day
+  convention), are reported so a beta book is named as one.
+- **The statistical universe and the executable universe are reported
+  separately.** A result carried by symbols no reachable venue lists is a fact
+  about history, not a strategy.
+
+**Consequences.** C.16 is the first full application, and the controls earned
+their keep in an unexpected direction. The anticipated failure was
+momentum-as-long-beta; the measured book was **net short with negative beta in
+every cell**, earning only in down-trending periods — the control caught a
+disguise the registration had not imagined, which is what a control is for.
+The grid rule then did the closing: the only cells beating BTC clustered at a
+single holding period, the best deflated to 0.732 against twelve trials, and
+the primary to 0.446. And the executable-subset rule showed the residual
+effect living entirely in coins that cannot be traded. Three separate
+disciplines, each of which would have been easy to skip, each of which changed
+the conclusion a naive read would have reached.

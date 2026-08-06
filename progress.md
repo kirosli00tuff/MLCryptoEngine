@@ -1875,3 +1875,39 @@ annualised √365. Benchmark window is identical to the strategy's scored window
   Break-even cost per spec = gross P&L / notional traded, per side, as C.10
   ranked. Executable subset = universe members with a live Hyperliquid perp
   today; the statistical result and the executable one are reported separately.
+
+## 2026-08-06 — Stage C.16: time-series momentum on the daily archive
+
+**Closed as H9: FAIL against the pre-registered bars (commit 88b69d8). The
+seventh straight closure, bought for zero new data.**
+
+- **Task 1 — universe reused, not rebuilt.** C.10's cache loaded verbatim: 60
+  members, 58 in matrix, **identical exclusions reproduced** (LUNAUSDT splice,
+  BTTUSDT 170 < 200 obs), **12 deaths in-sample**, each a charged forced exit.
+  Universe 60 → 48 live over 2021-08 → 2026-07. A missing cache is an error,
+  never a rebuild — momentum shorts past losers, and dead coins are past
+  losers, so survivorship bias flatters exactly this strategy.
+- **Task 2 — the grid, whole.** 12 registered specs, all reported. Consistency
+  **7/12 positive net Sharpe, median 0.167**, sign flipping with both
+  parameters. The three specs beating BTC with DSR > 0.5 (L14/H7, L30/H7,
+  L90/H7) sit **all at the 7-day hold** — the registered artifact pattern. Best
+  cell L30/H7 net Sharpe 0.647 → **DSR 0.732** after 12 trials. Primary
+  L90/H30: net 0.302 vs BTC 0.183, **DSR 0.446, alpha t 1.01**.
+- **Task 3 — the control caught the opposite disguise.** Expected long-beta;
+  measured **negative beta in every cell** (−0.03..−0.43), mean net exposure
+  **−0.275**, returns **+56.9%/yr in down-trends vs −14.7% in up**. The book is
+  a short-alt-decline position whose income requires an alt bear market. Not
+  beta in disguise — anti-beta, and still insignificant.
+- **Task 4 — cost irrelevant, as predicted.** 1.9–19 round trips/yr;
+  break-even **66–265 bps/side** vs 1.5 modelled. The H4 pattern: cost removed,
+  no significant edge underneath. **Executable subset: 27 of 58** have a live
+  Hyperliquid perp; primary on them collapses to **Sharpe 0.013** — the effect
+  lives in the untradeable tail. Kraken adds nothing (BTC/ETH spot, no shorts).
+- **Verdict, stated plainly:** no specification beats buy-and-hold BTC
+  risk-adjusted with deflated Sharpe ≥ 0.95; the literal-criterion trio
+  deflates to noise and cannot be executed. H9 reopens only on ≥ half the grid
+  clearing DSR ≥ 0.95 vs BTC **on the executable subset** with a full bear
+  regime in sample — never on fees.
+- ADR-041 (grids registered whole; benchmark is the dominant beta, not zero).
+- `make lint`, `make typecheck`, `make test` clean — **300 tests**, 10 new. All
+  three recorders alive throughout; nothing bought.
