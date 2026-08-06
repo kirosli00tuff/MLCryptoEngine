@@ -2067,3 +2067,66 @@ by decision on 2026-08-06.**
   account API in Stage 1 by design). Changed no verdict.
 - Nothing purchased. `make lint`, `make typecheck`, `make test` clean — **311
   tests**, 10 new. All three recorders alive and writing throughout.
+
+## 2026-08-06 — Stage C.18: thin-perp census bars, registered before the data exists
+
+**This registration is the stage's first commit, written before any C.18 code.
+The scored window has not yet closed; the ten thin instruments have not been
+read and stay untouched until the census runs. The 2026-08-10 answer will be
+read against these bars, which predate it — the C.16/C.17 discipline applied
+to the sole remaining open register entry, H6.**
+
+### Scored window
+
+**2026-08-04T00:00Z → 2026-08-11T00:00Z**, validated coverage only. The window
+is never extended to chase significance; "not significant in this window" is an
+outcome, not a reason for a longer window.
+
+### Per-instrument economics bar
+
+**Time-weighted captured spread at trade-time spread state, minus the signed
+adverse mid move after aggressor trades at 1 s, 5 s, and 60 s, minus 3.0 bps
+round trip** (Hyperliquid base-tier maker, `config/venues.yaml`, verified
+2026-08-01) — with the **95% confidence interval lower bound above zero at the
+worst of the three horizons**. An instrument passes on its worst horizon or
+not at all.
+
+### Multiplicity, sample floor, robustness, capacity
+
+- **Benjamini–Hochberg across the ten thin instruments at q = 0.10.** Expected
+  false positives ≤ 0.1 × (number of discoveries); at the maximum ten
+  discoveries that is **one expected false positive**, stated now so a single
+  survivor is read with that number beside it.
+- **Sample floor: ≥ 300 aggressor trades** per instrument in the window for
+  the adverse estimate. Below the floor the instrument is declared **too thin
+  by prior declaration** — never stretched, never pooled.
+- **Robustness: the effect must hold in both halves of the window
+  independently** (each half's point estimate positive at the worst horizon).
+  Thin-perp income is episodic; one spike is not an edge.
+- **Capacity tier for any survivor: ≥ 150 trades/day AND ≥ 100,000 USD median
+  daily volume** to count as tradeable capacity. Otherwise it lands in the
+  **positive-but-rare** bucket, whatever its per-trade economics.
+
+**The whole measure is an upper bound**, stated plainly: every quote is
+credited with a fill it has not earned. Queue position, fill probability and
+the adverse conditioning of *which* quotes fill are all unmodelled here and
+all point the same direction — down.
+
+### Outcome-to-action map, fixed now
+
+| outcome | action |
+|---|---|
+| all ten instruments fail | **H6 closes**; the register's closing summary updates to **zero open items** |
+| survivors below the capacity tier | report the fill-frequency arithmetic and **stop** |
+| survivors within noise of zero | **extend recording 30 days and re-run under these same bars** — no building |
+| survivors clearing everything | the result becomes the **input to a D.1 fill-simulation decision, not a strategy** |
+
+### Machinery rule for this stage
+
+**Compute nothing from the thin-tail instruments.** The census pipeline is
+validated exclusively on BTC and ETH — whose answer C.9 already closed — by
+reproducing C.9's net figures (**BTC −3.05, ETH −2.75 bps**) on C.9's own
+window (2026-08-01 → 08-03) to within **0.5 bps**. A pipeline that cannot
+reproduce the closed answer does not get to produce the open one. The planted
+canary and prefix-invariance disciplines apply to this pipeline as to every
+other (ADR-040).
