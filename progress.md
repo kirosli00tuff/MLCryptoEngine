@@ -2415,3 +2415,34 @@ indexer-dependent features has not cleared it.
   held). `behavior_c24.csv` + `hard_rug_scorer.txt` persisted, regenerable.
   Recorders alive; census window not read. ADR-051/052 appended. **347 tests**
   (+10: behaviour + scorer); make lint / typecheck / test all green.
+
+## 2026-08-07 — Stage C.25 complete: the post-launch positive survives unbiasing, halved, in the mid-activity stratum
+
+- **Method B lifts the from-now pagination wall** (ADR-053). Resolve T0+X to a
+  slot (getBlockTime binary search) → seed sig (getBlock) →
+  `getSignaturesForAddress(before=seed)`: depth-independent (~33 credits/pool),
+  **Jaccard 1.0** vs the from-now walk, reaches deep pools the walk cannot. An
+  unbiased Solana launch-window sample is affordable for the first time.
+- **The C.24 bias was large:** Task 2 measured **57% of honest pools deep**
+  (>40 pages); the 40-page selection excluded the majority. From-now
+  reach-complete ~22k credits (unaffordable); **lifetime is a poor depth proxy**
+  (activity-driven), so the correction is a random draw, not a lifetime filter.
+- **The positive survives, halved:** random-draw Method-B corrected sample (+120
+  honest, 96 reached), 6h v0 lift **+0.047** vs C.24's biased v0 +0.115.
+- **Where the lift lives (the stage's question):** the decomposition inverts
+  C.24 — the **high-activity extreme lift collapses (+0.156 → +0.015**, a
+  reachability artifact), the **mid-activity stratum holds (+0.051)**, meeting the
+  pre-registered genuine-discrimination bar (>0.02 and ≥ half overall). Marginal
+  (~0.8 SE). Not a restatement of the obvious extremes — real, small discrimination
+  in the hard middle. C.24 drivers hold (max_gap, time_since_last, rate_decay, err_fraction).
+- **Registered honesty deviation, measured cause:** decon needs 30-day
+  insider-sell detail, unaffordable at unbiased scale (the Task 2 wall in the
+  label) → bar on **v0** (affordable unbiased label), decon on the C.24 overlap
+  only. Correcting the honest class raised the base rate, so per-stratum lift is
+  the honest metric.
+- **Register:** HYPOTHESES D2 updated — survives depth-unbiasing, mid-stratum,
+  marginal; reopening is now a **sampling** problem (Method B), not access. Census
+  H6 remains the sole open alpha item. ADR-053 appended; report.md §C.25 written.
+- **Budget:** 5,649 / 60,000 remaining, cap **NOT** raised (C.22-once held through
+  C.23/24/25). `behavior_c25.csv` persisted, regenerable via Method B. Recorders
+  alive; census window (2026-08-11) not read. 347 tests; make lint/typecheck/test green.

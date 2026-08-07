@@ -2161,3 +2161,42 @@ one. The strict ``<`` bound was chosen deliberately over ``<=`` and is pinned by
 ``test_no_feature_incorporates_activity_after_the_cutoff``, which planted a
 100-signature burst at exactly the cutoff and caught the inclusive bound before
 any data was spent.
+
+## ADR-053: Depth-independent retrieval (Method B) and stratifying the lift by activity
+
+**Date:** 2026-08-07 · **Status:** accepted
+
+**Context.** C.24's 6h positive rested on C.23's pool set, which the from-now
+`getSignaturesForAddress` pagination selects for shallow total history — a pool
+too deep to walk from now within the page cap is silently excluded. C.25 Task 2
+measured that exclusion at **57% of the honest class** (mean 73.6 pages/pool to
+reach T0; a reach-complete from-now sample ≈ 22,000 credits, unaffordable). The
+lift could therefore be an artifact of *which* honest pools were reachable rather
+than a property of the honest class.
+
+**Decision.** Two moves. (1) **Method B, a depth-independent retrieval path:**
+resolve T0+X to a slot by binary-searching `getBlockTime`, take a seed signature
+from that slot via `getBlock`, then `getSignaturesForAddress(pool, before=seed)`
+pulls the window directly at cost O(window), not O(history). Correctness is
+checked, not assumed — the window signature set matches the from-now walk at
+**Jaccard 1.0** on every pool where both reach, the C.22 rule. (2) **Correct the
+selection by a random draw, not a lifetime filter** (Task 2 measured lifetime a
+poor depth proxy — depth is activity-driven), and **decompose the test fold by
+activity at the cutoff** into terciles, judging the mid-activity stratum against
+a rule registered before the strata were seen: genuine discrimination requires
+the mid lift > 0.02 and ≥ half the overall lift.
+
+**Consequences.** Method B works and is cheap (**~33 weighted/pool, depth-
+independent**), reaching pools the from-now walk cannot — the from-now wall that
+shaped C.23–C.24 is lifted, and an unbiased Solana launch-window sample is
+affordable for the first time. On the corrected sample the C.24 lift **halved**
+(6h v0 +0.115 → +0.047): half of it was the reachability bias. The decomposition
+showed the **high-activity extreme lift collapsing (+0.156 → +0.015)** — the
+stratum that carried C.24's headline was a selection artifact — while the
+**mid-activity stratum held (+0.051)**, meeting the registered bar but marginal
+(~0.8 SE). Decontaminated labels do not fit the unbiased sample (30-day
+insider-sell detail, the Task 2 wall in the label), so the corrected bar runs on
+v0 with decon on the overlap only. The honest reading: the post-launch signal is
+real and lives in the hard middle, but smaller and less certain than C.24
+implied, and firming it is now a sampling problem the budget can address rather
+than an access problem.

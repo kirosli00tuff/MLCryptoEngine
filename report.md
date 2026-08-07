@@ -3732,3 +3732,118 @@ look healthy at 6h and later slow-rug — or only at the easy extremes.
    remaining, the shortfall and the cap it would need are reported **as a
    finding** (the C.15/C.19 pattern), and Tasks 3–5 run on the largest unbiased
    subsample the budget supports.
+
+## Stage C.25 results — the positive survives unbiasing, weaker, and lives in the middle — 2026-08-07
+
+C.24's lift was real but **half of it was the reachability bias**. On a
+depth-unbiased sample the 6h behavioural lift survives and clears, at roughly
+half C.24's magnitude, and — the point of the stage — the surviving signal is in
+the **mid-activity stratum**, not the easy extremes. The high-activity extreme,
+which carried C.24's headline, collapses when the selection is corrected.
+
+### 1. Retrieval method (Task 1) — a depth-independent path exists
+
+The wall was that `getSignaturesForAddress` paginates backward from *now*, so cost
+scales with a pool's whole history. **Method B** removes it: resolve T0+6h to a
+slot by binary-searching `getBlockTime`, take a seed signature from that slot via
+`getBlock`, then `getSignaturesForAddress(pool, before=seed)` pulls the window
+directly. Measured on 6 pools: **`before` accepts a foreign signature**, and the
+window signature set matches the C.24 from-now walk at **Jaccard 1.0** on every
+pool where both reached — a cheaper method returning the *same* history, the C.22
+correctness bar. Cost is **~24–64 weighted per pool regardless of depth** (mostly
+the `getBlockTime` search), and Method B **reaches the deep pools the from-now
+walk cannot** (two probe pools unreached at 60 pages were retrieved at ~27–48).
+The alternatives do not help: the enhanced-tx endpoint anchors only on
+signatures (no slot/time bound), and `getSignaturesForAsset` errors ("Tree not
+found") — it serves compressed assets, not fungible pool tokens.
+
+### 2. The missing population's cost (Task 2)
+
+14 random honest-2024 pools walked from now to a 150-page ceiling: **8 of 14 are
+deep** (> 40 pages or unreached), so C.24's 40-page selection excluded a **57%**
+majority of the honest class. Mean cost **73.6 pages/pool**; a 300-pool
+reach-complete sample by the old method is **~22,000 credits against 9,561
+remaining — it does not fit.** Method B at ~33/pool does. And **lifetime is a poor
+depth proxy** — a 162-day pool took 4 pages, a 17-day pool hit the 150-page
+ceiling — so depth is driven by *activity*, not age, and the corrected sample is
+drawn at random rather than filtered on lifetime.
+
+### 3. The corrected sample (Task 3)
+
+120 honest pools drawn at random (no reachability or lifetime filter), retrieved
+via Method B, **96 reached** and joined C.24's 281 → 258 honest + 119 hard-rug.
+The random draw spans the true activity range the old sample truncated (new-pool
+6h transaction counts run 0 to **38,455**, e.g. one pool with 33,293 in its first
+six hours — unreachable in C.24). Honest pools with > 1,000 window transactions
+rise from 53/162 to 80/258.
+
+**A registered honesty deviation, with a measured cause.** Decontaminated labels
+need insider-sell detail over a 30-day horizon — the ~100x-dearer enhanced class
+over a month of history — which does not fit the budget at unbiased scale (the
+same wall as Task 2, in the label rather than the sample). So the corrected-sample
+bar runs on **v0 labels** (honest_candidate vs hard_rug), the affordable unbiased
+label; decon is reported only on the C.24 overlap for continuity. Correcting the
+honest class's depth also raised the honest base rate (only honest pools were
+added), so the honest metric here is the **per-stratum lift**, which controls for
+it, not the absolute or overall figure.
+
+### 4. The bar and the decomposition (Task 4)
+
+Behavioural features, 6h primary, registered split, v0 on the full corrected
+sample (decon on the overlap only):
+
+| cutoff | label / sample | precision | base | **lift** | clears |
+|---|---|---|---|---|---|
+| 6h | v0, corrected | 0.822 | 0.775 | **+0.047** | yes |
+| 6h | decon, overlap (C.24 replay) | 0.654 | 0.557 | +0.096 | yes |
+| 24h | v0, corrected | 0.893 | 0.841 | +0.052 | yes |
+
+The corrected v0 lift (**+0.047**) is roughly **half** C.24's v0 lift (+0.115):
+the reachability bias inflated the C.24 figure. The decomposition, test fold split
+by 6h transaction count into terciles (bounds 63 / 917 tx), against the same split
+on C.24's biased sample, locates where:
+
+| 6h v0 stratum | biased (C.24) lift | **unbiased (C.25) lift** |
+|---|---|---|
+| low activity | +0.098 | +0.044 |
+| **mid activity** | +0.045 | **+0.051** |
+| high activity | +0.156 | **+0.015** |
+
+**The high-activity extreme lift collapses (+0.156 → +0.015)** — a saturated,
+near-all-honest stratum (base 0.857) with no headroom, and the stratum that
+carried C.24's headline. **The mid-activity stratum holds (+0.051).** By the
+rule registered before the strata were seen — genuine discriminating power
+requires the mid lift **> 0.02 and ≥ half the overall lift** (0.0235) — the mid
+result **qualifies: +0.051 clears both.** It is the only stratum whose lift
+survives the correction. So the behavioural signal is **not** merely restating
+the obvious (dead pools rug, thriving pools survive): there is discrimination
+among the moderate-activity pools, the ones that look plausible at 6h and later
+slow-rug.
+
+The honesty the finding needs: the mid-stratum lift is **marginal** — +0.051 at
+n=84 (64 honest) is ~0.8 SE, its confidence interval includes zero, so it meets
+the pre-registered threshold rule but is not statistically firm. And it is a **v0**
+result; the decon-unbiased test the registration named is blocked by the 30-day
+detail cost. **The C.24 drivers hold** on the corrected sample —
+`max_gap_s` (156), `time_since_last_at_cutoff_s` (132), `rate_decay` (120),
+`err_fraction` (98) lead, `n_tx` (47) below them — the model reads activity
+*continuity and health*, not raw volume, which is why the raw-volume extreme is
+not where the durable lift lives.
+
+### 5. Verdict, against the pre-registration
+
+**The C.24 positive survives the unbiased sample by the registered criterion**
+(6h v0 clears 0.60 at recall ≥ 0.5, lift +0.047 > 0.02), and **survives in the
+hard middle** by the registered interpretation rule (mid-stratum lift +0.051 >
+0.02 and ≥ half the overall). But it survives **smaller and more honestly**: at
+half C.24's magnitude, with the high-activity extreme that dominated C.24 shown
+to be a reachability artifact, and the surviving mid-stratum effect marginal at
+this sample size and measured on v0 because decon does not fit the budget
+unbiased. The stage's methodological output is durable regardless: **Method B
+lifts the from-now pagination wall**, so an unbiased Solana launch-window sample
+is affordable for the first time, at ~33 credits/pool.
+
+Budget: **5,649 of 60,000 remaining, cap not raised** (C.22-once held through
+C.23/C.24/C.25). Behavioural matrix persisted to `behavior_c25.csv`, regenerable
+via Method B from the immutable SolRPDS snapshots; recorders untouched; census
+window (2026-08-11) not read.
