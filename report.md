@@ -3543,3 +3543,139 @@ conditioning above accounted for. It does **not** reopen on a better model or a
 richer on-chain feature set at the cutoffs tested — C.23 and C.24 together would
 have eliminated capacity, sample, features, and threshold, which is the
 signal-absent closure, not the cost-bound one.
+
+## Stage C.24 results — post-launch behaviour is a qualified positive at 6h+; the hard-rug scorer ships — 2026-08-07
+
+The pre-registration above expected a negative. The result is not: at the 6-hour
+and 24-hour cutoffs the honest bar **clears**, so by the letter of the registered
+end condition the detection track does **not** close as "boundary absent". The
+clearing is real but heavily qualified, and the qualifications are the finding.
+
+### 1. Cost probe (Task 1) — two premise corrections, measured
+
+**Signature metadata carries no signer.** `getSignaturesForAddress` returns
+`{signature, slot, err, memo, blockTime, confirmationStatus}` and nothing else,
+so the prompt's "unique signers" and "share of activity from launch-window
+addresses" are **not** in the cheap class — they need enhanced detail at 10
+weighted / 100 sigs against 1 / 1,000, ~100x dearer, which 14,029 credits cannot
+fund at scale. The behavioural features are therefore the ones signature metadata
+supports: counts, arrival rate, decay, burst spread, inter-arrival gaps,
+quiet-time at the cutoff, and failed-transaction share.
+
+**The walk cost correlates with the label.** `getSignaturesForAddress` paginates
+backward from *now*, so reaching a 2024 launch costs O(the pool's full history).
+Probed on 20 pools: all 5 hard rugs reached T0 in 1–4 pages (they died young →
+shallow), while **only 10 of 15 honest pools reached within 100 pages** (median
+10.5 for reachers); the 5 unreachable were the high-activity survivors. A
+truncated walk yields *corrupted* window features (the earliest signatures are
+missing), so non-reachers must be dropped — biasing the honest class toward
+*faded* pools and depleting it of thriving survivors. This bias is **conservative**
+for the bar attempt: a faded honest pool looks rug-like behaviourally, so it
+depresses, never inflates, measured separation.
+
+The sweep therefore ran over C.23's 281 already-reachable, decon-labelled pools
+(one walk per mint, all three nested cutoffs), which reach cheaply (median **3
+pages**, 100% reached, 2,157 credits) and carry decon labels the signature class
+cannot recompute. That inherits C.23's 40-page reachability selection — the same
+conservative faded-honest skew, stated not hidden.
+
+### 2. Population accounting (Task 2) — survivor-conditioned, and the base rate moves
+
+Each cutoff scores only pools alive at it; a hard rug whose event precedes the
+cutoff is excluded (not alive at X). As the cutoff lengthens, more hard rugs are
+excluded and the retained population shifts honest:
+
+| cutoff | retained | excluded (prior event) | honest (decon) | rug/other | test-fold honest base rate |
+|---|---|---|---|---|---|
+| 1h | 276 | 5 | 141 | 135 | 0.513 |
+| 6h | 256 | 25 | 141 | 115 | 0.557 |
+| 24h | 231 | 50 | 141 | 90 | **0.630** |
+
+**This is the pre-registered non-comparability (ADR-051) biting concretely.** At
+24h the honest base rate (0.630) **exceeds the 0.60 bar**, so a classifier that
+does nothing clears it. Precision across cutoffs is therefore not comparable, and
+the honest metric is **lift over the base rate**, not the absolute figure. The
+absolute bar, registered before this was visible, is partly compromised by
+conditioning — a limitation of the pre-registration, recorded as such.
+
+### 3. The bar at each cutoff (Task 4) — behaviour clears at 6h+, modestly
+
+LightGBM, no search, registered split (train ≤2023 / test 2024), honest
+(decontaminated) class, precision at the max-precision point with recall ≥ 0.5:
+
+| cutoff | feature set | precision | recall | base | **lift** | clears |
+|---|---|---|---|---|---|---|
+| 1h | behavioural | 0.544 | 0.52 | 0.513 | +0.03 | no |
+| 1h | launch (C.23) | 0.592 | 1.00 | 0.513 | +0.08 | no |
+| **6h** | **behavioural** | **0.654** | 0.53 | 0.557 | **+0.097** | **yes** |
+| 6h | launch | 0.617 | 0.81 | 0.557 | +0.060 | yes |
+| 24h | behavioural | 0.731 | 0.51 | 0.630 | +0.101 | yes* |
+| 24h | launch | 0.680 | 0.90 | 0.630 | +0.050 | yes* |
+
+*24h clears are base-rate-inflated (base > bar). **The clean evidence is 6h**,
+where the base rate (0.557) is still below the bar: behavioural features reach
+0.654 at recall 0.53, a **+0.097 lift** that clears non-trivially, where launch
+state alone reaches 0.617.
+
+Three things make the behavioural signal real rather than an artifact of
+conditioning:
+
+- **Behaviour beats launch at matched population** — same pools, same base rate:
+  0.654 vs 0.617 (6h), 0.731 vs 0.680 (24h). And `launch+behavioural` (0.620,
+  0.704) does **not** beat `behavioural` alone (0.654, 0.731): launch concentration
+  is not adding to behaviour, behaviour is **displacing** it as the carrier.
+- **It concentrates honest pools at high scores.** Behavioural clears at recall
+  ~0.5 (selective), where launch clears only by riding the base rate at recall
+  0.8–0.9. Selective high precision is signal; near-total recall at base-rate
+  precision is not.
+- **The drivers are mechanistic and stable:** `max_gap_s`, `time_since_last_at_cutoff_s`,
+  `n_tx`, and at 24h `err_fraction` — a pool that goes quiet, gaps out, or spews
+  failed transactions is more rug-like. Signal grows monotonically with the
+  window (1h fails, 6h and 24h clear), exactly as a post-launch divergence should.
+
+Honest limits on the positive: the lift is **marginal** (~+0.10 at n_test honest
+97 → roughly 1.8 SE above base); it is only modestly above C.23's launch-state
+lift of +0.074 (the base-rate rise does most of the work crossing 0.60); the
+sample carries the conservative faded-honest skew; and 18 cells were scored
+(3 cutoffs × 3 sets × 2 labels), though the positive is coherent across 6h, 24h,
+both label versions, and the behaviour-beats-launch comparison rather than one
+lone cell. The v0 (raw-label) results tell the same story one base-rate higher
+(behavioural 0.788 @ 6h, 0.868 @ 24h), with launch-only v0 at 1h hitting 1.000
+precision at recall 0.50 — the easy hard-rug separation, unchanged from C.23.
+
+### 4. The deliverable (Task 5) — a hard-rug scorer, with the direction corrected
+
+C.23's headline "0.984 precision at 0.538 recall" is, on measurement, the
+**honest-clearance** direction, not a hard-rug alarm: packaged as a P(hard_rug)
+*flag*, the hard-rug class scores only **0.464** precision (honest pools also
+launch concentrated, so a high score is a weak warning). `research/detection/scorer.py`
+therefore ships the working direction — a *low* score **clears** a pool as
+not-a-hard-rug at **0.984 precision, covering 0.538 of honest pools** — persisted
+via `train_scorer.py` (regenerable from the immutable SolRPDS snapshots), tested,
+and documented with its scope and the ~99%-scam wild base rate so an output
+cannot be read as a general safety guarantee. It detects hard rugs; the soft/slow
+boundary is the one §3 partially recovers post-launch, not this scorer.
+
+### 5. Verdict, against the pre-registered end condition
+
+**A cutoff cleared the honest bar above the noise floor (6h: 0.654 ≥ 0.60, lift
++0.097 > 0.02), so the registered negative branch does not fire.** The honest-
+versus-slow-rug boundary is **not absent** from on-chain behaviour once a post-
+launch window is observed — early trading behaviour recovers a modest, real signal
+that launch-window state (C.23) could not. That is the first substantive positive
+the detection track has produced beyond hard-rug detection, and it inverts C.24's
+own pre-registered expectation.
+
+It is a **qualified** positive, and the qualifications travel with it: the
+absolute clearing is inflated by survivor conditioning (at 24h the base rate
+already exceeds the bar); the defensible signal is a ~+0.10 lift, marginal at this
+n and only modestly above C.23's launch lift; and the measured sample is
+conservatively biased toward faded-honest pools. What would make it load-bearing:
+an **unbiased, reach-complete sample** at the 6–24h cutoffs — which the from-now
+pagination wall (§1) makes costly, since the thriving survivors that would
+complete the honest class are exactly the pools too deep to walk affordably.
+
+Budget: **11,008 of 60,000 remaining, cap not raised** (the second-raise rule
+held). Behavioural matrix persisted to `behavior_c24.csv` and the scorer to
+`hard_rug_scorer.txt`, both regenerable; recorders untouched; census window
+(2026-08-11) not read.

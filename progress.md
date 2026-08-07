@@ -2379,3 +2379,39 @@ indexer-dependent features has not cleared it.
   C.22's non-persistence gap), regenerable from immutable snapshots.
 - Recorders untouched; census window (2026-08-11) not read. 337 tests
   (+4 creator), ruff + mypy clean. ADR-050 appended; report.md §C.23 written.
+
+## 2026-08-07 — Stage C.24 complete: post-launch behaviour is a qualified positive at 6h+; hard-rug scorer shipped
+
+- **The result inverts the pre-registration.** C.24 expected the honest boundary
+  absent post-launch too; instead behavioural features **clear the bar at 6h**
+  (decon precision 0.654 @ recall 0.53 vs 0.557 base, lift +0.097) and 24h
+  (0.731), beating launch state at matched population. **The registered end
+  condition's negative branch does NOT fire** — a cutoff cleared above the noise
+  floor, so the boundary is not recorded as absent.
+- **Qualified, and the qualifications are the finding:** the absolute clear is
+  base-rate-inflated by survivor conditioning (24h base 0.630 > 0.60 bar), so the
+  defensible signal is the **~+0.10 lift** — marginal (~1.8 SE), only modestly
+  above C.23's +0.074 launch lift; and the sample is conservatively biased toward
+  faded-honest pools (from-now pagination can't afford thriving survivors).
+  Behaviour **displaces** launch concentration (behavioural-only ≥ launch+beh).
+- **Task 1 cost probe, two premise corrections:** `getSignaturesForAddress`
+  carries **no signer** (signer features need ~100x-dearer detail → signature
+  level only); the from-now walk is O(full history), so **cost correlates with
+  the label** (hard rugs shallow, survivors deep) — a measured reachability wall.
+- **Task 5 deliverable, direction corrected:** the "0.984/0.538" is honest
+  **CLEARANCE**, not a hard-rug alarm (0.464). Ships as a clearance scorer
+  (`scorer.py` + `train_scorer.py`), persisted + regenerable + scope-documented.
+- **Leakage-first (Task 3):** `behavior.py` + canary/prefix/no-activity-after-X
+  green before the first real feature; strict `< cutoff` bound (a planted burst
+  at exactly the cutoff caught the inclusive bound).
+- **Register:** HYPOTHESES gains a Detection-track section — **D1** hard-rug
+  clearance (shipped), **D2** honest boundary (absent at T0, qualified positive
+  post-launch, open for confirmation). Census H6 remains the sole open alpha item.
+- **Robustness:** the first monolithic sweep was killed holding all pools' sigs
+  in memory; refactored to a **streaming, resumable** walker (checkpoint per pool,
+  sigs discarded) — the 14 GiB-box rule. Also fixed 5 pre-existing ambiguous-minus
+  / pairwise lint violations (C.9/C.17 files) so `make lint` is repo-green.
+- **Budget:** 11,008 / 60,000 remaining, cap **NOT** raised (second-raise rule
+  held). `behavior_c24.csv` + `hard_rug_scorer.txt` persisted, regenerable.
+  Recorders alive; census window not read. ADR-051/052 appended. **347 tests**
+  (+10: behaviour + scorer); make lint / typecheck / test all green.

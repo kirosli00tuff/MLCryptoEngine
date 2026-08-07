@@ -2104,3 +2104,60 @@ carrier is unchanged, and creator history adds a rank-2 train-fit that does not
 pay out on test. Continuation past this point requires leaving the pre-event
 on-chain feature space entirely — a different tool than the one registered under
 ADR-044.
+
+## ADR-051: Survivor-conditioned observation is the correct framing, and its reconstruction cost correlates with the label
+
+**Date:** 2026-08-07 · **Status:** accepted
+
+**Context.** C.24 tests whether early *post-launch* behaviour separates what
+launch state cannot. Observing to a cutoff T0+X means only pools alive at X can
+be scored, and each cutoff conditions a different population (C.20: 58.5% of hard
+rugs survive past 24h). Two ways to mishandle this: treat the conditioning as a
+defect to be corrected, or compare precisions across cutoffs as if the
+populations were the same.
+
+**Decision.** State the question **conditionally** — *given a pool alive at
+T0+X, does it rug afterward?* — because that is exactly what a live tool faces.
+Per cutoff, report the population (retained, excluded-for-prior-label-event,
+class balance); do not present precision at one cutoff as comparable to another.
+A pool whose walk does not reach T0 within the page cap yields **truncated,
+corrupted** window features (the earliest signatures are missing), so it is
+dropped, not modelled on partial data.
+
+**Consequences.** C.24's probe measured the access asymmetry that makes this more
+than bookkeeping: ``getSignaturesForAddress`` paginates backward from *now*, so
+reaching a 2024 launch costs O(the pool's full history). Hard rugs are shallow
+(they died young → 1–4 pages) and honest survivors are deep; ~2/3 of honest pools
+reach T0 within 100 pages (median ~10) but the unreachable third are the
+high-activity pools. **Reconstruction cost therefore correlates with the label**
+— the affordable honest sample is biased toward *faded* pools and depleted of
+thriving survivors. Every C.24 behavioural result is reported on reached pools
+with that selection stated, never as an unbiased population estimate; the bar
+outcome and its per-cutoff populations are recorded in the C.24 report.
+
+## ADR-052: The cutoff leakage rule — features strictly before X, X strictly before the label event
+
+**Date:** 2026-08-07 · **Status:** accepted
+
+**Context.** A post-launch observation window is exposed to two distinct
+look-aheads: activity occurring *after* the cutoff leaking into a feature, and a
+label event falling *inside* the window (scoring a pool on data that includes its
+own rug). C.21 and C.23 wired their launch-window guards before the first real
+feature; the cutoff pipeline gets the same treatment.
+
+**Decision.** Every behavioural feature reads strictly signatures with
+``blockTime < cutoff`` — a transaction at exactly T0+X is *at* the cutoff, not
+before it, and is excluded. :func:`behavior.cutoff_end` refuses a pool whose
+hard-rug event is at or before the cutoff (``label_event <= T0+X``): that pool is
+not alive at X and is excluded, never clamped in. The leakage suite —
+canary/refusal, prefix-invariance, and an explicit "a burst dropped after X moves
+no feature" test — is green before the first real behavioural feature is
+computed.
+
+**Consequences.** ``research/detection/behavior.py`` shipped tested against
+synthetic histories while the sweep had fetched nothing, so the first real
+feature was born into a green leakage discipline rather than retrofitted with
+one. The strict ``<`` bound was chosen deliberately over ``<=`` and is pinned by
+``test_no_feature_incorporates_activity_after_the_cutoff``, which planted a
+100-signature burst at exactly the cutoff and caught the inclusive bound before
+any data was spent.

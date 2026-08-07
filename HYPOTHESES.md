@@ -5,8 +5,10 @@
 **The alpha search concluded by decision on 2026-08-06** (C.17, bars and end
 condition pre-registered in commit 370ba41 before any data). Eleven entries
 stand: nine tested and closed, one untestable on available data (H10), one
-closed by the decision itself (H7). **The census (H6) is the sole remaining
-open item.** `report.md` runs past 2,850 lines across nineteen stage sections, each written for the moment it
+closed by the decision itself (H7). **On the alpha register the census (H6) is
+the sole remaining open item**; separately, the detection track (below,
+off-register per ADR-044) has since produced two positives and adds one open
+confirmation item (D2). `report.md` runs past 2,850 lines across nineteen stage sections, each written for the moment it
 landed rather than for someone reading months later. The failure mode this file
 exists to prevent is **retrying a settled question because the number that
 closed it is buried** — nobody remembers six weeks later that BTC/ETH
@@ -207,6 +209,47 @@ This file contains no analysis. It records what other stages established.
 | **How to close it** | Measure the realised basis between the three venues on the same clock, then charge it against the round-trip cost of both legs — 80 bps at Kraken/Coinbase, 3 bps at Hyperliquid. The asymmetry means any spot-to-spot arbitrage carries 160 bps of cost, which is the bar to clear. |
 | **Closure note** | The alpha search concluded by decision on 2026-08-06 (C.17, pre-registered in 370ba41) before this hypothesis's data condition matured. The three-venue overlap keeps accumulating at zero cost; reopening requires the operator reversing that decision, at which point the original design above stands unchanged. |
 | **Working** | `report.md` §Stage C.11 "Basis risk"; ADR-034 on the cross-venue structure. |
+
+---
+
+## Detection track (off the alpha register — ADR-044)
+
+The rug-detection track is a **safety/avoidance tool, not a trading strategy**, so
+it sits outside the eleven-entry alpha register above. It has produced the
+project's first two substantive positives. Two questions, tracked separately.
+
+### D1 — Hard-rug detection from launch-window state *(shipped)*
+
+> A pre-event scorer separates hard rugs — near-total (≥ 99%) liquidity removal —
+> from other launches well enough to act on.
+
+| | |
+|---|---|
+| **Status** | **Works — shipped as a clearance scorer** · 2026-08-07 (C.23/C.24) |
+| **Deciding number** | **Honest-clearance precision 0.984 at recall 0.538** on the 2024 test fold (train ≤ 2023), from 30-minute launch-window features. The complementary hard-rug *alarm* is weak — a high P(hard_rug) is only **0.464** precision — so the artifact ships as a **clearance** (a low score clears a pool as not-a-hard-rug), never a rug alarm. |
+| **Sample** | SolRPDS-labelled Solana pools via Helius; 281 reached to T0, 194 in the 2024 test fold. Launch-window concentration / authority / holder features; creator history excluded (C.23: inert/harmful out of sample). |
+| **Limitations** | Detects **hard rugs only** — the blatant case. Says nothing about soft/slow rugs (that is D2). In the wild ~99% of launches are scam-adjacent, so it filters a small honest minority, not a general classifier — read a score against that base rate. |
+| **Working** | `research/detection/scorer.py`, `train_scorer.py`; model at `data/processed/detection/hard_rug_scorer.txt` (regenerable). `report.md` §Stage C.24 Task 5. ADR-050. |
+| **What would extend it** | Nothing reopens the *result* — it works. Extension is live deployment (score at T0+30min) or widening past hard rugs, which is D2. |
+
+### D2 — Honest-versus-slow-rug separation *(qualified positive, open for confirmation)*
+
+> On-chain state separates honest launches from soft/slow rugs — pools that drain
+> gradually rather than in one blatant yank — well enough to avoid them.
+
+| | |
+|---|---|
+| **Status** | **Absent at T0 (C.23); qualified positive post-launch at 6h+ (C.24) — open for confirmation** |
+| **Deciding number** | **Launch window (C.23): absent** — decon honest precision **0.574 ≈ 0.500 base**, unmoved by creator history (0.570). **Post-launch (C.24): clears at 6h** — behavioural precision **0.654 at recall 0.53 against a 0.557 base (lift +0.097)**, beating launch state (0.617) at matched population, signal growing with the window (1h fails, 6h/24h clear). Drivers: inter-arrival gaps, quiet-time at cutoff, tx count, failed-tx share. |
+| **Sample** | C.23's 281 decon-labelled pools re-walked for [T0, T0+24h] signature metadata; survivor-conditioned per cutoff (test-fold honest ~97). Signature-level features only — detail unaffordable at 14k credits. |
+| **Limitations** | The absolute clear is **base-rate-inflated** by survivor conditioning (24h base 0.630 > bar); the defensible figure is the **~+0.10 lift**, marginal at this n (~1.8 SE) and only modestly above C.23's launch lift (+0.074). Sample **conservatively biased** toward faded-honest pools — the from-now pagination cannot afford thriving survivors — which *understates* the true signal. |
+| **Working** | `research/detection/behavior.py`; `report.md` §Stage C.24 Tasks 1–4. ADR-051 (survivor-conditioned framing), ADR-052 (cutoff leakage rule). |
+| **What would confirm or close it** | An **unbiased, reach-complete sample** at the 6–24h cutoffs — the thriving survivors that complete the honest class are exactly the pools too deep for from-now pagination, so confirmation needs a seed-signature path into the historical window or a forward-recorded (live) cohort. Threshold: the +0.10 behavioural lift over base rate holding at recall ≥ 0.5 on a sample without the reachability skew. Does **not** reopen on a better model — capacity was never the constraint. |
+
+**Project-wide open items:** the census (H6) is the sole open item on the alpha
+register; the detection track adds **D2** as an open confirmation item. Both
+accrue at bounded cost — H6 at zero on data already recorded, D2 pending a
+reach-complete sample or a live cohort.
 
 ---
 
