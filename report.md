@@ -3891,3 +3891,109 @@ defensible cap.
    result — and the **decon-unbiased question is recorded as measured-unaffordable,
    not untested.** That distinction is the point: the question has a measured
    price the project chose not to pay, which is a closure, not a gap.
+
+## Stage C.26 results — the decon test is measured-unaffordable, the firming weakened the signal, and the detection track concludes — 2026-08-07
+
+The restructure did not work, and the reason is identification rather than cost.
+The decontaminated unbiased test is priced at roughly twice the entire cap, the
+firming sweep moved the mid-stratum estimate down rather than up, and the
+pre-registered end condition fires: the detection track concludes here.
+
+### 1. The creator restructure fails on identification, not cost (Task 1)
+
+Querying the creator address instead of the pool would collapse the detail volume
+only if the creator can be identified. On 8 pools with known decon labels,
+**the creator was not identifiable on any of them.** The initial mint is not a
+parseable `mint_to` transfer in the pool's launch window — some pools show no
+mint-address activity in their first 30 minutes at all, others show only
+pool-swap transfers with no empty-sender mint event — because the token mint
+generally predates the pool-activity T0. C.23's own decon had used a
+first-transaction-wallet **fallback**, not a verified creator, so even the labels
+a creator path would be checked against rest on a loose proxy. The cost saving
+therefore could not be measured and the C.22 correctness bar could not be met:
+**the restructure is blocked before its cost premise can be tested.**
+
+What the probe did measure is the pool-path volume that sets the cost:
+30-day signature counts of **26 to 9,204 on faded pools and 4,136 to 79,628 on
+active ones** — a single active pool needs ~7,970 weighted for its 30-day detail
+alone.
+
+### 2. The decon-unbiased test, priced (Task 2)
+
+Applied to the corrected honest sample (258 honest pools, 53 of them thriving by
+the > 2,000-transaction-at-6h test), the pool-path decontaminated test costs
+**≈ 124,764 weighted** — 53 thriving pools at ~2,000 each dominate — plus
+retrieval. That is **~1.9× the entire 60,000 cap** and would require raising the
+cap to **≈ 180,000, three times its current ceiling** and far beyond the
+registered 65,000 defensible threshold. Against the **1,199 remaining** it is ~28×
+over. **The cap is self-imposed, not a Helius tier limit**, so this is a
+deliberate decision: the decontaminated unbiased test has a measured price the
+project declines to pay. Per the registration it is recorded as
+**measured-unaffordable**, and the end condition fires.
+
+### 3. The firming sweep spent the remainder honestly (Task 3)
+
+The remaining budget bought **92 more unbiased honest pools** via Method B (166
+new reached, 328 honest total, 447 in the sample), floor-stopping at 1,199
+credits. On the firmed sample the 6h v0 overall lift is **+0.043** (C.25:
++0.047 — unchanged), and the decomposition:
+
+| 6h v0 stratum | C.25 (120 new) lift | firmed (166 new) lift |
+|---|---|---|
+| low | +0.044 | +0.040 |
+| **mid** | **+0.051** (n=84) | **+0.032** (n=103) |
+| high | +0.015 | +0.018 |
+
+**The added sample moved the mid-stratum point estimate down, not up** — +0.051 →
+**+0.032**, with SE ≈ 0.039, a 95% interval of **[−0.045, +0.109] that still
+includes zero**, at recall 0.939 (near base-rate operating point). Per the
+registration, a narrower interval is not a stronger finding when the point
+estimate has not improved — here it moved the wrong way. The honest reading is
+that **C.25's +0.051 was optimistic**: on more data the mid-stratum discrimination
+settles just above the 0.02 noise floor and remains statistically
+indistinguishable from zero. The behavioural signal is real in direction and
+consistent across stages, but small and unconfirmed, and the test that would
+sharpen it — decontaminated labels on an unbiased sample — is the one priced out
+in §2.
+
+### 4. What the detection track delivered (Task 4)
+
+This is the track's final stage; its outputs, stated with their limits:
+
+- **Method B — depth-independent retrieval.** Resolve T0+X to a slot via
+  `getBlockTime`, seed from `getBlock`, anchor `getSignaturesForAddress(before=seed)`.
+  ~33 weighted/pool regardless of depth, verified at **Jaccard 1.0** against the
+  from-now walk. Durable and reusable: it lifts the pagination wall that shaped
+  C.23–C.24, and it is the reason C.25's unbiased sample existed.
+- **The hard-rug clearance scorer** (`scorer.py`, persisted, regenerable). A low
+  score **clears a pool as not-a-hard-rug at 0.984 precision / 0.538 recall** on
+  the 2024 fold; as a rug *alarm* it is weak (0.464). Documented scope, and the
+  ~99%-scam wild base rate so an output is read as a filter for a small honest
+  minority, not a safety guarantee.
+- **The behavioural finding.** Post-launch activity (6h) separates honest from
+  soft/slow rugs where launch-window state (C.23) could not — a real signal that
+  **survived depth-unbiasing at half its C.24 magnitude and settled, on firming,
+  to a mid-activity-stratum lift of +0.032 with a confidence interval including
+  zero.** A small, honest, unconfirmed positive. Drivers throughout:
+  inter-arrival gaps, quiet-time at the cutoff, rate decay, failed-transaction
+  share — activity *health*, not raw volume.
+- **The boundary result (C.23).** At the 30-minute launch window the
+  honest-versus-slow-rug boundary is absent (precision 0.574 ≈ base), unmoved by
+  creator history; hard rugs separate cleanly there (0.984).
+
+### 5. Verdict — the track concludes
+
+**By the pre-registered end condition, the detection track concludes with its
+current outputs.** The decontaminated unbiased test — the one measurement that
+would turn the behavioural finding from suggestive into established — is
+**measured-unaffordable at ~2× the cap**, and the creator-address restructure
+that might have fit it cannot be validated because the creator is not reliably
+identifiable. The firming sweep, given the remainder, moved the estimate down
+rather than up. So the track's honest close: a **working hard-rug clearance
+scorer**, a **reusable depth-independent retrieval method**, and a **real but
+small and unconfirmed post-launch behavioural signal** whose confirmation has a
+known price the project chose not to pay. The **census (H6) is the sole remaining
+open item across the project.**
+
+Budget: **1,199 of 60,000 remaining, cap not raised** (the C.22-once raise held
+through C.23–C.26). Recorders untouched; census window (2026-08-11) not read.

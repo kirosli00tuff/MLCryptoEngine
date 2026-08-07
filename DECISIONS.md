@@ -2200,3 +2200,40 @@ v0 with decon on the overlap only. The honest reading: the post-launch signal is
 real and lives in the hard middle, but smaller and less certain than C.24
 implied, and firming it is now a sampling problem the budget can address rather
 than an access problem.
+
+## ADR-054: The decon cost restructure fails on identification; the detection track concludes
+
+**Date:** 2026-08-07 · **Status:** accepted
+
+**Context.** C.25 ran the unbiased behavioural test on v0 because decontaminated
+labels needed 30 days of enhanced detail on the pool address, unaffordable at
+scale. C.26 tested one restructure — query the *creator* address instead, whose
+transaction volume is far smaller — and registered, before probing, that if the
+decon-unbiased test could not be afforded within a defensible cap (> 65,000) it
+would be recorded as measured-unaffordable and the detection track would
+conclude.
+
+**Decision.** The restructure is **not adopted, because the creator cannot be
+reliably identified.** On 8 pools with known decon labels, 0 resolved a creator
+from the launch window: the token mint generally predates the pool-activity T0,
+so the initial mint is not a parseable `mint_to` transfer in the first 30
+minutes, and C.23's own decon had used a first-transaction-wallet *fallback*
+rather than a verified creator. The cost premise therefore cannot be tested and
+the C.22 correctness bar cannot be met. Priced on the pool path instead, the
+decon-unbiased test costs **≈ 124,764 weighted — ~1.9× the entire 60,000 cap** (a
+single active pool needs ~7,970 for its 30-day detail), needing a raise to
+~180,000, far beyond the registered 65,000 threshold. It is recorded as
+**measured-unaffordable**, and the end condition fires.
+
+**Consequences.** **The detection track concludes** with its current outputs:
+Method B (depth-independent retrieval, ~33/pool, Jaccard 1.0), the hard-rug
+clearance scorer (0.984 clearance precision, weak as an alarm), and the
+behavioural finding — real in direction but small and unconfirmed, its 6h
+mid-stratum lift moving *down* to +0.032 with a CI including zero when the firming
+sweep spent the remainder. The decon-unbiased question is a **measured closure,
+not a gap**: it has a price (~2× the cap) the project declines to pay, and the
+cap is self-imposed rather than a tier limit, so the refusal is deliberate. D2
+reopens only on an affordable decontaminated label — a soft/slow-rug signal
+cheaper than 30-day insider-sell detail, or a live forward-recorded cohort — not
+on new access or a better model. The **census (H6) is now the sole open item
+across the project.**

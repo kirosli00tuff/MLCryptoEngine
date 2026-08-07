@@ -7,8 +7,8 @@ condition pre-registered in commit 370ba41 before any data). Eleven entries
 stand: nine tested and closed, one untestable on available data (H10), one
 closed by the decision itself (H7). **On the alpha register the census (H6) is
 the sole remaining open item**; separately, the detection track (below,
-off-register per ADR-044) has since produced two positives and adds one open
-confirmation item (D2). `report.md` runs past 2,850 lines across nineteen stage sections, each written for the moment it
+off-register per ADR-044) produced two positives and **concluded at C.26**, so
+the census is now the sole open item project-wide. `report.md` runs past 2,850 lines across nineteen stage sections, each written for the moment it
 landed rather than for someone reading months later. The failure mode this file
 exists to prevent is **retrying a settled question because the number that
 closed it is buried** — nobody remembers six weeks later that BTC/ETH
@@ -239,17 +239,18 @@ project's first two substantive positives. Two questions, tracked separately.
 
 | | |
 |---|---|
-| **Status** | **Absent at T0 (C.23); qualified positive post-launch (C.24); survives depth-unbiasing at ~half magnitude, in the mid-activity stratum (C.25) — marginal, open for firming** |
-| **Deciding number** | **Launch window (C.23): absent** — decon honest precision **0.574 ≈ 0.500 base**. **Post-launch (C.24): clears at 6h** — behavioural precision **0.654 at recall 0.53 vs 0.557 base (lift +0.097)**, growing with the window. **Depth-unbiased (C.25): survives, halved** — on a random-draw Method-B sample the 6h v0 lift is **+0.047** (vs C.24's biased v0 +0.115); the decomposition shows the **high-activity extreme lift collapses +0.156 → +0.015** (a reachability artifact) while the **mid-activity stratum holds +0.051**, meeting the pre-registered genuine-discrimination bar (> 0.02 and ≥ half the overall) — but marginal (~0.8 SE). |
+| **Status** | **Concluded (C.26) — real but small and unconfirmed.** Absent at T0 (C.23); positive post-launch (C.24) that survived depth-unbiasing halved (C.25); firming moved the mid-stratum lift **down to +0.032, CI including zero** (C.26); the decon-unbiased confirmation is **measured-unaffordable** (~125k weighted, ~2× the cap) and the creator-address restructure is blocked on identification. |
+| **Deciding number** | **Launch window (C.23): absent** — decon honest precision **0.574 ≈ 0.500 base**. **Post-launch (C.24): clears at 6h** — behavioural precision **0.654 at recall 0.53 vs 0.557 base (lift +0.097)**, growing with the window. **Depth-unbiased (C.25): survives, halved** — on a random-draw Method-B sample the 6h v0 lift is **+0.047** (vs C.24's biased v0 +0.115); the decomposition shows the **high-activity extreme lift collapses +0.156 → +0.015** (a reachability artifact) while the **mid-activity stratum holds +0.051**, meeting the pre-registered genuine-discrimination bar (> 0.02 and ≥ half the overall) — but marginal (~0.8 SE). **Firming (C.26): +90 more pools moved the mid-stratum estimate DOWN to +0.032 (SE 0.039, 95% CI [−0.045, +0.109]) — the added data weakened rather than confirmed; C.25's +0.051 was optimistic.** |
 | **Sample** | C.24's 281 decon-labelled pools plus **120 random honest pools retrieved depth-independently via Method B** (slot-anchored `getSignaturesForAddress`, Jaccard 1.0 vs the from-now walk); v0 labels on the corrected sample (decon needs unaffordable 30-day detail), decon on the C.24 overlap only. |
 | **Limitations** | The C.24 magnitude was **reachability-inflated** — half the lift was the excluded 57% of deep honest pools. The surviving mid-stratum lift is **marginal** (CI includes zero at n=84) and measured on **v0**, not decon (decon-unbiased is blocked by the 30-day insider-sell detail cost). Correcting the honest class raised the base rate, so per-stratum lift is the honest metric, not the overall. |
 | **Working** | `research/detection/behavior.py`; `report.md` §Stage C.24, §Stage C.25. ADR-051 (survivor-conditioned framing), ADR-052 (cutoff leakage rule), ADR-053 (depth stratification and the Method-B depth-independent retrieval). |
-| **What would confirm or close it** | The from-now pagination wall is **lifted** — Method B makes an unbiased Solana launch-window sample affordable (~33 credits/pool), so confirmation no longer needs new access. Threshold: the **mid-activity-stratum lift holding > 0.02 at recall ≥ 0.5 with a confidence interval excluding zero**, on a Method-B sample several times larger, **and** an affordable decontaminated label (a soft/slow-rug signal cheaper than 30-day insider-sell detail). Does **not** reopen on a better model — capacity was never the constraint. |
+| **What would reopen it** | **Concluded, not closed-absent** — the signal is real in direction but small and its confirmation is priced out. Reopens on an **affordable decontaminated label**: C.26 measured the pool-path decon-unbiased test at **~125k weighted (~2× the cap)** and found the creator-address restructure **blocked because the creator is not reliably identifiable** from on-chain launch data (the mint predates pool-activity T0; 0/8 pools resolved a creator). A soft/slow-rug label cheaper than 30-day insider-sell detail — or a **live forward-recorded cohort** labelled as outcomes arrive — plus a Method-B sample several times larger, would let the mid-stratum lift's CI be pulled off zero. Does **not** reopen on a better model — capacity was never the constraint. |
 
-**Project-wide open items:** the census (H6) is the sole open item on the alpha
-register; the detection track adds **D2** as an open confirmation item. Both
-accrue at bounded cost — H6 at zero on data already recorded, D2 pending a
-reach-complete sample or a live cohort.
+**Project-wide open items:** with the detection track **concluded at C.26**, the
+**census (H6) is the sole remaining open item across the entire project** — it
+accrues at zero cost on data the recorders already capture, and fires against
+frozen bars at 2026-08-11. D2 is concluded (real but small, unconfirmed); its
+reopening needs an affordable decontaminated label, not new access.
 
 ---
 

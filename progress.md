@@ -2446,3 +2446,34 @@ indexer-dependent features has not cleared it.
 - **Budget:** 5,649 / 60,000 remaining, cap **NOT** raised (C.22-once held through
   C.23/24/25). `behavior_c25.csv` persisted, regenerable via Method B. Recorders
   alive; census window (2026-08-11) not read. 347 tests; make lint/typecheck/test green.
+
+## 2026-08-07 — Stage C.26 complete: decon-unbiased test is measured-unaffordable; the detection track concludes
+
+- **The creator restructure fails on identification, not cost.** On 8 pools with
+  known decon labels, **0 resolved a creator** from the launch window — the token
+  mint predates the pool-activity T0, so the initial mint is not a parseable
+  `mint_to` transfer, and C.23's own decon used a first-transaction-wallet
+  fallback. So the cost saving can't be measured and the C.22 correctness bar
+  can't be met (ADR-054).
+- **The decon-unbiased test, priced:** pool-path ≈ **124,764 weighted** (53
+  thriving honest pools at ~2,000 each dominate; one active pool ~7,970 for its
+  30-day detail alone) — **~1.9× the entire 60,000 cap**, a raise to ~180,000,
+  far beyond the registered 65,000 threshold. **Measured-unaffordable** → the
+  pre-registered **end condition fires**.
+- **The firming sweep spent the remainder honestly:** +92 unbiased honest pools
+  via Method B (328 honest, 447 total). 6h v0 overall lift +0.043 (unchanged), but
+  the **mid-stratum lift moved DOWN +0.051 → +0.032** (SE 0.039, 95% CI
+  [−0.045, +0.109], still includes zero). The added data **weakened rather than
+  confirmed** — C.25's +0.051 was optimistic. Not presented as stronger (the
+  registered rule).
+- **Track conclusion (C.26).** Detection concludes with: **Method B** (depth-
+  independent retrieval, ~33/pool, Jaccard 1.0); the **hard-rug clearance scorer**
+  (0.984 clearance precision, weak alarm 0.464); the **behavioural finding** (real
+  but small and unconfirmed, mid-stratum +0.032 CI-includes-zero); and the **C.23
+  boundary** (honest-vs-slow-rug absent at T0). D2 reopens only on an affordable
+  decon label or a live cohort — not new access or a better model.
+- **Register:** HYPOTHESES D2 concluded; ADR-054 appended; report.md §C.26 written.
+  The **census (H6) is now the sole open item across the entire project.**
+- **Budget:** 1,199 / 60,000 remaining, cap **NOT** raised (C.22-once held through
+  C.23–C.26). Recorders alive; census window (2026-08-11) not read. 347 tests;
+  make lint/typecheck/test green.
