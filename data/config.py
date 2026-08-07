@@ -267,7 +267,12 @@ class AppConfig(BaseSettings):
     # against the dashboard — no usage endpoint is reachable keyless — so the
     # cap is set conservatively and every priced request is ledgered so the
     # operator can reconcile. Raising it is an operator edit, never code.
-    helius_credit_cap: int = 30_000
+    # 2026-08-07 (C.22): raised 30,000 -> 60,000 AFTER the T0-anchored method
+    # was proven on probe (sig-walk reaches T0 where the C.21 backward walk
+    # truncated). Self-imposed cap, not the Helius tier limit; raised
+    # deliberately per the C.7 pattern, never to buy more of an inefficient
+    # query.
+    helius_credit_cap: int = 60_000
     budget: BudgetSettings = BudgetSettings()
 
     @classmethod

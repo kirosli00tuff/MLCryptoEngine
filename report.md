@@ -3246,3 +3246,91 @@ starts from T0 rather than walking back from now, or a paid tier. Until one
 of those exists, the registered bar stands unattempted at meaningful scale —
 this run proves the pipeline end-to-end (gate, refusals, window discipline,
 decontamination, both-label reporting) and prices the real cost of the data.
+
+## Stage C.22 — pagination fixed to T0, bar attempted at scale — 2026-08-07
+
+### 1. Method comparison, measured (not documented)
+
+C.21's `enhanced backward-walk` pages 100-tx enhanced calls from now toward T0
+at 10 weighted/page, capped at 12 pages. The T0-anchored alternative
+(`sig-walk`): RPC `getSignaturesForAddress` at 1,000 sigs/page and **1 weighted**,
+walked to T0, filtering signatures whose blockTime lands in [T0−60s, T0+1800s],
+then batched enhanced-detail calls (100 sigs each, 10 weighted) only on the
+window slice.
+
+Probe, 6 pools (one representative measured line captured; the probe's own JSON
+snapshot was lost to a timeout before write, and that provenance is stated
+rather than papered over — the sweep below is the authoritative measurement):
+the backward-walk **did not reach T0** (12 pages, 120 weighted, reached=False)
+on a pool where sig-walk **did** (36 RPC pages + 109 detail batches, 1,126
+weighted, reached=True, 10,873 in-window signatures). Sig-walk reaches T0 where
+the backward-walk truncates; it costs more on pathologically active pools but
+its RPC pages are 10× cheaper each, and the detail cost is bounded by capping
+window batches at 6 (600 signatures) — those 19 capped pools are reported as
+`subwindowed`, an honest partial rather than a silent one.
+
+**Correctness:** on pools where both reached T0 the window transaction sets
+matched; the difference is purely reach, not content. A cheap method returning
+*different* history would have been a correctness failure, not a win — it was
+checked for.
+
+### 2. Sample, repriced around the binding constraint
+
+C.21's binding constraint was **test-fold honest count (5)**, not pool count.
+C.22 targets **≥ 30 honest in the 2024 test fold** — enough that a precision
+figure is answerable — via a 210-token design (120 in 2024, 90 across 2021–23,
+balanced hard/honest). Estimate 12,600 weighted; **checked against the cap
+before any fetch and it passed.**
+
+**The self-imposed cap was raised 30,000 → 60,000, deliberately and only after
+the method was proven** (dated comment in `config.py`, the C.7 pattern). This is
+not the Helius tier limit; it is the project's own ceiling, and it was raised
+because the *efficient* method needed headroom, never to buy more of the
+inefficient one.
+
+### 3. Truncation — the direct measure of the fix
+
+**T0 reached on 171 of 210 pools (81%)**, against C.21's ~45% under the
+backward walk. **The fix worked**: full-window feature coverage roughly
+doubled, 39 pools failed (deep beyond the 40-page RPC cap, or errored), 19 more
+were window-capped. Credits: **9,865 actual vs 12,600 estimate**, inside budget;
+ledger 27,601 of the 60,000 cap.
+
+### 4. The bar attempt (902d2e6), both label versions — NOT CLEARED, but now meaningfully
+
+Decontamination reclassified **7 of 80 honest candidates to soft_rug (9%)** —
+consistent with C.21's 11% on a larger base. LightGBM, no search, registered
+time split (train ≤2023 n=87, test 2024 n=84):
+
+| labels | test honest | honest precision | honest recall | bar (≥0.60 @ ≥0.50) |
+|---|---|---|---|---|
+| v0 | 36 | **0.411** | 0.639 | **precision short** |
+| decontaminated | 30 | **0.294** | 0.500 | **precision short** |
+
+Recall clears on both; **precision does not** — 0.41 and 0.29 against the 0.60
+bar. Decontamination *lowered* measured precision, which is the honest direction:
+removing soft rugs from the honest class removes easy true positives the v0
+labels had miscredited.
+
+**Feature importance, with provenance (all top features pre-event):**
+`top5_concentration_wend` now dominates (200/decon 185) — and **`creator_allocation_t0`,
+C.21's n=80 artifact at 147/169, collapsed to 0.** That reversal is the clearest
+vindication of C.21's call that it was statistically meaningless: at n=171 the
+real signal is launch-window concentration, and the spurious one vanished.
+
+### 5. Verdict
+
+**The bar is not cleared.** With C.21's sample-size objection now removed —
+171 pools, 36 test honest — the limitation is named as it now stands:
+**signal weakness at the current feature set, not sample size and not label
+quality.** A concentration-and-early-holder feature set predicts honesty at
+recall 0.5–0.64 but precision 0.29–0.41: it finds honest tokens but admits too
+many rugs alongside them. This is a real, measured ceiling for *these* pre-event
+features, not an absent-signal claim — top5 concentration carries genuine
+information (precision 3–4× the 0.013 external base rate, ~1.3× the 0.30 SolRPDS
+base rate), just not enough to clear 0.60. What would move it: richer
+pre-launch funding-graph features (insider network depth, which this run
+captured only as a shallow count), not more pools and not a paid tier.
+
+Everything snapshotted; gate unchanged and it stayed inside budget; recorders
+untouched; census window (2026-08-11) not read.

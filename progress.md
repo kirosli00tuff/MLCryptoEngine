@@ -2327,3 +2327,23 @@ indexer-dependent features has not cleared it.
   pagination, or a paid tier — operator decision, priced by this run.
 - Ledger 15,410/30,000; snapshots manifested; recorders alive; census window
   (2026-08-11) untouched. Tests 333 green.
+
+## 2026-08-07 — Stage C.22: T0 pagination fixed; bar attempted at scale, not cleared
+
+- **Method fix proven (ADR-049):** sig-walk to T0 (RPC 1k/page, weight 1) +
+  capped enhanced detail on the window slice. **T0 reached 81% (171/210) vs
+  C.21's ~45%** — feature coverage roughly doubled. Correctness checked:
+  window tx sets match where both methods reached. Probe JSON was lost to a
+  timeout before write; the sweep is the authoritative measurement, stated.
+- **Cap 30k→60k, dated, AFTER method proof** (C.7 pattern); self-imposed, not
+  the Helius limit. Sweep estimate 12,600 checked before fetch; **actual 9,865**,
+  ledger 27,601/60,000.
+- **Bar (902d2e6) NOT CLEARED, both label versions:** v0 precision 0.411 /
+  recall 0.639; decon 0.294 / 0.500 — recall clears, precision short of 0.60.
+  Decontam reclassified 7/80 honest→soft (9%), lowering precision honestly.
+- **Limiting factor moved:** with n=171 / 36 test honest, no longer sample
+  size — it's **feature signal strength**. `top5_concentration_wend` now
+  dominant; **`creator_allocation_t0` collapsed 147→0**, vindicating C.21's
+  n=80 artifact call. Next lever = pre-launch funding-graph depth, not pools.
+- Snapshots manifested; recorders alive; census window untouched. 333 tests.
+- **CLAUDE.md:** added the standing rule to give a measured ETA for every prompt.

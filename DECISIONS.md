@@ -2038,3 +2038,31 @@ label event inside the window refuses computation rather than clamping** —
 the window length must never encode the event time. Results are reported
 against both label versions so the correction's effect is visible, never
 absorbed.
+
+## ADR-049: T0-anchored retrieval — sig-walk over enhanced backward-walk
+
+**Date:** 2026-08-07 · **Status:** accepted
+
+**Context.** C.21's enhanced backward-walk (100-tx enhanced pages from now
+toward T0, 10 weighted each, 12-page cap) truncated before launch on 55% of
+pools, collapsing a 540-pool design to 80 modeled and 5 test-fold honest — no
+precision bar is answerable on 5 positives. C.20 and C.21 both diagnosed the
+constraint as feature coverage, and the operator correctly framed the next move
+as a *method* change, not a spend increase: raising a cap to buy more of a 55%-
+truncating query spends quota on the same inefficiency.
+
+**Decision.** Reach T0 with `getSignaturesForAddress` (RPC, 1,000 sigs/page,
+weight 1) walked to T0, then fetch enhanced detail (weight 10) only on the
+[T0−60s, T0+window] signature slice, window batches capped and the cap reported
+as `subwindowed`. Measured: **T0 reached on 81% of pools vs ~45% under the
+backward walk**, at 9,865 actual credits against a 12,600 estimate. Correctness
+was checked, not assumed — window transaction sets matched on pools both methods
+reached, so the gain is reach, not altered history.
+
+**Consequences.** The self-imposed credit cap was raised 30,000 → 60,000 with a
+dated comment, *after* the method was proven, per C.7 — a cap is raised to fund
+an efficient query, never to paper over an inefficient one. The bar remained
+uncleared (precision 0.29–0.41 vs 0.60) but now on 171 pools with 36 test-fold
+honest, moving the limiting factor from sample size to feature signal strength —
+and `creator_allocation_t0`, C.21's n=80 importance artifact, collapsed to zero
+at scale, vindicating the earlier call that it meant nothing.
