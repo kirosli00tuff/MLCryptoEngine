@@ -3466,3 +3466,80 @@ provenance), which is a different tool than the one registered.
 Gate unchanged and inside budget (45,971 / 60,000, cap not raised); feature
 matrix persisted and regenerable; recorders untouched; census window
 (2026-08-11) not read.
+
+## Stage C.24 — pre-registration: post-launch cutoffs, the hard-rug deliverable, and the track's end condition — 2026-08-07
+
+*This section is committed **before any C.24 data is fetched or any model is
+fit.** Commit order is the evidence: everything below is a decision, not a
+result. Results append in a later dated section.*
+
+**Why this stage exists.** C.23 closed the T0 question sharply — hard rugs
+separate at 0.984 precision on launch-window state, honest candidates do not
+separate from soft/slow rugs (0.574 vs a 0.500 base rate), and sample, features,
+and threshold were each eliminated as the cause. C.20's own data implies the
+remaining lever: median time to hard rug is 2.55 days, so a soft rug's
+divergence from an honest launch is **post-launch by construction** and nothing
+at T0+30min can contain it. C.24 tests whether *early trading behaviour after
+launch* separates what launch state cannot.
+
+### Registered bars and definitions (Task 0)
+
+1. **Honest-class bar — unchanged from 902d2e6.** Decontaminated honest-class
+   precision **≥ 0.60 at recall ≥ 0.50**, pre-event features only, canary and
+   prefix suites green. Report the full PR curve, minority-class precision and
+   recall, never accuracy, never a single operating point.
+
+2. **Observation cutoffs tested:** **T0+1h, T0+6h, T0+24h.** No others are
+   in-scope this stage; a cutoff beyond 24h is a reopening condition, not a
+   silent extension.
+
+3. **Survivor-conditioned population (Task 2), per cutoff X.** Include a pool iff
+   its launch T0 is established **and it has not had its hard-rug label event at
+   or before T0+X** (alive at the cutoff). Exclude pools whose label event
+   ≤ T0+X — their outcome is already realised and a live tool could not score
+   them. The question is **explicitly conditional: given a pool alive at T0+X,
+   does it rug after X?** Each cutoff conditions a *different* population (C.20
+   measured 58.5% of hard rugs surviving past 24h), so **precision at one cutoff
+   is not comparable to precision at another** and the report will not present
+   them as if it were. Report per cutoff: pools retained, pools excluded for a
+   prior label event, and the resulting class balance.
+
+4. **Unanswerable floor.** Below **30 decontaminated honest pools in the 2024
+   test fold**, a cutoff cell is declared **unanswerable** and not reported as a
+   precision figure — matching C.22's "≥ 30 so a precision figure is answerable"
+   and C.21's n=5 declared too thin. Survivor conditioning shrinks the fold, so
+   this floor may retire a cutoff before it is scored; that is the honest outcome,
+   not a gap to paper over.
+
+5. **Noise threshold over the C.23 baseline.** The launch-window decontaminated
+   baseline is **0.570**. A decontaminated precision exceeding 0.570 by **≤ 0.02**
+   is **within-noise**, not signal (≈ 1 SE at the expected fold sizes). Because
+   clearing the bar requires ≥ 0.60 — which is +0.030 over baseline, above the
+   0.02 floor — the 0.60 bar stays the binding criterion, and any sub-bar reading
+   in [0.570, 0.590] is recorded as noise rather than as improvement.
+
+6. **Cutoff leakage rule (formalised as an ADR in Task 6).** Every feature at
+   cutoff X reads strictly activity **before X**, and X sits strictly before the
+   label event. The canary/prefix suites extend to the cutoff pipeline and run
+   green before the first real feature is computed (the C.21/C.23 ordering), plus
+   a dedicated test asserting no feature at cutoff X incorporates activity after
+   X.
+
+### The binding end condition (C.17 pattern, decided before the result)
+
+**If no observation cutoff clears the honest bar** (decontaminated precision
+≥ 0.60 at recall ≥ 0.50, above the 0.02 noise floor), **the detection track
+concludes by this pre-registered decision.** Its shipped deliverable is
+**hard-rug detection** — C.23's 0.984 precision at 0.538 recall on launch-window
+state, packaged as a scoring artifact in Task 5 — and the **honest-versus-slow-
+rug boundary is recorded as absent from on-chain behaviour at the cutoffs
+tested.** This is registered now, before Task 4 runs, so a negative result closes
+the track by prior decision rather than by exhaustion.
+
+**What would reopen it:** (a) a data source giving pre-event visibility into
+**creator intent** (off-chain deploy provenance, social/funding graph before
+launch), or (b) an **observation cutoff beyond 24h** with the survivor
+conditioning above accounted for. It does **not** reopen on a better model or a
+richer on-chain feature set at the cutoffs tested — C.23 and C.24 together would
+have eliminated capacity, sample, features, and threshold, which is the
+signal-absent closure, not the cost-bound one.
