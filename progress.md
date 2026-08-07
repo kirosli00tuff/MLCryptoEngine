@@ -2257,3 +2257,31 @@ prefix-invariance suite green: **honest-candidate precision ≥ 0.60 at recall
 distribution — reported beside the external-base-rate framing. Anything short
 is FAIL; a model that beats the bar only with post-event or
 indexer-dependent features has not cleared it.
+
+## 2026-08-06 — Stage C.20 complete: viability confirmed, labels built, bar registered
+
+- **Task 1, the gate: avoidance is viable.** Hard-rug lifetime (removal
+  proxied by last pool activity, proxy reasoning recorded): Q25 2.6 h, median
+  **2.55 days**, Q75 35.8 d; **0.51% within 60 s, 3.93% within 5 min**, 58.5%
+  beyond 24 h. ~96% of the class outlives score-and-act latency. Scope limit
+  stated: SolRPDS is the post-graduation stratum; bonding-curve instant
+  deaths live outside it. **Helius-key value: HIGH** — there is time to act,
+  and the key unlocks the concentration mechanisms for that population.
+- **Task 2, labels_v0 (116,308 pools):** hard_rug 75,996 / honest_candidate
+  **34,791** (29.9%, upper bound, the minority everything turns on) /
+  unlabeled_residual 5,521 explicit. Honeypot from GoPlus: 5/44 flagged in a
+  stratified 60-mint sample, 16 unresolved kept as **None** never benign;
+  full sweep ~42 h free. RugCheck `rugged` discarded per C.19.
+- **Task 3, provenance:** 9 usable pre-event fields keyless; honeypot class
+  fully supported, hard-rug partially, soft/slow unsupported without an
+  indexer. Monotonic-authority inference codified and tested
+  (`authority_pre_event`): present-now ⇒ present-at-launch, one direction
+  only. ADR-045.
+- **Task 4, registered at 902d2e6 before any model:** baselines (always-rug
+  precision undefined — reported as such; always-honest 0.2991 measured /
+  0.013 external) and the bar: honest precision ≥ 0.60 at recall ≥ 0.50,
+  time-split holdout, pre-event features only, leakage suites green.
+- `research/detection/` + 7 tests; labels_v0.csv regenerable from immutable
+  snapshots; GoPlus sample snapshotted with sha256. `make lint`,
+  `make typecheck`, `make test` clean — **326 tests**. Zero keys, zero spend,
+  recorders alive throughout.

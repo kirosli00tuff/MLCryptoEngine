@@ -1962,3 +1962,39 @@ the register's sole open item. If detection work ever produces something that
 looks like a trading edge, that observation does not reopen the alpha search —
 ADR-043's reversal rule applies, and the observation waits for an explicit
 operator decision.
+
+## ADR-045: Every detection feature carries a provenance class, and monotonicity is the only free history
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+**Context.** Detection labels are defined by future events, so the leakage
+surface is the feature table itself. C.20 classified every keyless field and
+found the trap live in real data: LIBRA's current top-5 holder concentration
+of 98.2% is post-dump residue — a *consequence* of the label event wearing the
+costume of a predictor.
+
+**Decision.** Every field that could ever feed a detection model is classified
+**pre-event**, **post-event contaminated**, or **unknowable without an
+indexer**, with the reasoning recorded per field, before any model exists.
+Contaminated and unknowable fields may appear in labels and diagnostics,
+never in features. The classification is data, not commentary: the first
+feature build reads it, and the canary/prefix suites (ADR-040/042) run
+against whatever passes.
+
+The one legitimate way to read history out of present state is
+**monotonicity**. Solana mint and freeze authorities can be revoked but never
+restored, so *present-now proves present-at-launch* — a leak-free pre-event
+inference in exactly one direction; absent-now proves nothing about when it
+went, and is classified indeterminate. The structure generalises with a
+caution: irreversibility alone is not enough. An irreversible event with an
+unknown timestamp (an LP burn observed now) still dates nothing at T0; the
+inference requires either *set-at-creation immutables* (Token-2022 extension
+presence) or *revocable-never-restorable state observed present*. Any field
+claimed monotonic must name which of the two structures it has.
+
+**Consequences.** The first keyless model's scope falls out mechanically:
+honeypot fully supported, hard-rug avoidance partially, soft/slow rug
+unsupported until an indexer exists — and the C.20 time-to-event finding
+(~96% of hard rugs outlive score-and-act latency) is what makes that indexer
+worth obtaining. `authority_pre_event` in `research/detection/labels.py` is
+the inference as code, with its one-directionality under test.

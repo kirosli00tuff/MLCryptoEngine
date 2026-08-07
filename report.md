@@ -3037,3 +3037,107 @@ first modeling stage needs, stated as requirements rather than assumptions:
    precision/recall at the 98.7% base rate.
 4. **The economics caveat carried forward verbatim** — the deliverable is a
    safety scorer and avoidance/exit tooling, not a strategy.
+
+## Stage C.20 — keyless groundwork: time-to-event viability and four-class labels — 2026-08-06
+
+Detection track (ADR-044); keyless only, nothing bought, no keys created. The
+economics caveat of C.19 carries forward verbatim: this is a safety scorer and
+avoidance/exit tooling, not a strategy.
+
+### 1. The viability gate — and it lands the opposite of the feared way
+
+Time from first pool activity to liquidity removal for the **75,996 hard-rug
+pools** (removal proxied by last pool activity — SolRPDS carries no removal
+timestamp; for a ≥ 99%-removed pool the final pool operation is the remove,
+and the 96.8% of cases showing token swaps *after* last pool activity are
+trailing swaps on the dead pair, consistent with the proxy):
+
+| statistic | value |
+|---|---|
+| Q25 | **2.6 hours** |
+| median | **2.55 days** (220,306 s) |
+| Q75 | 35.8 days |
+| removed within 60 s | **0.51%** |
+| within 5 minutes | **3.93%** |
+| within 1 hour | 18.8% |
+| within 24 hours | 41.5% |
+| beyond 24 hours | **58.5%** |
+| beyond 7 days | 40.4% |
+
+**The mass does not sit in the first minutes. ~96% of the hard-rug class
+outlives any plausible score-and-act latency**, so avoidance tooling is viable
+for this class, and exit-timing has days of runway on the median pool. One
+scope limit, stated rather than softened: SolRPDS covers pools that received
+real liquidity — the post-graduation stratum. pump.fun bonding-curve tokens
+that die before ever reaching a pool are outside this data, and the sub-5-
+minute mass may live there. The claim is: **avoidance is viable for graduated
+pools**, which is where the money that can be lost actually sits.
+
+**What this does to the Helius question, reported as the gate it is:** the
+key's value is HIGH, not low. There is time to act on ~96% of hard rugs, so
+pre-event features are worth having — and the key unlocks the concentration
+mechanisms (soft/slow rug) for exactly the population where acting is
+possible. Had the mass sat under 5 minutes, the key would have bought features
+for decisions that could never be made.
+
+### 2. Four-class labels, keyless (labels_v0, 116,308 pools)
+
+| class | count | share | source |
+|---|---|---|---|
+| hard_rug | **75,996** | 65.3% | SolRPDS ≥ 99% liquidity removal |
+| honest_candidate | **34,791** | 29.9% | not hard-rug ∧ Active — **the minority everything turns on, and an upper bound**: soft/slow rugs contaminate it from above |
+| unlabeled_residual | 5,521 | 4.7% | not hard-rug ∧ Inactive — explicitly residual, never folded into a class it does not belong to |
+| honeypot (mint-level) | **5 of 44 resolved** in a 60-mint stratified sample (11%); 16 of 60 unresolved | — | GoPlus `freezable`/`non_transferable`/`transfer_hook`; unresolved stays **None**, never benign — GoPlus coverage skews against old dead mints, i.e. against the positive class |
+
+RugCheck's `rugged` flag is discarded entirely (0/4 documented rugs in C.19).
+A full GoPlus honeypot sweep prices at ~42 h at polite spacing, free
+(measured median 0.21 s/call + 0.9 s courtesy sleep).
+
+### 3. Feature provenance, field by field
+
+**Genuinely pre-event (9 usable keyless):** SolRPDS `FIRST_POOL_ACTIVITY`
+(definitionally before everything after it); DexScreener `pairCreatedAt`
+(creation metadata); RugCheck `deployPlatform`, `launchpad`, `creator`
+(mint-time facts); GoPlus `non_transferable`, `transfer_hook` presence,
+`default_account_state` (Token-2022 extensions fixed at mint initialization);
+**mint/freeze authority present-now** — the monotonic inference: authorities
+are revocable, never restorable, so present-now *proves* present-at-launch.
+One direction only: absent-now proves nothing about when it went.
+
+**Post-event contaminated:** current top holders and holder counts (LIBRA's
+98.2% top-5 is post-dump residue — the trap demonstrated in live data);
+current price/liquidity; RugCheck `score`/`risks` (computed on current
+state); `lp_locked_pct` now (locks can be added later and burns change it —
+non-monotonic in both directions, so the present value dates nothing);
+`transfer_fee` **rate** (mutable by its authority — the extension's presence
+is pre-event, its rate is not); authorities **absent-now** (revocation time
+unknown); every SolRPDS aggregate on the removal side (`TOTAL_REMOVED`,
+`NUM_LIQUIDITY_REMOVES`, `LAST_*`, `INACTIVITY_STATUS`) — label side by
+construction.
+
+**Unknowable without an indexer:** launch-window holder concentration;
+creator allocation at T0; pre-launch insider funding graph; authority
+revocation timestamps; LP-lock state at T0; creator's time-to-first-sell.
+
+**What the first keyless model looks like, concretely:** the **honeypot class
+is fully supported** (its signals are mint-time immutables) and **hard-rug
+avoidance is partially supported** (platform, launch timing, authority-
+present, extension flags). The **soft- and slow-rug classes are unsupported —
+every one of their signals sits in the indexer column.** That, times the
+Task 1 finding that there is time to act, is the measured case for the free
+Helius key.
+
+### 4. Registered baselines and the first-model bar (commit 902d2e6, before any model)
+
+Minority-class (honest) scoring on the measured distribution — always-rug:
+precision **undefined** (0/0, reported as such), recall 0; always-honest:
+precision 0.2991, recall 1; random-at-base-rate: 0.2991/0.2991. At the
+external 98.7% launch-population base rate the honest precision of the
+trivial classifiers is **0.013**. **Bar:** time-split holdout (train ≤ 2023,
+test Jan–Nov 2024), pre-event features only, canary and prefix suites green,
+**honest precision ≥ 0.60 at recall ≥ 0.50**. A model that clears it on
+post-event or indexer features has not cleared it.
+
+Everything retrieved this stage was snapshotted with sha256 + retrieval date
+(GoPlus 60-mint sample); labels_v0.csv is regenerable from the immutable
+SolRPDS snapshots. Nothing bought, no keys created, recorders untouched.
