@@ -1998,3 +1998,43 @@ unsupported until an indexer exists — and the C.20 time-to-event finding
 (~96% of hard rugs outlive score-and-act latency) is what makes that indexer
 worth obtaining. `authority_pre_event` in `research/detection/labels.py` is
 the inference as code, with its one-directionality under test.
+
+## ADR-046: Metered API credits get the Databento treatment — refuse first, ledger everything
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+Credits are money with the serial numbers filed off. The Helius gate therefore
+inherits ADR-017/022 wholesale: a hard cap in config (`helius_credit_cap`,
+dated comment), an append-only on-disk ledger so the cap survives restarts, a
+pre-charge check so a refusal writes nothing, and sweep-level estimates
+refused *before the first request*. Where no usage endpoint exists, cost is
+derived from request counts against a weighted schedule, the weights are
+dated and marked unverified, and the ledger keeps raw counts so operator
+reconciliation is one comparison. Weights are corrected by edit, never
+loosened mid-sweep.
+
+## ADR-047: Indexer sweeps are sampled to the budget, and the design predates the fetch
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+Never sweep the population because it exists. C.21 registers a stratified
+class × launch-year sample (240 train-era + 300 test-era = 540 tokens) with
+its cost formula, sized after a small measured probe and proceeding only at
+≤ 50% of remaining cap. If the tier cannot fund the design, the sample
+shrinks to what fits and the shrinkage is the reported finding — the
+C.15/C.19 pattern applied to quota instead of data.
+
+## ADR-048: Decontamination rules and the feature window are registered before the data
+
+**Date:** 2026-08-06 · **Status:** accepted
+
+The honest_candidate class is an upper bound; a model punished for correctly
+flagging an unlabeled soft rug is being scored against wrong ground truth. The
+correction rules are therefore fixed ahead of any fetch: insider set = creator
+plus creator-first-funded wallets; ≥ 70% of window-end holdings sold within
+72 h → soft_rug, within 30 d → slow_rug. The feature window is 1,800 s from
+first pool activity, justified against C.20's measured lifetimes, and **a
+label event inside the window refuses computation rather than clamping** —
+the window length must never encode the event time. Results are reported
+against both label versions so the correction's effect is visible, never
+absorbed.

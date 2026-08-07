@@ -2285,3 +2285,29 @@ indexer-dependent features has not cleared it.
   snapshots; GoPlus sample snapshotted with sha256. `make lint`,
   `make typecheck`, `make test` clean — **326 tests**. Zero keys, zero spend,
   recorders alive throughout.
+
+## 2026-08-06 — Stage C.21: gate built, pipeline leakage-wired, key absent
+
+- **The finding: `MLCE_HELIUS_API_KEY` does not exist** — not in `.env`
+  (56 B, mtime 2026-08-02) and not in the environment; verified by count,
+  value never printed. Credit accounting: **0 estimated, 0 spent, 0 sent**.
+  The registered bar (902d2e6) was **not attempted** — distinct from not
+  cleared.
+- **Task 1 complete:** `helius_api_key` SecretStr + `require_helius_key()`
+  (raises naming the variable — verified live), `.env.example` line, `.env`
+  ignored/untracked. Credit gate with cap 30,000 (dated, weights {rpc:1,
+  enhanced:10} marked UNVERIFIED, method = request-count derivation since no
+  keyless usage endpoint), append-only ledger surviving restart, refusal that
+  writes nothing — all under test.
+- **Task 2 registered (ADR-047):** 540-token class×year stratified sample
+  (240 train-era, 300 test-era), cost formula against a 12-mint measured
+  probe, proceed only ≤ 50% of remaining cap, shrink-and-report otherwise.
+- **Tasks 3/4 wired first (ADR-048):** 1,800 s window justified from C.20
+  lifetimes; `WindowLeakError` refuses event-inside-window pools (never
+  clamps); six indexer features replayed from tx records; decontamination at
+  70%/72 h/30 d with boundary tests; prefix + canary suites green on
+  synthetic **before any real feature exists**.
+- **Task 5 blocked** on the key; the run order for the moment it lands is
+  written in the report. ADR-046/047/048 appended.
+- `make lint`, `make typecheck`, `make test` clean — **333 tests**, 7 new.
+  Recorders alive; census window closes 2026-08-11 untouched.

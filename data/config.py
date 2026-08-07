@@ -259,6 +259,15 @@ class AppConfig(BaseSettings):
     # Read-only market-data vendor key (CLAUDE.md rule 4). SecretStr so it
     # cannot leak through a repr, a log line, or a pydantic dump.
     databento_api_key: SecretStr | None = None
+    # Read-only indexer key (CLAUDE.md rule 4): it can read chain history and
+    # nothing else. SecretStr for the same no-leak reasons as Databento.
+    helius_api_key: SecretStr | None = None
+    # Credit cap for the Helius free tier, in request-weighted credits
+    # (ADR-046). 2026-08-06: weights and the monthly quota are UNVERIFIED
+    # against the dashboard — no usage endpoint is reachable keyless — so the
+    # cap is set conservatively and every priced request is ledgered so the
+    # operator can reconcile. Raising it is an operator edit, never code.
+    helius_credit_cap: int = 30_000
     budget: BudgetSettings = BudgetSettings()
 
     @classmethod
@@ -297,6 +306,18 @@ class AppConfig(BaseSettings):
         if self.databento_api_key is None or not self.databento_api_key.get_secret_value():
             raise MissingSecretError(["MLCE_DATABENTO_API_KEY"])
         return self.databento_api_key.get_secret_value()
+
+    def require_helius_key(self) -> str:
+        """The Helius key, or a clear startup failure naming the variable.
+
+        Read-only indexer credential (CLAUDE.md rule 4): it can read chain
+        history and nothing else. Callers get the plain string only at the
+        moment they construct the client, and every priced request it enables
+        passes through the credit gate (ADR-046) first.
+        """
+        if self.helius_api_key is None or not self.helius_api_key.get_secret_value():
+            raise MissingSecretError(["MLCE_HELIUS_API_KEY"])
+        return self.helius_api_key.get_secret_value()
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:

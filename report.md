@@ -3141,3 +3141,74 @@ post-event or indexer features has not cleared it.
 Everything retrieved this stage was snapshotted with sha256 + retrieval date
 (GoPlus 60-mint sample); labels_v0.csv is regenerable from the immutable
 SolRPDS snapshots. Nothing bought, no keys created, recorders untouched.
+
+## Stage C.21 — indexer wiring, credit gate, and the leakage-wired pipeline — the key is absent — 2026-08-06
+
+**Credit accounting first, estimated against actual: 0 estimated, 0 spent, 0
+requests.** Nothing priced was sent, because the stage's premise failed
+measurement: **`MLCE_HELIUS_API_KEY` exists neither in `.env` (56 bytes,
+mtime 2026-08-02, predating C.19) nor in the process environment** — verified
+by count in both places, the value never printed. Per the C.15/C.19 pattern,
+everything key-independent was built and tested, and the remainder is
+reported blocked rather than simulated. **The registered bar (902d2e6) was
+not attempted — which is not the same as not cleared.**
+
+### Task 1 — delivered in full, key-independent
+
+`helius_api_key` is a `SecretStr` on the config layer with
+`require_helius_key()` raising `MissingSecretError` naming the variable —
+the Databento pattern exactly, verified live (it raises, correctly, on this
+machine). `.env.example` documents the commented line; `.env` remains
+gitignored and untracked (checked, not assumed).
+
+**The credit gate** (`data/helius/gate.py`, ADR-046): cap
+`helius_credit_cap = 30,000` request-weighted credits with a dated comment;
+weights {rpc: 1, enhanced: 10} **stated as unverified against the dashboard**
+— no usage endpoint is reachable keyless, so the pricing method is
+request-count derivation, and the append-only ledger
+(`data/vendor/helius_credit_ledger.jsonl`) records raw counts precisely so
+the operator can reconcile and correct. The cap survives restarts because
+`spent()` re-reads the ledger; **a refusal names the arithmetic and writes
+nothing** — proven by test, alongside restart-persistence.
+
+### Task 2 — the sample design, registered with its cost formula (ADR-047)
+
+Stratified class × launch-year: {2021, 2022, 2023} × {hard_rug,
+honest_candidate} × 40 = 240 train-era pools, plus 2024 × both × 150 = 300
+test-era pools — **540 tokens**, matching the registered time split. Cost
+formula: `540 × per_token_requests(measured on a 12-mint probe) ×
+CREDIT_WEIGHTS["enhanced"]`, and the sweep proceeds only if the estimate sits
+at **≤ 50% of remaining cap**; otherwise the sample shrinks to what fits and
+the shrinkage is reported, never stretched. The 12-mint probe is the first
+thing that runs when the key lands.
+
+### Tasks 3 and 4 — rules and features built, leakage suite wired FIRST
+
+The launch window is **1,800 s from first pool activity**, justified against
+C.20's measured lifetimes (Q25 2.6 h, median 2.55 d): early enough to act,
+late enough to see behaviour. **A pool whose label event falls inside the
+window is refused (`WindowLeakError`), never clamped** — clamping would leak
+the event time through the window length; exclusions are counted and will be
+reported. Features (`research/detection/history.py`) replay balances from
+transaction records up to the window only: creator allocation at T0, top-5
+concentration at window end, creator time-to-first-sell, authority revocation
+in-window, early-holder count, insider-funded early holders. Prefix
+invariance and the refusal canary are green on synthetic histories **before
+any real feature exists** — the Task 4 ordering, honoured literally.
+
+Decontamination rules registered (ADR-048): insider set = creator + wallets
+first funded by the creator; selling **≥ 70% of window-end holdings within
+72 h → soft_rug**, within **30 d → slow_rug**, else honest_candidate — with
+the 69.9%/71-hour boundary cases under test. Model results will be reported
+against both labels_v0 and the decontaminated labels when the fetch runs.
+
+### Task 5 — blocked, stated plainly
+
+No model was trained: the indexer features it requires need the key, and a
+model on keyless features alone would not be the registered experiment. The
+moment `MLCE_HELIUS_API_KEY` lands in `.env`: 12-mint probe → measured
+per-token cost → gate-checked 540-token fetch (snapshotted, manifested) →
+decontamination counts → LightGBM (no search) on the registered split →
+report against the bar as written, on both label versions.
+
+Nothing bought, nothing sent, zero credits, recorders untouched.
