@@ -3212,3 +3212,37 @@ decontamination counts → LightGBM (no search) on the registered split →
 report against the bar as written, on both label versions.
 
 Nothing bought, nothing sent, zero credits, recorders untouched.
+
+## Stage C.21 addendum — the key landed, the pipeline ran, the bar was not cleared — 2026-08-07
+
+**Credit accounting, estimated vs actual:** probe estimate ~65 weighted/token;
+actual sweep **14,740 weighted (1,474 requests)** against the 14,665 sweep
+budget — **the budget stop fired at 178 of 200 tokens, exactly as registered
+(ADR-047)**. Total ledger 15,410 of the 30,000 cap; every request charged
+before sending; probe + design snapshotted and manifested.
+
+**Sample outcome:** 200 designed → 178 fetched → **98 truncated** (12-page cap
+reached before T0 — pagination-to-launch is far deeper than the probe's capped
+average implied) → **80 pools with full launch-window features**; 0 window-leak
+exclusions (event-inside-window pools were pre-filtered at sampling).
+
+**Decontamination (Task 3), measured:** of 18 honest_candidate pools with
+features, **1 soft_rug + 1 slow_rug reclassified (11%)** — the contamination
+C.20 flagged is real, and results are reported on both label versions.
+
+**Model vs the bar (902d2e6): NOT CLEARED, on either label version.** Train 46
+/ test 34 with only **5 honest in test**; the model predicted zero honest →
+honest precision **undefined (0/0)**, recall **0.0**, vs the bar's ≥0.60 @
+≥0.50. Feature importance (provenance: all pre-event): creator_allocation_t0
+dominant (147/169), n_early_holders second, mintable third — directionally
+sensible, statistically nothing at n=80.
+
+**Which limitation, plainly: feature coverage, not absent signal and not label
+quality.** The truncation rate (55%) plus the budget stop cut the designed
+540→200→80, and 5 test-fold honest pools cannot clear any bar. The free tier
+as exercised supports ~80 fully-featured pools per half-cap sweep. What would
+change it: deeper per-token budget on fewer tokens, a pagination method that
+starts from T0 rather than walking back from now, or a paid tier. Until one
+of those exists, the registered bar stands unattempted at meaningful scale —
+this run proves the pipeline end-to-end (gate, refusals, window discipline,
+decontamination, both-label reporting) and prices the real cost of the data.

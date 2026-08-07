@@ -2311,3 +2311,19 @@ indexer-dependent features has not cleared it.
   written in the report. ADR-046/047/048 appended.
 - `make lint`, `make typecheck`, `make test` clean — **333 tests**, 7 new.
   Recorders alive; census window closes 2026-08-11 untouched.
+
+## 2026-08-07 — C.21 executed with the key: pipeline proven, bar not cleared
+
+- Key landed; probe 67 req (670 weighted); sweep stopped by the gate at
+  **14,740/14,665 budget, 178/200 tokens** — refuse-and-report worked live.
+- **98/178 truncated** before T0 (12-page cap): pagination-to-launch is the
+  real cost driver. **80 modeled pools**; 0 window-leak exclusions.
+- Decontamination measured: **2/18 honest reclassified** (1 soft, 1 slow).
+- **Bar (902d2e6) attempted and NOT CLEARED** on either label version: test
+  fold held 5 honest; model predicted none (precision 0/0, recall 0.0).
+  Limitation named: **feature coverage/sample size**, not absent signal (top
+  features pre-event and directionally sensible) and not label quality.
+- Next requires: deeper-per-token fetch on fewer tokens, T0-forward
+  pagination, or a paid tier — operator decision, priced by this run.
+- Ledger 15,410/30,000; snapshots manifested; recorders alive; census window
+  (2026-08-11) untouched. Tests 333 green.
