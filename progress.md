@@ -2229,3 +2229,31 @@ track only; the C.17 decision stands (ADR-044).
   Economics caveat led the report, unhedged, per the registration. ADR-044.
 - `make lint`, `make typecheck`, `make test` clean — 319 tests (config-only
   changes). All three recorders alive throughout.
+
+## 2026-08-06 — Stage C.20: baselines and the first-model bar, registered before any model exists
+
+**No model exists on this track. These numbers and this bar predate all of
+them, in the C.16/C.17 pattern.**
+
+**Measured label distribution** (SolRPDS 116,308 pools, keyless labels v0):
+hard_rug **75,996**, honest_candidate **34,791** (29.91% — an upper bound on
+honesty, contaminated from above by unlabeled soft/slow rugs),
+unlabeled_residual **5,521**. The honest minority is what every later
+evaluation turns on.
+
+**Registered trivial baselines, minority (honest) class:**
+
+| baseline | honest precision | honest recall |
+|---|---|---|
+| always-rug | **undefined** (0/0 — reported as such, never 0 or 1) | 0.000 |
+| always-honest | 0.2991 (measured) / 0.013 (external 98.7% base rate) | 1.000 |
+| random at base rate | 0.2991 / 0.013 | 0.2991 / 0.013 |
+
+**The bar the first model must clear, fixed now:** on a time-split holdout
+(train ≤ 2023, test Jan–Nov 2024), using only features classified
+**pre-event** under ADR-045, with the planted-future canary and
+prefix-invariance suite green: **honest-candidate precision ≥ 0.60 at recall
+≥ 0.50** — at least 2× the always-honest baseline on the measured
+distribution — reported beside the external-base-rate framing. Anything short
+is FAIL; a model that beats the bar only with post-event or
+indexer-dependent features has not cleared it.
