@@ -56,8 +56,11 @@ def test_gate_ledger_survives_a_restart(tmp_path: Path) -> None:
 
 
 def test_require_helius_key_raises_naming_the_variable() -> None:
-    # Arrange — the key is absent on this machine (verified in C.21 itself).
+    # Arrange — test the ACCESSOR, not the machine: an environment-dependent
+    # assertion here broke the moment the operator added the real key (the
+    # C.21 addendum's lesson). Force the absent state explicitly.
     cfg = load_config()
+    object.__setattr__(cfg, "helius_api_key", None)
 
     # Act / Assert
     with pytest.raises(MissingSecretError) as err:
