@@ -3847,3 +3847,47 @@ Budget: **5,649 of 60,000 remaining, cap not raised** (C.22-once held through
 C.23/C.24/C.25). Behavioural matrix persisted to `behavior_c25.csv`, regenerable
 via Method B from the immutable SolRPDS snapshots; recorders untouched; census
 window (2026-08-11) not read.
+
+## Stage C.26 — pre-registration: can the decon test be afforded, and the track's end condition — 2026-08-07
+
+*Committed **before any C.26 data is fetched.** This is likely the detection
+track's final stage; the end condition below is registered now so the conclusion
+is a decision, not an outcome.*
+
+**Why.** C.25 ran on v0 because decontaminated labels needed 30 days of enhanced
+detail on the *pool* address, unaffordable at unbiased scale. C.26 tests one
+restructure: query the *creator* address instead — a creator transacts far less
+than an active pool, so the detail volume to answer "did the creator sell" may be
+an order of magnitude smaller — and prices the decon-unbiased test against a
+defensible cap.
+
+### Registered thresholds and the end condition (Task 0)
+
+1. **Affordability threshold for the decon-unbiased test.**
+   - **Run now, no raise:** if the measured test cost ≤ the **5,649 remaining**,
+     run it in Task 2.
+   - **Proposable raise (report, do not make):** if the test fits under a
+     **65,000 cap** (≤ ~10,600 additional from the current ~54,351 spent — a ~8%
+     raise over the frozen 60,000, bounded and answering one registered
+     question), report the exact raise it needs as a proposal for the operator.
+     **The cap is self-imposed, not a Helius tier limit**, so the raise is a
+     deliberate decision, not a technical necessity.
+   - **Measured-unaffordable:** if the test would need **> 65,000**, it is
+     recorded as measured-unaffordable and the end condition (below) fires.
+
+2. **Answerable-cell floor — unchanged: 30** decontaminated honest in the 2024
+   test fold. Below it a decon cell is unanswerable, not reported.
+
+3. **Lift noise floor — unchanged: 0.02.** A change in the 6h mid-stratum lift of
+   ≤ 0.02 is noise. A firming sweep (Task 3) that narrows the interval **without
+   moving the point estimate** is reported as a narrower interval, never as a
+   stronger finding.
+
+4. **The end condition (C.17 / C.24 pattern), decided in advance.** If the
+   decontaminated unbiased test **cannot be afforded within a defensible cap**
+   (the > 65,000 case above), the **detection track concludes with its current
+   outputs** — Method B, the hard-rug clearance scorer, the C.24/C.25 behavioural
+   finding with its measured magnitude and uncertainty, and the C.23 boundary
+   result — and the **decon-unbiased question is recorded as measured-unaffordable,
+   not untested.** That distinction is the point: the question has a measured
+   price the project chose not to pay, which is a closure, not a gap.
