@@ -2066,3 +2066,41 @@ uncleared (precision 0.29–0.41 vs 0.60) but now on 171 pools with 36 test-fold
 honest, moving the limiting factor from sample size to feature signal strength —
 and `creator_allocation_t0`, C.21's n=80 importance artifact, collapsed to zero
 at scale, vindicating the earlier call that it meant nothing.
+
+## ADR-050: Creator-history features under a strict T0-prefix rule — and the honest boundary is absent pre-event
+
+**Date:** 2026-08-07 · **Status:** accepted
+
+**Context.** C.22 left one lever open: it named "richer pre-launch history" as
+the feature class that might lift the honest bar past 0.60, having captured
+insider structure only as a shallow count. The strongest such class is the
+repeat offender — a creator's own prior rug rate — which is also the one most
+exposed to look-ahead, since a creator's *full* history includes launches after
+the pool being scored. Two facts had to be settled before it could be built:
+whether the label archive even carries a creator to key on, and how to compute
+per-creator history without leaking the future.
+
+**Decision.** SolRPDS carries **no creator field** (verified 2026-08-07 across
+CSV and JSON), so the creator is derived per pool from the Helius launch-window
+fetch (first minter) and creator *history* is bounded to the fetched sample —
+making coverage the gate, measured not assumed. Every creator feature
+(`research/detection/creator.py`) reads a **strict T0-prefix** of the creator's
+launches (`launch.t0 < scored.t0`); a later launch, including a later rug, is
+invisible by construction. First-seen returns a −1 sentinel, never a 0.0 that
+would read as a clean record. The leakage suite (`tests/test_detection_creator.py`,
+four tests) plants a later same-creator hard rug and asserts no feature moves —
+green before the first real creator feature was computed.
+
+**Consequences.** Coverage came in at **42.7%** (120/281), not the feared few
+percent — the class is populated. Yet on the decontaminated honest labels it
+moved precision **0.574 → 0.570** (inert), and on raw v0 it *hurt*
+(0.984 → 0.648, Brier +0.067) by overfitting `creator_prior_launches` across the
+2023 → 2024 split. With test-fold honest tripled (30 → 97) and the strongest new
+feature class built and measured, the limiter is no longer sample or unbuilt
+features: it is **absent signal at the honest/soft-slow-rug boundary.** Pre-event
+on-chain state at T0+30min separates blatant hard rugs (precision 0.98) but not
+honest candidates from slow rugs (0.57 ≈ base rate); the `top5_concentration_wend`
+carrier is unchanged, and creator history adds a rank-2 train-fit that does not
+pay out on test. Continuation past this point requires leaving the pre-event
+on-chain feature space entirely — a different tool than the one registered under
+ADR-044.

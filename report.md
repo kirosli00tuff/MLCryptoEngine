@@ -3334,3 +3334,135 @@ captured only as a shallow count), not more pools and not a paid tier.
 
 Everything snapshotted; gate unchanged and it stayed inside budget; recorders
 untouched; census window (2026-08-11) not read.
+
+## Stage C.23 — reachable, not cleared: creator history does not separate honest from slow rugs — 2026-08-07
+
+### 1. Reachability (Task 1) — the answer that orders the rest
+
+The gate question was whether a precision figure against the registered bar
+(902d2e6: honest precision ≥ 0.60 at recall ≥ 0.50, train ≤ 2023 / test
+2024-Jan–Nov, pre-event features only) is even *reachable* on a proper fold —
+before spending on richer features. It is reachable as machinery and **not
+cleared as signal.** LightGBM, no search, launch-window features only, one test
+fold n = 194:
+
+| labels | test honest | base rate | max precision @ recall ≥ 0.5 | recall there | threshold | Brier | bar |
+|---|---|---|---|---|---|---|---|
+| v0 (raw) | 117 | 0.603 | **0.984** | 0.538 | 0.596 | 0.237 | clears — but wrong target |
+| decontaminated | 97 | 0.500 | **0.574** | 1.000 | 0.487 | 0.255 | **precision short** |
+
+The two rows measure different questions and the gap between them *is* the
+finding. **v0's "honest" class still contains the soft and slow rugs** (v0 only
+splits off hard rugs), so 0.984 is *hard-rug detection* — the easy case, since a
+hard rug drains ≥ 99% of liquidity and `top5_concentration_wend` gives it away.
+**Decontamination moves the soft/slow rugs into the positive class**, and
+precision collapses to 0.574 at a 50% base rate — **+0.07 above chance.** The
+honest-candidate-versus-slow-rug boundary is the one an avoidance tool actually
+needs, and it is the one that does not separate.
+
+Two details make this signal-not-sample. First, **the clinching control is in
+the table**: same fold, same n = 194, same train — v0 separates at 0.98, decon
+sits at base rate. Were a small train the limiter, v0 would fail too; it does
+not. Second, **the decon PR curve is flat**: its max precision occurs at
+recall = 1.0 (precision does not improve as the threshold tightens), the
+base-rate signature — whereas v0's max is at recall 0.54 with precision still
+climbing as it concentrates true honests at high scores. Brier agrees: v0 0.237
+is a model calibrated on real structure; decon 0.255 is a model with little to
+calibrate.
+
+### 2. Creator history — coverage and the leakage guard (Task 2)
+
+**Premise correction, measured.** The prompt's Task 2 assumed a creator field to
+key on; **SolRPDS has none** (verified 2026-08-07 across CSV and JSON —
+pool/mint/liquidity/timestamps only). The creator is therefore *derived* per
+pool from the Helius launch-window fetch (first minter), so creator *history* is
+bounded to the fetched sample. That made coverage the gate, pre-registered as
+the likely limiter ("likely tiny").
+
+**It is not tiny: coverage 42.7%** — 120 of 281 reached pools have a prior
+fetched launch by the same creator. The repeat-offender class is populated on
+nearly half the sample, so whatever it fails to do in §4, it does not fail for
+want of coverage.
+
+**Leakage guard, wired before the first creator feature (ADR-050).** Every
+creator feature (`research/detection/creator.py`) reads a strict T0-prefix of
+the creator's launches — `launch.t0 < scored.t0` — so a later launch, including
+a later rug, can never inform an earlier score. `tests/test_detection_creator.py`
+plants a later same-creator hard rug and asserts no feature moves; first-seen
+returns a −1 sentinel, never a 0.0 that would read as a clean prior record. Four
+tests, green **before** any real creator feature was computed — the leakage
+suite predates the data, as the window guard did in C.21.
+
+### 3. Sweep accounting (Task 3)
+
+360 tokens designed; **T0 reached on 281 (78.1%)**, holding C.22's 81% on a
+sample 1.7× larger (the 3-point difference is composition — deeper-history pools
+cost more RPC pages). 79 could not be paginated to T0 (beyond the RPC-page cap
+or errored); of the 281 reached, 39 had a label event **inside** the 30-min
+window and were excluded by the leak guard, not clamped (`WindowLeakError`),
+then reported as `subwindowed`. Credits: **18,370 actual vs 16,920 estimate**
+(+8.6%), ledger **45,971 of the 60,000 cap — cap not raised this stage.** The
+feature matrix (281 pools) is persisted to
+`data/processed/detection/features_c23.csv`, closing C.22's non-persistence gap;
+it is regenerable from the immutable snapshots.
+
+### 4. The bar with creator history (Task 4)
+
+Same registered split, launch-window features **plus** the five creator-history
+features:
+
+| labels | max precision @ recall ≥ 0.5 | recall / threshold | Brier | vs Task 1 | bar |
+|---|---|---|---|---|---|
+| v0 | 0.648 | 0.675 / 0.411 | 0.304 | **0.984 → 0.648, Brier 0.237 → 0.304 (worse)** | clears but degraded |
+| decontaminated | 0.570 | 0.753 / 0.424 | 0.262 | 0.574 → 0.570, Brier flat (**inert**) | **precision short** |
+
+Creator history **does not clear the honest bar and does not help it** — decon
+precision moves 0.574 → 0.570. On v0 it actively *hurts*: `creator_prior_launches`
+takes high train importance but overfits across the 2023 → 2024 boundary,
+dropping v0 precision 0.984 → 0.648 and degrading calibration (Brier +0.067). An
+in-sample-attractive, out-of-sample-inert feature.
+
+### 5. Feature importance, provenance, and which lever is binding
+
+`top5_concentration_wend` is the sole carrier in every cell (importance
+173–200), an order of magnitude above anything else. Creator history **adds
+rather than displaces**: `creator_prior_launches` ranks second where present
+(138–178) but, per §4, that ranking is train-fit that does not pay out on test.
+Everything else — `creator_allocation_t0`, `creator_time_to_first_sell_s`,
+`authority_revoked_in_window`, `insider_funded_early_holders` — is ~ 0,
+confirming C.22's collapse of the C.21 `creator_allocation_t0` artifact rather
+than reviving it.
+
+Which of the four limits the result:
+
+- **Not threshold** — the figure is the max over the whole PR curve at recall ≥ 0.5.
+- **Not sample** — test-fold honest tripled from C.22 (30 → 97) and creator
+  coverage is 43%; the v0/decon control proves the same fold learns a separable
+  target when one exists.
+- **Not features-unbuilt** — the launch-window concentration/allocation/authority/
+  insider classes *and* the strongest new class C.22 named (creator/funding
+  history) are all in.
+- **Absent signal — specifically at the honest/soft-slow boundary.** Hard rugs
+  separate cleanly (v0 0.98); honest candidates do not separate from soft/slow
+  rugs on pre-event on-chain state (decon 0.57 ≈ base). This is the narrower,
+  sharper claim C.22 declined to make, now earned: the boundary the avoidance
+  tool needs is the boundary that is not there in the T0+30min window.
+
+### Verdict
+
+**The honest bar is not cleared, and C.23 identifies why with the sample and
+feature objections both removed.** C.22 left a lever open — richer pre-launch
+history. C.23 built the strongest form of it (per-creator repeat-offender
+history at 43% coverage, leak-guarded) and **measured that it does not move the
+honest bar** (0.574 → 0.570), while tripling the test fold removed sample size as
+the explanation. What remains is not a bigger sweep or a paid tier but a
+**structural finding**: pre-event on-chain state at T0+30min separates blatant
+hard rugs (precision 0.98) but not honest candidates from slow/soft rugs
+(precision 0.57 ≈ chance). The avoidance framing on pre-event on-chain features
+alone is answered — negatively. Any continuation would have to leave that
+feature space entirely (post-launch trajectory, off-chain social/deploy
+provenance), which is a different tool than the one registered.
+
+Gate unchanged and inside budget (45,971 / 60,000, cap not raised); feature
+matrix persisted and regenerable; recorders untouched; census window
+(2026-08-11) not read.

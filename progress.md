@@ -2347,3 +2347,35 @@ indexer-dependent features has not cleared it.
   n=80 artifact call. Next lever = pre-launch funding-graph depth, not pools.
 - Snapshots manifested; recorders alive; census window untouched. 333 tests.
 - **CLAUDE.md:** added the standing rule to give a measured ETA for every prompt.
+
+## 2026-08-07 — Stage C.23 complete: honest bar reachable but not cleared; creator history does not move it
+
+- **Reachability (the gate):** on a proper 2024 test fold (n=194), the honest
+  bar is reachable as machinery, not cleared as signal. Decontaminated honest
+  precision **0.574 @ recall≥0.5** at a 50% base rate — +0.07 above chance. Raw
+  v0 "clears" at 0.984, but that is hard-rug detection, the easy case (v0 honest
+  still contains the soft/slow rugs).
+- **The control that isolates the cause:** same fold, same n, same train — v0
+  separates at 0.98, decon sits at base rate with a flat PR curve (max precision
+  at recall 1.0). A small train would sink v0 too; it does not. So **signal, not
+  sample.**
+- **Creator history (the C.22 lever), built and measured:** coverage **42.7%**
+  (120/281), far above the feared "tiny" — the class is populated. Yet decon
+  precision moves **0.574 → 0.570 (inert)** and v0 *drops* 0.984 → 0.648 (Brier
+  +0.067) — `creator_prior_launches` overfits the 2023→2024 split. It adds a
+  rank-2 train-fit; **`top5_concentration_wend` stays the sole carrier.**
+- **SolRPDS has no creator field** (verified across CSV+JSON) — creator derived
+  from the Helius fetch; strict T0-prefix leakage guard wired first (ADR-050),
+  4 tests green before any real creator feature was computed.
+- **Limiting factor, named:** not threshold, not sample, not unbuilt features —
+  **absent signal at the honest/soft-slow boundary.** Pre-event on-chain state
+  at T0+30min flags blatant hard rugs, not honest-vs-slow-rug. The avoidance
+  framing on pre-event on-chain features alone is answered negatively; any
+  continuation leaves that feature space (post-launch trajectory / off-chain
+  provenance).
+- **Sweep:** 360 designed, T0 reached 281 (78.1%, holds C.22's 81% at 1.7× the
+  size); 18,370 credits actual vs 16,920 est (+8.6%); ledger 45,971 / 60,000,
+  **cap not raised.** Feature matrix persisted to `features_c23.csv` (closes
+  C.22's non-persistence gap), regenerable from immutable snapshots.
+- Recorders untouched; census window (2026-08-11) not read. 337 tests
+  (+4 creator), ruff + mypy clean. ADR-050 appended; report.md §C.23 written.
