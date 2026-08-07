@@ -3679,3 +3679,56 @@ Budget: **11,008 of 60,000 remaining, cap not raised** (the second-raise rule
 held). Behavioural matrix persisted to `behavior_c24.csv` and the scorer to
 `hard_rug_scorer.txt`, both regenerable; recorders untouched; census window
 (2026-08-11) not read.
+
+## Stage C.25 — pre-registration: unbiased sample at 6h and where the lift lives — 2026-08-07
+
+*Committed **before any C.25 data is fetched or any model is fit.** The
+interpretation rule below is registered before the strata are seen — its whole
+purpose is that a decomposition cannot be read favourably after the fact.*
+
+**Why.** C.24's 6h positive (behavioural decon 0.654 @ recall 0.53, +0.097 lift)
+rests on C.23's 40-page-reachable pools, which the from-now pagination skews
+toward *faded* honest pools. C.25 asks two things: does the lift survive a
+depth-unbiased sample, and does it survive **in the hard middle** — pools that
+look healthy at 6h and later slow-rug — or only at the easy extremes.
+
+### Registered thresholds and rules (Task 0)
+
+1. **Unanswerable floor — unchanged: 30** decontaminated honest in the 2024 test
+   fold. Below it a cell is declared unanswerable, not reported.
+
+2. **Lift noise floor — unchanged: 0.02.** A lift of decon-honest precision over
+   the cutoff's base rate of ≤ 0.02 is noise, not signal. The C.24 positive is
+   recorded as **surviving** the unbiased sample iff, at the 6h cutoff on the
+   depth-corrected sample, behavioural decon lift over base is **> 0.02** *and*
+   precision clears **0.60 at recall ≥ 0.50**. A lift that falls to ≤ 0.02 or a
+   precision below 0.60 records the C.24 positive as **not surviving** the
+   selection correction.
+
+3. **Depth stratification (Task 3).** Stratify the honest class on **pool depth =
+   total transaction count from launch to now** (the variable the old sample was
+   selected on) into terciles. Deep pools enter in proportion to their true share
+   of the honest class as measured in Task 2; any shortfall against that
+   proportion is stated and the residual bias quantified. The corrected sample's
+   depth distribution is reported against C.24's as a number.
+
+4. **The interpretation rule (Task 4), registered before the strata are seen.**
+   The test fold is split by **pool activity at the cutoff** (transaction count in
+   [T0, T0+6h]) into low / mid / high terciles, and precision and lift-over-base
+   are reported per stratum.
+   - **Lift driven by easy extremes** (the weak reading): the **mid-activity
+     stratum lift is ≤ 0.02** (the noise floor) while low and/or high strata carry
+     it. The model would then be restating what a human sees at a glance — dead
+     pools rug, thriving pools survive — and discriminating little in the middle.
+   - **Genuine discriminating power** (the strong reading): the **mid-activity
+     stratum lift is > 0.02 and ≥ half the overall lift.** A pool healthy at 6h
+     that later slow-rugs, caught here, is the hard case, and lift there makes the
+     finding stronger than C.24's.
+   The mid-stratum outcome is the headline of Task 4, decided by this rule, not by
+   whichever framing flatters the result.
+
+5. **Cap frozen at 60,000, not raised this stage** (the C.22-once rule; C.23 and
+   C.24 held, C.25 holds). If a reach-complete sample does not fit the 11,008
+   remaining, the shortfall and the cap it would need are reported **as a
+   finding** (the C.15/C.19 pattern), and Tasks 3–5 run on the largest unbiased
+   subsample the budget supports.
