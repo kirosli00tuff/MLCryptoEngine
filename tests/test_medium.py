@@ -11,6 +11,7 @@ backtests classically get wrong.
 
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
 
 import numpy as np
@@ -229,4 +230,4 @@ def test_weekly_grid_returns_sundays_only() -> None:
 
     # Assert — 2020-08-02 was a Sunday; every entry is 7 days apart.
     assert weeks[0] == SUNDAY0
-    assert all(b - a == 7 * MS_PER_DAY for a, b in zip(weeks, weeks[1:], strict=False))
+    assert all(b - a == 7 * MS_PER_DAY for a, b in itertools.pairwise(weeks))

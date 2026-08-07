@@ -18,7 +18,7 @@ What it will compute, per instrument, exactly as registered:
 - **signed adverse mid move** after each print at 1 s, 5 s and 60 s, with
   :class:`~research.microstructure.adverse.AdverseSelection`'s resolution
   semantics: a deadline resolves against the last mid at or before it.
-- **net** = spread − adverse − 3.0 bps, per trade, per horizon; the instrument
+- **net** = spread - adverse - 3.0 bps, per trade, per horizon; the instrument
   is judged at its **worst** horizon, on the 95% CI lower bound.
 
 Validation is the other half of the file: :func:`known_answer` reproduces
@@ -62,7 +62,7 @@ CAPACITY_MEDIAN_DAILY_USD = 100_000.0
 CONFIDENCE = 0.95
 
 # Known-answer targets: C.9's closed nets on C.9's own window and measure
-# (time-weighted mean spread − adverse@1s − 3.0), reproduced within 0.5 bps.
+# (time-weighted mean spread - adverse@1s - 3.0), reproduced within 0.5 bps.
 C9_DATES: tuple[str, ...] = ("2026-08-01", "2026-08-02", "2026-08-03")
 C9_ADVERSE_HORIZON_MS = 1_000
 C9_KNOWN_NET_BPS = {"BTC": -3.05, "ETH": -2.75}
