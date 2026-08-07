@@ -3,6 +3,18 @@
 Read this file at the start of every coding session. It is the contract for how work
 happens in this repository.
 
+## Give an ETA for every prompt
+
+Every prompt gets an ETA, up front. A stage that launches a background driver, a
+credit-gated sweep, a `Monitor`, a waiter, or any timer must state one *before* the
+work is armed, and the ETA must be **measured, not guessed**: run a small probe, read
+the actual pace (requests/second, credits/token, pages/token), and derive the estimate
+from it — the C.1 rule that measured beats documented, applied to time. State the
+assumption the number rests on (e.g. "at the probe's 0.6 req/s") so a wrong ETA is
+debuggable rather than mysterious. When pace is high-variance, give a range and say what
+drives the spread. Re-quote the ETA when asked, from the ledger or log, never from the
+original guess.
+
 ## Project purpose
 
 MLCryptoEngine is a personal quantitative research project building a machine learning
