@@ -2477,3 +2477,38 @@ indexer-dependent features has not cleared it.
 - **Budget:** 1,199 / 60,000 remaining, cap **NOT** raised (C.22-once held through
   C.23–C.26). Recorders alive; census window (2026-08-11) not read. 347 tests;
   make lint/typecheck/test green.
+
+## 2026-08-08 — Stage C.27 (Tasks 2–4): external audit folded in, Kraken fee reconciled, operational posture — census deferred to 08-11
+
+- **Gated on the window.** The census (Task 1) scores 2026-08-04→08-11; at
+  2026-08-08T00:01Z it has ~72h left, so Task 1 and the register closure (Task 5)
+  are **held until after 2026-08-11T00:00Z** — scoring a partial window would
+  break the pre-registration (6025f5c). The census-independent tasks ran now.
+- **External audit folded into the register (Task 2):** per-hypothesis
+  corroboration with sources — LOB-ML non-reproducibility (H1/H2), Glosten–Milgrom
+  adverse selection (H3), the rigorous-strand-fails crypto-pairs literature (H4),
+  CME carry ~3% vs ~3.8% 2-yr Treasuries + Ethena's $14B→$5.9B contraction
+  (H5/H8), and the Quantopian backtest-vs-live meta-result (general prior). Each
+  reopening condition reconciled against abandon-now: the audit corroborates
+  do-not-deploy; the reopening thresholds are live-measured, not bets.
+- **Kraken fee reconciled (Task 3, ADR-055):** base tier corrected 0.40/0.80 →
+  **0.25/0.40** (live schedule, retrieved 2026-08-08) — the old figure was the
+  non-Pro retail fees. Round-trip maker 80→50 bps. **No closure flips** (H1 used
+  Coinbase's unchanged 0.40 maker; H3's Kraken ratios stay << 1.0). venues.yaml +
+  HYPOTHESES cost table + test_config updated; Coinbase's 0.40/0.60 already correct.
+- **Operational posture (Task 4):**
+  - *Keeps running:* three WS recorders (kraken/coinbase/hyperliquid) under
+    systemd **with linger** (survive logout/reboot) + telemetry latency probes.
+    The archive is the durable asset; H6 census and H7 cross-venue accrue on it at
+    zero cost.
+  - *Disk trajectory:* ~1.3 GB/day raw across 3 venues; `data/raw` 9.6G, `data/`
+    26G, **277G free (38% used)** → ~7 months runway before rotation/compaction.
+  - *What prompts a check:* disk > 80%, a recorder heartbeat gap, a venue
+    endpoint/fee-schedule change, or the census firing 2026-08-11.
+  - *What a future session reads first:* CLAUDE.md (the contract), then
+    progress.md (state), DECISIONS.md (ADRs), and **HYPOTHESES.md before proposing
+    any strategy** — the closed hypotheses and their reopening conditions live
+    there, so settled questions are not retried.
+- **Remaining for C.27 (after 2026-08-11T00:00Z):** score the census against its
+  frozen bars (Task 1), then close the register (Task 5). Recorders alive; census
+  window not read; make lint/typecheck/test green.

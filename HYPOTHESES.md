@@ -288,7 +288,7 @@ these as dated measurements, not constants.
 
 | venue | maker per side | **round trip** | verified |
 |---|---|---|---|
-| Kraken spot, base tier | 40 bps | **80 bps** | 2026-08-01 |
+| Kraken spot, base tier | 25 bps | **50 bps** | 2026-08-08 |
 | Coinbase Advanced spot, base tier | 40 bps | **80 bps** | 2026-08-01 |
 | Hyperliquid perps, base tier | 1.5 bps | **3.0 bps** | 2026-08-01 |
 
@@ -350,6 +350,87 @@ with a leg that died traded inside the window it had been selected on —
 produced **the highest-ranked result in the study**: 223% annualised from four
 trades. A bug that makes results worse gets investigated. A bug that makes them
 better gets published.
+
+---
+
+## External corroboration (folded in at C.27)
+
+The register records what the project measured; this section adds what outside
+evidence says about it, because the strongest reason not to relitigate a closure
+is often external rather than internal. Each item is reconciled against the
+entry's reopening condition: where the audit's evidence says "abandon", the
+reopening condition is a specific measurable threshold that evidence does not
+foreclose, and that is stated rather than left to contradict.
+
+**Directional prediction (H1, H2) — the order-book-ML literature does not
+reproduce.** Deep-learning limit-order-book predictors overfit the FI-2010
+benchmark and drop sharply on unseen data; DeepLOB's own authors report 62–70% on
+a real one-year LSE set against the benchmark's inflated figure, and surveys find
+"all models exhibit a significant performance drop when exposed to new data"
+([Prata et al., *Deep limit order book forecasting*, Quant. Finance 2025](https://www.tandfonline.com/doi/full/10.1080/14697688.2025.2522911);
+[LOB DL benchmark study, *AI Review* 2024](https://link.springer.com/article/10.1007/s10462-024-10715-4)).
+Reconciliation: this corroborates that microstructure-ML directional edges do not
+generalize — consistent with H2's absence (AUC 0.501) and with H1's real-but-tiny
+edge (AUC 0.596). Neither reopening condition is contradicted; the audit
+strengthens the prior against relitigating on a better model.
+
+**Spread capture (H3) — adverse selection is the maker's structural cost.**
+Microstructure theory (Glosten & Milgrom, *JFE* 1985) derives the bid-ask spread
+as compensation for adverse selection against informed flow; a small uninformed
+maker cannot avoid it. H3 measured positive adverse selection on every one of 28
+instruments (+0.06 to +0.68 bps). Reconciliation: the theory corroborates that a
+favourable spread-to-cost ratio alone is never sufficient. Reopening (a
+maker-rebate venue, or a ratio > 1.0 with adverse selection below the excess) is
+unchanged; the thin-perp census (H6) is the live test of whether any thin
+instrument escapes it.
+
+**Cointegration pairs (H4) — the rigorous strand of the crypto-pairs literature
+fails out of sample.** Crypto-pairs cointegration studies split: the careful
+strand reports strong in-sample results that "give reason to treat the strategy
+with caution" out of sample, while profit-claiming strands typically do not
+correct for survivorship or multiple testing
+([copula/cointegration crypto-pairs, *Financial Innovation* 2025](https://link.springer.com/article/10.1186/s40854-024-00702-7)).
+Reconciliation: H4's 0-of-180-survive result (survivorship-free universe,
+Benjamini–Hochberg, deflated Sharpe) sits with the rigorous strand and is more
+stringent than the profit-claiming one. Reopening (a broader shortable set **and**
+out-of-sample persistence) is unchanged.
+
+**Funding and basis carry (H5, H8) — the professional trade compressed below
+cash.** CME bitcoin futures carry has fallen to ~3% annualized against ~3.8% on
+two-year Treasuries, below the 2-year every month since Feb 2026 — "once over
+20%, now less than Treasury notes"
+([CoinDesk, 2026-08-03](https://www.coindesk.com/markets/2026/08/03/the-bitcoin-futures-yield-collapse-once-over-20-now-less-than-treasury-notes);
+[TFTC, 2026](https://www.tftc.io/bitcoin-futures-basis-below-treasury-yields-2026)).
+Ethena — the largest professional operator of the delta-neutral basis trade — saw
+USDe supply contract from ~$14B to ~$5.9B after the October-2025 unwind, with
+sUSDe yields compressed to mid-single digits through 2026
+([Stablecoin Insider, Q1 2026](https://stablecoininsider.org/ethena-usde-q1-2026-report/)).
+Reconciliation: strong corroboration of H5 ("decayed, not disproved") and H8
+(dispersion compressed). The audit's abandon-now aligns with H5's "currently
+unattractive." **Explicit reconciliation:** H5's reopening (funding > ~10%
+annualized sustained a quarter, measured live) is not contradicted — carry
+exceeded 20% in 2021 and could in a future bull regime — but the default is
+do-not-deploy and the reopening is a live-measured threshold, not a bet that it
+recurs. H8's reopening (dispersion re-widens **and** the price term stops
+cancelling) stands as the same kind of high bar.
+
+**The general prior (H9, H11, every model-based closure) — backtest Sharpe does
+not predict live.** The Quantopian *All That Glitters Is Not Gold* study (Wiecki,
+Campbell, Lent, Stauth; 888 algorithms, ≥ 6 months out-of-sample) found in-sample
+Sharpe explains **< 2.5% of out-of-sample variance** (R² < 0.025), and the more a
+strategy is backtested the larger the backtest-to-live gap
+([SSRN 2745220](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2745220)).
+Reconciliation: this is the meta-prior behind the project's deflated-Sharpe
+discipline (H9 DSR 0.446, H11 best 0.499 — both below the 0.95 bar). It
+corroborates closing on deflation rather than on the flattering in-sample cell,
+and is the general reason a promising backtest is not evidence.
+
+**Fee reconciliation (Task 3).** The Kraken base tier is corrected from 0.40/0.80
+to **0.25% maker / 0.40% taker** (live schedule, retrieved 2026-08-08). No
+closure flips: H1's headline used Coinbase's maker (0.40, unchanged), and even at
+0.25 maker (round trip 50 bps) H1's 3.31 bps gross capture fails by ~15×; H3's
+Kraken-instrument spread-to-cost ratios rise slightly but stay far below 1.0. The
+qualitative conclusions survive (ADR-055).
 
 ---
 

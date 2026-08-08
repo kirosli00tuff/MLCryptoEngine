@@ -84,8 +84,8 @@ def test_fee_tier_lookup_uses_highest_matching_tier() -> None:
     kraken = cfg.venues["kraken"]
 
     # Base tier per the 2026-07-09 Kraken restructure (see venues.yaml comment).
-    assert kraken.fees_for_volume(0).taker_bps == 80
-    assert kraken.fees_for_volume(0).maker_bps == 40
+    assert kraken.fees_for_volume(0).taker_bps == 40  # base tier reconciled C.27 (ADR-055)
+    assert kraken.fees_for_volume(0).maker_bps == 25
     assert kraken.fees_for_volume(60_000).maker_bps == 14
     assert kraken.fees_for_volume(999_999_999).maker_bps == 0
 

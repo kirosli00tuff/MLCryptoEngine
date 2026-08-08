@@ -2237,3 +2237,30 @@ reopens only on an affordable decontaminated label — a soft/slow-rug signal
 cheaper than 30-day insider-sell detail, or a live forward-recorded cohort — not
 on new access or a better model. The **census (H6) is now the sole open item
 across the project.**
+
+## ADR-055: Kraken base-tier fee corrected to 0.25 / 0.40; no closure flips
+
+**Date:** 2026-08-08 · **Status:** accepted
+
+**Context.** `config/venues.yaml` carried the Kraken base tier at 0.40% maker /
+0.80% taker, recorded 2026-08-01 as a post-restructure figure. The C.27 external
+audit flagged 0.25 / 0.40 as the commonly cited base tier. Fee schedules have
+been found stale before (ADR-012), so the rule is to treat them as dated
+measurements and re-verify.
+
+**Decision.** The live Kraken Pro maker-taker schedule
+(kraken.com/features/fee-schedule, corroborated by TradersUnion and Cryptsy,
+retrieved 2026-08-08) is **0.25% maker / 0.40% taker** at the base tier (< 10k USD
+30-day volume). The 0.40 / 0.80 recorded earlier captured the non-Pro
+retail/instant fees, not the Pro maker-taker schedule, and is corrected.
+Coinbase's recorded 0.40 / 0.60 base tier is already correct and unchanged.
+
+**Consequences.** The Kraken maker round trip falls **80 → 50 bps**. **No closure
+flips.** H1's headline directional closure used **Coinbase's** maker (0.40,
+unchanged), and fails by ~15× even at a 50 bps round trip (3.31 bps gross vs 50);
+H3's Kraken-instrument spread-to-cost ratios rise slightly but stay far below 1.0,
+and its best survivor (M6A, 0.98) is a CME instrument untouched by Kraken fees.
+The qualitative conclusions survive, and the report says so plainly. The
+correction is reflected in `venues.yaml`, the HYPOTHESES venue-cost table, and the
+external-corroboration section; fee schedules remain dated measurements, not
+constants.

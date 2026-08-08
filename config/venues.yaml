@@ -37,14 +37,19 @@ venues:
       ETH/USD: { price_decimals: 2, qty_decimals: 8 }
     # Matching engine at Equinix London (LD4); nearest cloud region is eu-west-2.
     aws_region: eu-west-2
-    # Base tier corrected 2026-08-01: Kraken restructured its spot schedule on
-    # 2026-07-09 to 0.40% maker / 0.80% taker at base tier (source: operator
-    # verification against Kraken's published schedule, Stage C.1 prompt). The
-    # tiers above 10k USD below are the PRE-restructure values and have not been
-    # re-verified — confirm against kraken.com/features/fee-schedule before any
-    # Phase C backtest consumes a non-base tier.
+    # Base tier reconciled 2026-08-08 (Stage C.27, ADR-055): the live Kraken Pro
+    # maker-taker schedule (kraken.com/features/fee-schedule; corroborated by
+    # tradersunion.com/brokers/crypto/view/kraken/fees and cryptsy.com/kraken-fees,
+    # retrieved 2026-08-08) is 0.25% maker / 0.40% taker at the base tier
+    # (< 10k USD 30-day volume). The 0.40 / 0.80 recorded 2026-08-01 captured the
+    # non-Pro retail/instant fees, not the Pro maker-taker base tier, and is
+    # corrected here. NO closure flips: H1's headline used Coinbase's maker (0.40,
+    # unchanged — Coinbase base below is correct), and H3's Kraken-instrument
+    # spread-to-cost ratios stay far below 1.0 even at 0.25 maker. Tiers above 10k
+    # USD are close to the live ladder but not line-item re-verified; confirm
+    # before a non-base backtest.
     fee_tiers:
-      - { volume_usd_30d: 0,        maker_bps: 40, taker_bps: 80 }
+      - { volume_usd_30d: 0,        maker_bps: 25, taker_bps: 40 }
       - { volume_usd_30d: 10000,    maker_bps: 20, taker_bps: 35 }
       - { volume_usd_30d: 50000,    maker_bps: 14, taker_bps: 24 }
       - { volume_usd_30d: 100000,   maker_bps: 12, taker_bps: 22 }
