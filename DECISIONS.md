@@ -2264,3 +2264,37 @@ The qualitative conclusions survive, and the report says so plainly. The
 correction is reflected in `venues.yaml`, the HYPOTHESES venue-cost table, and the
 external-corroboration section; fee schedules remain dated measurements, not
 constants.
+
+## ADR-056: No precise queue model — the always-last bound decides, and D.1 is bounded
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** C.27 resolved H6 to a D.1 fill-simulation input whose central term is
+queue position. D.1a measured whether the recorded Hyperliquid feed can estimate
+it. It cannot: the feed exposes aggregated touch state (`px`, `sz`, `n` = order
+count) but **no per-order stream**, and the consumption test fails — median
+prediction error 100%, because **87–99% of touch levels clear by cancellation**,
+not by trading, in a flicker-dominated book where 83–97% of touch changes have no
+trade to explain them. A precise queue-position model would manufacture precision
+the data does not support.
+
+**Decision.** D.1 does **not** build a precise-queue replay. The decision variable
+is the **always-last-in-queue pessimistic bound** — the C.27 net (trade-time
+spread − adverse − 3 bps) restricted to the sweeping trades a last-in-queue maker
+fills, carrying their worse adverse — a *measured* quantity, not a modelled one.
+It is positive on both survivors (**PUMP +2.15, CI +2.00; MERL +5.42, CI +4.88**),
+so the capture's sign is robust to queue position. D.1 builds a **bounded**
+simulation reporting the range between always-last and always-first (PUMP
+[+2.15, +4.30], MERL [+5.42, +6.45] bps, both positive), plus latency-induced
+adverse once a Hyperliquid latency distribution exists.
+
+**Consequences.** GO against D.1a's registered bar via §2 (pessimistic-positive),
+not §1 (estimability, which failed). The register records H6 as
+resolved-and-D.1-feasible with a positive magnitude *range*, not a point. Two
+conditions bind any D.1 number: the **Hyperliquid latency gap** must be closed
+first (telemetry probes only kraken/coinbase; a constant assumption overstates,
+ADR-003), and the **one-week** census sample must extend to **≥ 4 weeks across
+regimes** (recorders accrue this at zero cost by ~2026-09-08). `hftbacktest` does
+not fit the data shape; a custom bounded replay is required. Nothing here places
+or simulates an order with capital; `engine/` risk code remains subject to
+line-by-line human review before any deployment.

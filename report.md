@@ -4146,3 +4146,115 @@ registered first so a no-go is a decision, not a disappointment.*
 5. **The one-week caveat is standing** regardless of go/no-go: any D.1 result rests
    on the 2026-08-04→08-11 census week (96.4% covered), and Task 5 states what
    recording duration a D.1 conclusion would need to rest on more than one week.
+
+## Stage D.1a results — the data cannot pin a precise queue model, but the sign survives the worst case: GO to a bounded D.1 — 2026-08-11
+
+The recorded feed cannot observe a specific order's queue position, and the
+consumption test confirms no precise queue model is estimable from it. But the
+pessimistic shortcut registered in the go bar holds: PUMP and MERL stay
+net-positive even assumed **always last in queue**, so the *sign* of the capture
+does not depend on the term the data cannot estimate. That is a **GO**, to a
+*bounded* simulation rather than a false-precision one.
+
+### 1. Order-level data (Task 1) — a count, not orders
+
+Measured on the recorded feed, not documentation: `bbo` carries `[{px, sz, n},
+{px, sz, n}]` — bid and ask with price, size, and **n, the resting order count**
+— at a ~123 ms median; `l2Book` carries the same `{px, sz, n}` per level in depth
+at ~5.4 s; `trades` carry `{px, side, sz, tid, hash, users}`, where `users` names
+the maker and taker of each fill. So the feed gives **aggregated touch/level state
+and an order count, but no per-order stream** — no arrivals, no cancellations, no
+resting-order identifiers. Hyperliquid's public API offers no order-level book
+channel (`orderUpdates` is authenticated and own-orders only), and the historical
+archive is the same aggregated L2. **A specific resting order's queue position is
+therefore unobservable in principle from this data.**
+
+### 2. The resolution gap (Task 2)
+
+| | bbo interval p50 / p99 | trade interval p50 / p90 | trades/bbo | touch-change-without-trade | multi-trade/bbo |
+|---|---|---|---|---|---|
+| PUMP | 198 ms / 3.4 s | 0 ms / 3.4 s | 0.36 | **0.83** | 0.055 |
+| MERL | 330 ms / 13.4 s | 6.5 s / 73 s | 0.04 | **0.97** | 0.006 |
+
+**83% (PUMP) and 97% (MERL) of touch-state changes have no trade to explain
+them** — pure cancellation/arrival flicker that the feed shows only as a net
+change in `(sz, n)`, never as the individual events. So the fraction of book
+evolution whose *cause* is observable is roughly **one-sixth for PUMP and one
+in thirty for MERL**; the rest is inferred, and mostly invisible. This is the same
+finding the C.1 rule anticipates — the aggregated feed hides the order flow — and
+it is why a queue model built on visible size cannot be trusted.
+
+### 3. The validation, which decides the stage (Task 3)
+
+**(a) Consumption prediction fails.** For each touch-price episode, predicting
+consumption = the visible size and comparing to observed = trade volume before the
+level cleared: **median absolute error 100%, p90 100%** on both instruments,
+against the registered thresholds of 25% / 50%. The reason is measured directly:
+**87% (PUMP) and 99% (MERL) of levels clear by cancellation, not by trading** —
+only 7% / 1% are consumed at roughly their visible size. The visible size is
+almost meaningless as a queue-consumption predictor, so **no precise queue model
+is estimable** (§1 of the go bar fails, and by a wide margin).
+
+**(b) The pessimistic always-last bound holds.** Restricting the C.27 net
+(trade-time spread − adverse − 3 bps) to the **sweeping** trades a last-in-queue
+maker fills — those whose size consumes the full visible touch, and which carry
+the *worse* adverse selection of a level moving through:
+
+| | all trades (self-check vs C.27) | **always-last (worst horizon, CI lower)** | fills/day if last |
+|---|---|---|---|
+| PUMP | +4.30 (CI +4.27) — reproduces C.27 | **+2.15 (CI +2.00 > 0)** | ~4,640 |
+| MERL | +6.45 (CI +6.07) — reproduces C.27 | **+5.42 (CI +4.88 > 0)** | ~940 |
+
+Both stay **net-positive at the worst case**, on a *measured* quantity (observed
+sweeps, observed adverse — not a modelled queue). Even filling only when last,
+each still clears the 150-trade/day capacity floor. The all-trades column
+reproduces C.27 to the basis point, confirming the analysis.
+
+**So §1 fails and §2 holds.** By the registered bar, §2 alone is the GO: the sign
+is robust to queue position, so the estimation question the data cannot answer
+does not need answering.
+
+### 4. Input inventory (Task 4)
+
+- **Latency — a gap.** The telemetry probes only kraken and coinbase, **not
+  Hyperliquid**: there is no measured order-submission latency for the census
+  venue. The kraken/coinbase REST RTT (p50 ~130–190 ms, p99 ~440 ms from BC) is a
+  reference only. D.1 must close this — extend the probe to `api.hyperliquid.xyz`
+  and accrue a distribution — before it produces a latency-aware number; a
+  constant assumption would overstate performance (ADR-003).
+- **Fee — reconciled.** Hyperliquid base tier **0.015% maker / 0.045% taker**
+  (1.5 / 4.5 bps), verified against the live schedule 2026-08-11
+  (eco.com, hiperwire.io); 3.0 bps maker round trip, matching the census.
+- **Simulator — custom replay required.** `hftbacktest` and `numba` are not
+  installed, and more fundamentally its queue models need observable L2/L3 book
+  evolution the feed does not provide. A custom replay is required, and its fidelity
+  is bounded by exactly the resolution gap in §2–3 — which is why the bounded
+  approach below, not a queue-model replay, is the honest build.
+
+### 5. Verdict — GO, to a bounded D.1
+
+**GO against the registered bar** — not because a queue model is estimable (it is
+not) but because the pessimistic bound makes it moot: PUMP and MERL stay
+net-positive assumed always-last, so the capture's *sign* is settled independent
+of the unestimable term.
+
+**What D.1 builds:** a **bounded** fill simulation reporting the range between the
+always-last and always-first assumptions — **PUMP [+2.15, +4.30] bps, MERL
+[+5.42, +6.45] bps, both endpoints positive** — plus latency-induced adverse once
+the Hyperliquid latency distribution is measured. It does **not** build a
+precise-queue-position replay, because the data cannot support the precision that
+would imply; a point estimate inside that range would be manufactured. **Cost in
+time, not credits** (reads recorded data): ~1–2 weeks — a few days for the bounded
+replay, ~1 week to accrue a Hyperliquid latency distribution, and the re-run
+below.
+
+**The one-week caveat, made specific:** every figure rests on the single census
+week (2026-08-04→08-11). A D.1 conclusion resting on more than one week needs the
+bounded measure re-run on **≥ 4 weeks spanning more than one volatility regime** —
+which the recorders accrue at zero cost, reaching that by roughly 2026-09-08. Until
+then the positive range is a one-week upper-and-lower bound, not a durable edge.
+
+H6 stands as resolved-and-D.1-feasible: the sign of the thin-perp spread capture
+survives the worst-case queue assumption on available data, and its magnitude is a
+positive *range*, not a point. Recorders untouched; this stage read recorded data
+at zero credit cost.

@@ -2542,3 +2542,35 @@ indexer-dependent features has not cleared it.
 - report.md §C.27 written; the census read recorded data at **zero credit cost**
   (1,199 credits still unspent, cap never re-raised). Recorders alive; the scored
   window is closed and read. 347 tests; make lint/typecheck/test green.
+
+## 2026-08-11 — Stage D.1a complete: no precise queue model is estimable, but the sign survives the worst case — GO to a bounded D.1
+
+- **Task 1 (order-level data, measured):** the recorded feed gives aggregated touch
+  state — `bbo {px, sz, n}` (n = resting order count) at ~123 ms, `l2Book {px, sz,
+  n}` at ~5.4 s, `trades {px, side, sz, tid, hash, users}` — but **no per-order
+  stream** (no arrivals/cancels/order IDs; `orderUpdates` is auth'd own-orders
+  only). A specific order's queue position is unobservable in principle.
+- **Task 2 (resolution gap):** **83% (PUMP) / 97% (MERL) of touch changes have no
+  trade to explain them** — cancel/arrival flicker seen only as a net (sz,n)
+  change. Roughly one-sixth (PUMP) / one-in-thirty (MERL) of book evolution has an
+  observable cause; the rest is inferred.
+- **Task 3 (the decider):** (a) consumption prediction fails — **median error 100%**
+  because **87–99% of levels clear by cancellation**, not trading — so **no precise
+  queue model is estimable** (§1 of the go bar fails). (b) But the **always-last-
+  in-queue** pessimistic net stays positive: **PUMP +2.15 (CI +2.00), MERL +5.42
+  (CI +4.88)** — a measured quantity, sign robust to queue position (§2 holds). The
+  all-trades net reproduces C.27 exactly (PUMP +4.30, MERL +6.45), self-validating.
+- **Task 4 (inputs):** latency **not measured for Hyperliquid** (telemetry probes
+  only kraken/coinbase) — a gap D.1 must close; fee 1.5/4.5 bps base, verified live
+  2026-08-11; hftbacktest/numba absent and the sparse-touch/slow-L2 shape doesn't
+  fit its queue models — **custom bounded replay required**.
+- **Verdict: GO** via §2 (pessimistic-positive), not §1 (estimability, failed). D.1
+  builds a **bounded** fill sim reporting the range **PUMP [+2.15, +4.30], MERL
+  [+5.42, +6.45] bps** (both positive), not a false-precision point, after closing
+  the latency gap. Cost ~1–2 weeks of time, no credits. **ADR-056.**
+- **Standing caveat:** rests on the single census week; a D.1 conclusion on more
+  than one week needs the bounded measure re-run on ≥ 4 weeks across regimes
+  (recorders accrue at zero cost by ~2026-09-08). No order placed/simulated with
+  capital; engine/ risk code stays line-by-line-review-gated.
+- report.md §D.1a written; HYPOTHESES H6 → D.1-feasible (bounded). Recorders alive;
+  read recorded data at zero credit cost. 347 tests; make lint/typecheck/test green.
