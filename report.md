@@ -4104,3 +4104,45 @@ detection track (C.26) are concluded; **H6 resolves to a D.1 fill-simulation
 input**, now the project's sole live next step — a positive result to be tested,
 not deployed. The census read recorded data at zero credit cost; recorders alive;
 the scored window is closed and read.
+
+## Stage D.1a — pre-registration: can Hyperliquid data support a fill simulation — 2026-08-11
+
+*Committed **before any D.1a probing.** This stage does not build the simulation;
+in the C.15/C.19 pattern it establishes whether the data can support one, because
+writing a simulator whose central term — queue position — cannot be estimated
+would produce a number that looks like an answer and is not. The go bar below is
+registered first so a no-go is a decision, not a disappointment.*
+
+### The registered go bar (Task 0)
+
+1. **Sufficient queue-position estimability.** A candidate queue model is
+   sufficiently estimable only if, validated against observable level consumption
+   (Task 3 — no orders of our own, so predict how much of a known touch-size level
+   is consumed before it clears and compare to observed), its error has **median
+   absolute error ≤ 25% of the level's touch size and p90 ≤ 50%**, on **both**
+   PUMP and MERL. Below that resolution the central fill term is not pinnable and
+   a simulation would manufacture precision it does not have.
+
+2. **The pessimistic-bound shortcut.** If the **always-last-in-queue** capture
+   stays **net-positive** for PUMP and MERL — every resting quote assumed behind
+   the entire visible queue, filled only after the level is otherwise exhausted —
+   then the estimability threshold is moot: the *sign* is robust to any queue
+   model, and that alone is a **GO**. A simulation would then only refine a
+   positive already established at the worst case. This is tested first because,
+   if it holds, the hard estimation question does not need answering.
+
+3. **No-go.** D.1 cannot settle H6 with available data if the pessimistic bound is
+   **not** net-positive **and** the queue model **fails** the §1 estimability
+   threshold — i.e., the answer hinges on a term the recorded data cannot estimate
+   to the resolution the sign depends on.
+
+4. **No-go is a valid outcome.** It records **H6 as resolved-but-unverifiable-with-
+   available-data**: the C.27 upper-bound survivors (PUMP, MERL) stand, but the
+   recorded Hyperliquid feed cannot convert them into a fill-modelled estimate.
+   Reopening then requires a **specific per-order data source** — an order-level
+   stream carrying arrivals, cancellations, or order identifiers rather than
+   aggregated touch state — named as a source in Task 5, not left as a suggestion.
+
+5. **The one-week caveat is standing** regardless of go/no-go: any D.1 result rests
+   on the 2026-08-04→08-11 census week (96.4% covered), and Task 5 states what
+   recording duration a D.1 conclusion would need to rest on more than one week.
