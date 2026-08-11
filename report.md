@@ -3997,3 +3997,110 @@ open item across the project.**
 
 Budget: **1,199 of 60,000 remaining, cap not raised** (the C.22-once raise held
 through C.23–C.26). Recorders untouched; census window (2026-08-11) not read.
+
+## Stage C.27 — the census cleared its bars for three thin perps, as an upper bound; H6 resolves to a D.1 fill-simulation input — 2026-08-11
+
+The census was expected to close H6 to zero. It did not. Three thin Hyperliquid
+perpetuals cleared every registered bar, and by the registered outcome-to-action
+map that is an **input to a Phase D.1 fill simulation, not a strategy** — the
+project's first pre-registered-bar-clearing positive, carried with exactly the
+upper-bound caveat the bars were written to enforce. (Tasks 2–4 — the external
+audit, the Kraken fee reconciliation, and the operational posture — landed earlier
+under commit `81e456e`; this section is Task 1 and the close.)
+
+### 1. Coverage — validated first, the hole made visible
+
+Hyperliquid, the census venue, per day across the scored window:
+
+| day | coverage | note |
+|---|---|---|
+| 2026-08-04 | **76.3%** | one logged recorder downtime (~5.75 h) — a real hole |
+| 2026-08-05 | 99.99% | |
+| 2026-08-06 | 99.99% | |
+| 2026-08-07 | 99.99% | |
+| 2026-08-08 | 99.5% (99.99% excl. logged gaps) | three short feed gaps |
+| 2026-08-09 | 99.99% | |
+| 2026-08-10 | 99.997% | |
+
+The window is **~96.4% covered overall**, the shortfall concentrated on 2026-08-04
+(a ~5.75-hour recorder downtime, in the first half). Reported, not absorbed: the
+first half carries less data than the second. It does not invalidate the result —
+the both-halves bar below is met, so the surviving signal is present in the first
+half despite the hole — but every survivor's figure rests on a window whose
+opening day is three-quarters covered.
+
+### 2. Known-answer gate — the pipeline reproduces the closed answer
+
+Before the open answer, the machinery reproduced C.9's closed BTC/ETH nets on
+C.9's own window and measure: **BTC net −3.051 bps** (target −3.05, Δ −0.001),
+**ETH −2.753** (target −2.75, Δ −0.003), both inside the 0.5 bps tolerance. A
+pipeline that cannot reproduce the closed answer does not get to produce the open
+one; this one does.
+
+### 3. The census against its registered bars
+
+Ten thin instruments; worst-horizon net = trade-time spread − adverse (1/5/60 s) −
+3.0 bps, judged on the 95% CI lower bound, with BH q=0.10 across the ten, a
+≥300-trade floor, both-halves robustness, and the 150-trade/day + $100k-median
+capacity tier:
+
+| symbol | trades | worst-h net (bps) | CI95 lower | both halves | capacity | category |
+|---|---|---|---|---|---|---|
+| HYPE | 1,150,528 | −2.11 | −2.11 | no | — | fail |
+| SOL | 378,823 | −2.61 | −2.62 | no | — | fail |
+| LINK | 59,393 | −1.77 | −1.84 | no | — | fail |
+| DOT | 37,985 | −0.60 | −0.71 | no | — | fail |
+| ARB | 49,310 | +0.28 | +0.17 | **no** | yes | suggestive_noise_of_zero |
+| **GMX** | 25,868 | **+0.40** | +0.29 | yes | yes | **survivor @ capacity** |
+| **PUMP** | 499,944 | **+4.30** | +4.27 | yes | yes | **survivor @ capacity** |
+| **MERL** | 25,378 | **+6.45** | +6.07 | yes | yes | **survivor @ capacity** |
+| NOT | 3,312 | +31.15 | +30.26 | yes | **no** ($71k med) | positive_but_rare |
+| TNSR | 5,235 | +35.50 | +34.91 | yes | **no** ($63k med) | positive_but_rare |
+
+**The pattern is the H6 hypothesis confirmed in direction:** the *liquid*
+thin-perps fail — HYPE (1.15M trades), SOL, LINK, DOT are net-negative, their
+spreads not covering adverse selection plus the 3 bps round trip, because
+competition there is not thin. The survivors are exactly where competition is
+thinner: PUMP, MERL, GMX at tradeable capacity, and the very thin NOT/TNSR with
+huge spreads but sub-$100k daily volume. Five clear BH + CI>0 + both-halves;
+expected false positives at q=0.10 is 0.5.
+
+### 4. The upper-bound discount, applied
+
+Every net above is an **upper bound**, by the registered statement: every quote is
+credited with a fill it has not earned; queue position, fill probability, and fill
+conditioning are unmodelled, and all three point down. The trade-time-spread
+measure also reads structurally higher than C.9's time-weighted mean on books that
+widen when trades arrive — which thin perps do. Applied:
+
+- **GMX (+0.40 bps) discounts to ~zero.** A resting quote is rarely at the front
+  of a thin book; queue position alone plausibly erases 0.40 bps. It clears the
+  bar as an artifact of the upper bound and is discounted out, per the registered
+  instruction to discount marginal survivors.
+- **PUMP (+4.30) and MERL (+6.45)** are larger and more robust to the discount,
+  but still upper bounds: achievable capture after fill modelling could be a
+  fraction of these, every unmodelled term pointing down.
+- **NOT (+31) and TNSR (+35)** are wide-spread but sub-capacity — a spread you are
+  filled against a few hundred times a day at $60–70k daily volume is the
+  "positive but rare" case the register named: report the arithmetic and stop.
+
+### 5. Verdict — the registered action, and H6 resolves rather than closes
+
+Following the registered outcome-to-action map verbatim rather than reasoning
+fresh from the numbers: at least one survivor holds at tradeable capacity, so the
+action is **"input to a D.1 fill-simulation decision, not a strategy."** H6 does
+**not** close to zero. It resolves to the project's first positive:
+
+- **PUMP and MERL** (GMX discounted out) are thin-perp spread-capture survivors
+  that clear every pre-registered bar as an upper bound, at tradeable capacity,
+  holding across both halves of a 96.4%-covered week.
+- They are **not an edge.** They are a hypothesis for **Phase D.1** — a fill
+  simulation that models queue position, fill probability, and fill conditioning,
+  the terms this measure omits and which all point down. Whether any capture
+  survives that modelling is the open D.1 question, and it rests on one week.
+
+The register does not reach zero open items. The alpha search (C.17) and the
+detection track (C.26) are concluded; **H6 resolves to a D.1 fill-simulation
+input**, now the project's sole live next step — a positive result to be tested,
+not deployed. The census read recorded data at zero credit cost; recorders alive;
+the scored window is closed and read.

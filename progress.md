@@ -2512,3 +2512,33 @@ indexer-dependent features has not cleared it.
 - **Remaining for C.27 (after 2026-08-11T00:00Z):** score the census against its
   frozen bars (Task 1), then close the register (Task 5). Recorders alive; census
   window not read; make lint/typecheck/test green.
+
+## 2026-08-11 — Stage C.27 complete (Tasks 1, 5): the census cleared its bars for three thin perps as an upper bound; H6 resolves to a D.1 fill-simulation input
+
+- **Window verified closed first** (2026-08-11T06:08Z, 6h past the 08-11T00:00Z
+  close). Scoring a partial window would break the pre-registration; the clock,
+  not "it is time," gated it.
+- **Coverage validated, the hole made visible:** Hyperliquid ~96.4% over the
+  window — **08-04 at 76.3%** (a ~5.75 h recorder downtime, first half),
+  08-05→08-10 all ≥ 99.5%. Reported not absorbed; the both-halves bar holds anyway.
+- **Known-answer gate passed:** reproduces C.9 **BTC −3.051 / ETH −2.753** (targets
+  −3.05 / −2.75, within tolerance). The machinery is correct, so the open answer is
+  trustworthy.
+- **The census found survivors — the project's first bar-clearing positive.** Of
+  ten thin Hyperliquid perps the *liquid* ones fail (HYPE −2.11, SOL −2.61, LINK
+  −1.77, DOT −0.60) and the *thinner-competition* ones survive: **PUMP +4.30, MERL
+  +6.45, GMX +0.40 bps** clear BH q=0.10 + CI>0 + both-halves + capacity; NOT (+31)
+  / TNSR (+35) survive but sub-capacity. Every net is an **upper bound**; GMX
+  discounts to ~zero, leaving PUMP and MERL.
+- **Registered action, followed verbatim:** "input to a D.1 fill-simulation
+  decision, not a strategy." **H6 does NOT close to zero — it resolves to a
+  positive.** Not an edge: a hypothesis for a Phase D.1 fill simulation (queue
+  position, fill probability, fill conditioning — omitted here, all pointing down),
+  resting on one week.
+- **Register closed (Task 5), spin-free:** HYPOTHESES H6 → resolved (D.1 input);
+  the intro, project-wide-open-items, Genuinely-open, and conclusion all updated.
+  **No open alpha hypothesis remains; the sole live next step is the D.1 fill
+  simulation** — no new access or capital, recorded data and a simulator.
+- report.md §C.27 written; the census read recorded data at **zero credit cost**
+  (1,199 credits still unspent, cap never re-raised). Recorders alive; the scored
+  window is closed and read. 347 tests; make lint/typecheck/test green.
