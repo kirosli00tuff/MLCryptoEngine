@@ -2298,3 +2298,74 @@ regimes** (recorders accrue this at zero cost by ~2026-09-08). `hftbacktest` doe
 not fit the data shape; a custom bounded replay is required. Nothing here places
 or simulates an order with capital; `engine/` risk code remains subject to
 line-by-line human review before any deployment.
+
+## ADR-057: The tick is a fraction of price; a tick-pinned spread collapses a queue-position range to its lower end
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** Hyperliquid perp prices carry at most 5 significant figures and at
+most 6 − szDecimals decimal places (integers always allowed; rule verified
+against the venue's own documentation and the live meta endpoint). The tick is
+therefore a *fraction of price*, and on sub-cent instruments with szDecimals 0
+it is large: PUMP's grid at $0.0022–0.0029 is 3.5–4.6 bps of price. Measured
+time-weighted over the census week (`research/microstructure/tick.py`), PUMP's
+spread sits at **exactly one tick 85.5% of the time** (99.2% ≤ 2 ticks); MERL
+quotes a ~7-tick spread over a 0.56 bps tick.
+
+**Decision.** Every spread this project reports for a quoting decision is
+expressed **in ticks alongside bps**. When the time-weighted median spread is
+≤ 2 ticks, price improvement inside the spread is impossible for most of the
+quoted time, the always-last bound is the *modal* case, and any
+always-first/always-last range **collapses to its lower end**, which is then
+quoted as the estimate — a range whose upper end is unreachable is not quoted.
+Applied: PUMP's D.1a range [+2.15, +4.30] becomes **+2.15 bps**; MERL's
+[+5.42, +6.45] stands. Two venue constraints recorded for the D.1 replay: $10
+minimum order value, and post-only (ALO) orders that would immediately match
+are **rejected**, not repriced — lost queue time that puts the effective fill
+rate below the census's every-print crediting.
+
+**Consequences.** The favourable half of pinning is real and measured: a spread
+at its one-tick floor cannot compress, so entry by other makers lengthens the
+queue rather than narrowing the margin — and the always-last bound prices
+queue position already, so PUMP's +2.15 is robust to entry. The census's
+trade-time spread (≈ 9 bps on PUMP) reads ~2× its time-weighted spread
+(4.4 bps): sweeps arrive at widened books, which the trade-time measure earns
+but only at the pinned quote price. Tick geometry joins fee modelling as a
+first-class concern (CLAUDE.md already says so for fees; the same logic, same
+single-digit-bps arithmetic).
+
+## ADR-058: Inventory is a first-class term; the honest fixed-size policy is the measurement device, and a position cap is mandatory
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** The census measured spread − adverse − cost *per fill* and never
+modelled the position held between fills. D.1c simulated the registered honest
+policy (two-sided touch quotes, fixed $500, no skew, instant refill, census
+fill-crediting) on recorded fills with funding from the C.11 archive and the
+recorded `activeAssetCtx` stream (the two agree exactly on all 28 overlap
+hours). On PUMP the inventory term is **−33.07 bps against +5.82 bps of
+edge** — the uncapped maker absorbs the week's one-sided flow, the position
+walks to $3.6M on a $500 quote, and the week nets −$303k. On MERL it is
+**+3.98 bps — path luck** (price +16% that week), with a $4.8k drawdown
+against $2.5k of final profit. Every registered cap {2.5, 5, 10}×Q restores
+PUMP to **+1.2 bps per leg** at ~300× the capacity floor; the 2.5×Q cap
+forgoes 74% of gross edge to avoid the −$353k inventory and spends 29.8% of
+the week one-sided.
+
+**Decision.** The D.1 bounded replay carries **inventory as a first-class
+policy term**: a position cap (and the forgone-capture it costs) plus the ALO
+rejection constraint are part of the simulated policy, never post-hoc
+adjustments. The *uncapped* fixed-size policy is retained only as the
+measurement device that isolates the inventory term — it is not a candidate
+policy and its number is not a performance figure. Reported capture for a
+capped policy states the cap, the time-at-cap, and the forgone edge next to
+the net, in the same units.
+
+**Consequences.** Kill condition 1 of the D.1c registration does not fire — H6
+survives — but the register now carries the measured statement that on PUMP
+the cap *is* the strategy: −28.4 vs +1.2 bps per leg is the whole distance.
+Funding is immaterial at this scale (≤ 0.33 bps of filled notional). MERL's
+positive inventory must not be projected forward; a capped policy bounds the
+term to the cap × the weekly move, which is the honest way to carry it into a
+one-week-sample design. All figures remain screened positives on one census
+week (D.1c §4), pending the ≥ 4-week unbiased re-run (~2026-09-08).

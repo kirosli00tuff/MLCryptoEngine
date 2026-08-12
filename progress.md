@@ -2574,3 +2574,42 @@ indexer-dependent features has not cleared it.
   capital; engine/ risk code stays line-by-line-review-gated.
 - report.md §D.1a written; HYPOTHESES H6 → D.1-feasible (bounded). Recorders alive;
   read recorded data at zero credit cost. 347 tests; make lint/typecheck/test green.
+
+- 2026-08-12 — Stage D.1c: pre-simulation measurements — tick geometry, inventory,
+  longer horizons, selection audit. Kill conditions pre-registered (4b8bc1f) before
+  any measurement; one streaming pass (28.7M records, 163 s) through new tested
+  modules `research/microstructure/{tick,horizons,inventory,d1c}.py` (23 tests incl.
+  the PnL-decomposition identity). **H6 survives all four, restated.**
+  - **Tick geometry (kill 2 fires for PUMP):** the Hyperliquid tick is a fraction of
+    price (≤5 sig figs, ≤6−szDecimals decimals, verified live). PUMP: tick 3.5–4.6
+    bps, spread at **one tick 85.5% of the quoted week** (99.2% ≤2) — price
+    improvement impossible, always-last is modal, **D.1a range [+2.15, +4.30]
+    collapses to +2.15 bps** and the range is no longer quoted. MERL: tick 0.56 bps
+    under ~7-tick spread — range [+5.42, +6.45] stands. Favourable flip supported:
+    a pinned spread cannot compress; competition lengthens the queue instead.
+    Venue facts recorded: $10 min order value; ALO orders that would match are
+    rejected (not repriced) — effective fill rate < census crediting. ADR-057.
+  - **Inventory (kill 1 does not fire; the term is first-class):** honest policy
+    (two-sided touch, fixed $500, no skew, instant refill) on recorded fills with
+    funding from the C.11 archive + ctx stream (exact agreement, 28 overlap hours):
+    PUMP uncapped **inventory −33.07 bps vs edge +5.82 → net −28.41 bps** (−$303k,
+    position walks to $3.6M) — inventory swamps the capture; but **every registered
+    cap restores ~+1.2 bps/leg** at 41–52k fills/day, cap 2.5×Q forgoing 74% of
+    gross edge to avoid −$353k (29.8% of week one-sided, maxDD $39 vs $549k).
+    MERL positive under all variants (+6.7…+12.5 bps); its +3.98 uncapped inventory
+    is path luck (price +16% that week). Funding immaterial (≤0.33 bps). ADR-058.
+  - **300/900 s (kill 3 does not fire):** PUMP +4.17 (CI +4.04) / +4.49 (CI +4.28),
+    MERL +6.06 (CI +5.45) / +6.08 (CI +5.21), both halves positive; adverse
+    non-monotone past 60 s. GMX's C.27 discount vindicated (−0.04/−0.45 at 300/900,
+    CI < 0); ARB negative at 300 s; liquid failures stay negative.
+  - **Selection audit (kill 4 partially met):** C.9's 12 were rank-sampled from the
+    venue's 177-perp volume ranking **with impact spread visible and motivating**
+    ("PUMP … first above cost") — a spread-linked screen, tested out-of-sample on
+    the later week. Survivors demote to **screened positives**: BH corrected the 10
+    tested, not the 177 screened. Unbiased re-selection (pre-registered volume-band
+    rule blind to spread fields) folds into the ≥4-week re-run (~2026-09-08).
+  - Verdict: **PUMP +2.15 bps/RT, inventory-capped only; MERL [+5.42, +6.45]**;
+    D.1d proceeds with the cap and ALO rejection as first-class replay terms plus
+    the Hyperliquid latency accrual. One census week remains the standing caveat.
+    Recorders alive (all heartbeats <30 s); zero credit cost; summary regenerable
+    at logs/d1c_summary.json.

@@ -4341,3 +4341,214 @@ outcome. Measured pace for the ETA rule: full parse of one recorded hour runs at
 18.5 MB/s compressed (308k msg/s), so the ~1.45 GB scored window is ~80 s of
 parse and 3–8 minutes with accumulators, re-quoted from the run log after the
 pass.
+
+## Stage D.1c results — PUMP's spread is pinned at one tick and the range collapses to its lower end; inventory does not close H6 but a cap is mandatory; the sign holds at 300 and 900 s; the selection was a spread-motivated screen — 2026-08-12
+
+One streaming pass over the scored window (28,705,383 records, **163 s wall**
+against the registered 3–8 minute ETA; `research/microstructure/d1c.py`, summary
+at `logs/d1c_summary.json`, regenerable from raw). Machinery: 23 new unit tests
+including the PnL-decomposition identity. Judged against the four kill
+conditions registered in the section above, in the order the audit raised them.
+
+### 1. Tick geometry — kill condition 2 **triggers for PUMP**, not for MERL
+
+szDecimals retrieved live from the info endpoint (`{"type":"meta"}`,
+2026-08-12); tick = the venue's actual price grid — at most 5 significant
+figures **and** at most 6 − szDecimals decimals, integers always allowed
+(rule verified against the venue's tick-size documentation, and implemented in
+`research/microstructure/tick.py` with tests). Time-weighted over the scored
+week:
+
+| coin | szDec | tick (bps, tw mean) | median spread (ticks) | % time ≤ 1 tick | ≤ 2 ticks |
+|---|---|---|---|---|---|
+| **PUMP** | 0 | **4.10** | **1** | **85.5%** | **99.2%** |
+| **MERL** | 0 | **0.56** | **7** | 0.4% | 0.9% |
+| BTC | 5 | 0.155 | 1 | 99.1% | 99.5% |
+| ETH | 4 | 0.526 | 1 | 99.3% | 99.7% |
+| HYPE | 2 | 0.181 | 1 | 90.8% | 93.4% |
+| SOL | 2 | 0.134 | 1 | 98.0% | 98.4% |
+| ARB | 1 | 1.259 | 1 | 73.9% | 99.1% |
+| DOT | 1 | 0.122 | 9 | 16.7% | 19.3% |
+| LINK | 1 | 0.122 | 6 | 24.0% | 27.5% |
+| GMX | 2 | 0.157 | 11 | 1.3% | 1.6% |
+| TNSR | 1 | 3.19 | 11 | 0.2% | 0.9% |
+| NOT | 0 | **28.4** | 1 | 87.3% | 100.0% |
+
+**PUMP: the registered condition (time-weighted median ≤ 2 ticks) triggers, by
+a wide margin.** At $0.0022–0.0029 with szDecimals 0 the grid is $0.000001 —
+3.5–4.6 bps of price — and the spread sits at exactly one tick 85.5% of the
+quoted week. Price improvement inside the spread is impossible for
+approximately all of the quoted time; joining the queue at the touch is the
+only available action, and the always-last bound is the modal case, not the
+worst case. **The D.1a range [+2.15, +4.30] collapses to its lower end: PUMP's
+estimate is +2.15 bps per round trip, and this report stops quoting the
+range.** MERL is the opposite: a 0.56 bps tick under a ~7-tick spread — price
+improvement is genuinely available and the D.1a range [+5.42, +6.45] stands.
+
+The favourable reading applies to PUMP and the data supports it: a spread
+pinned at its one-tick floor 85.5% of the time **cannot compress** —
+additional makers lengthen the queue instead of narrowing the spread, so
+competition degrades fill rate rather than margin. Under the always-last bound
+the queue-lengthening is already priced; the +2.15 lower end is robust to
+entry, not merely to queue position. (NOT shows the same pinning at a 28.4 bps
+tick — the whole spread is one giant tick — and ARB is pinned at 1.26 bps;
+DOT/LINK/GMX/TNSR quote multi-tick books.)
+
+One measurement honesty note the tick table exposes: PUMP's census
+*trade-time* spread (≈ 9 bps mean, backed out from net + adverse + cost)
+is roughly double its *time-weighted* spread (4.4 bps ≈ 1.1 ticks). Sweeps
+arrive at moments when the book has widened to 2+ ticks. The census's
+trade-time measure credits the widened spread, which a resting quote placed
+during the pinned regime does earn — but only at its pinned price, which is
+exactly why the always-first end was unreachable.
+
+Two venue facts recorded, both from the venue's own documentation (error
+strings, retrieved 2026-08-12): the **minimum order value is $10** ("Order
+must have minimum value of $10.") — at the declared $500 quote this is 2% of
+one quote, so granularity does not bind at this stage's sizes; and a
+**post-only (ALO) order that would immediately match is rejected**, not
+repriced ("Post only order would have immediately matched, bbo was {bbo}.") —
+each rejection during crossed/flickering moments is lost queue time, so the
+effective fill rate sits below what the census's every-print crediting
+implies. Both belong in the D.1 replay as constraints, not footnotes.
+
+### 2. Inventory — kill condition 1 does **not** close H6, and the term is first-class
+
+The registered policy ran exactly as declared: two-sided quotes at the touch,
+fixed $500 quote (PUMP 224,065 contracts, MERL 28,510 at first scored mids),
+no skew, instant refill, every print filling min(print, Q), maker fee 1.5 bps,
+funding hourly (28 boundaries from the C.11 archive, 135 from the recorded
+`activeAssetCtx` stream, 5 skipped inside the 08-04 recorder hole at zero
+position; on all 28 archive/ctx overlap hours the two sources agree **exactly**,
+mean |diff| = 0.0). All figures per instrument, per filled notional, week
+totals:
+
+| | PUMP uncapped | PUMP cap 2.5×Q | PUMP cap 10×Q | MERL uncapped | MERL cap 2.5×Q |
+|---|---|---|---|---|---|
+| fills | 499,914 | 286,378 | 362,996 | 25,348 | 22,077 |
+| filled notional | $106.6M | $41.5M | $64.0M | $2.0M | $1.4M |
+| spread edge (bps) | +5.82 | +3.91 | +4.49 | +10.23 | +6.84 |
+| **inventory (bps)** | **−33.07** | −1.17 | −1.81 | **+3.98** | +1.34 |
+| funding (bps) | +0.33 | +0.00 | −0.00 | −0.19 | −0.00 |
+| fees (bps) | 1.50 | 1.50 | 1.50 | 1.50 | 1.50 |
+| **net (bps)** | **−28.41** | **+1.23** | **+1.19** | **+12.52** | **+6.67** |
+| max \|position\| | 1.37B ($3.6M) | 560k ($1.5k) | 2.24M ($6k) | 3.22M ($62k) | 71k ($1.4k) |
+| mean \|notional\| | $1.42M | $986 | $3,681 | $18,200 | $824 |
+| time away from flat | 100% | 99.6% | 99.9% | 100% | 99.5% |
+| time at cap | — | 29.8% | 16.8% | — | 11.1% |
+| max drawdown | $549,543 | $39 | $293 | $4,792 | $45 |
+| net USD | −$303,013 | +$5,117 | +$7,594 | +$2,474 | +$926 |
+| forgone edge | — | $45,898 | $33,348 | — | $1,072 |
+
+**The number that decides the stage: on PUMP, under the honest policy,
+inventory losses (−33.07 bps) swamp the spread capture (+5.82 bps) by 5.7×.**
+The uncapped maker absorbs the week's one-sided flow — the position walks to
+1.37B contracts ($3.6M notional on a $500 quote), and the week ends −$303k on
+$62k of earned edge. That is the answer the census could not see, and it
+arrived without a fill simulator.
+
+**But the registered kill condition does not close H6**, because both its
+clauses fail: MERL is positive under every variant, and on PUMP **every cap in
+the declared grid restores a positive net** — +1.19 to +1.24 bps per filled
+notional at 41–52k fills/day, ~300× the 150/day capacity floor. The measured
+price of that rescue is the real tradeoff a quoting bot faces: the 2.5×Q cap
+refuses 239,221 fills and **forgoes $45.9k of the $62.1k gross edge (74%) to
+avoid −$353k of inventory**, spends 29.8% of the week refusing one side, and
+keeps a maximum drawdown of $39 against the uncapped $549k. The registered
+drag qualifier binds: the D.1 replay must carry the inventory cap as a
+first-class policy term — on PUMP it is the entire difference between −28 and
++1.2 bps.
+
+MERL's positive inventory term (+3.98 bps uncapped) is **path luck, not a
+property**: the sim accumulated a long position into a week when MERL rose
+~16% ($0.0166 → $0.0193). The same flow into a −16% week books roughly the
+mirror-image loss, and the uncapped drawdown ($4,792 against +$2,474 of final
+net) already shows the exposure. Capped, the term is bounded (±1–3 bps) and
+the net stays positive on edge alone. Funding is immaterial at these sizes
+on both instruments (|funding| ≤ 0.33 bps; archive rates ~1.3–1.6e-5/hour,
+longs pay).
+
+Consistency check against the census: the capped PUMP net (+1.2 bps per leg ≈
++2.4 per round trip) sits at the census's always-last figure (+2.15 per round
+trip) — two independent routes to the same number, one per-fill and one
+through the position. (Sim edge is notional-weighted where the census is
+per-trade, so the comparison is structural, not to the decimal.)
+
+### 3. Longer horizons — the sign holds; kill condition 3 does not trigger
+
+Net = trade-time spread − adverse − 3.0 bps on the same scored fills, Welford
+CI, 60 s kept as cross-check (both survivors' 60 s nets sit above their C.27
+worst-horizon nets, as they must — the census judged at the worst of 1/5/60 s):
+
+| | n | 60 s net (CI lo) | 300 s net (CI lo) | 900 s net (CI lo) | adverse 60/300/900 | halves @900 s |
+|---|---|---|---|---|---|---|
+| PUMP | 499,914 | +4.56 (+4.49) | **+4.17 (+4.04)** | **+4.49 (+4.28)** | +1.72 / +2.11 / +1.79 | +4.88 / +4.15 |
+| MERL | 25,348 | +6.81 (+6.38) | **+6.06 (+5.45)** | **+6.08 (+5.21)** | −0.19 / +0.55 / +0.53 | +1.87 / +8.57 |
+
+Both survivors stay positive with CI lower bounds far from zero at both longer
+horizons, in both halves. Adverse selection does **not** grow monotonically
+past 60 s on either (PUMP peaks at 300 s and recedes; MERL flattens), so the
+census's horizon was not too short and its net figures are not
+horizon-optimistic. Two honest annotations: MERL's halves are strongly
+asymmetric at every horizon (≈ +1.9 first half vs +8.6 second — both positive,
+so the registered bar holds, but the capture is episodic within the week); and
+the longer horizons **vindicate the C.27 discount of GMX** — its +0.40
+survival flips negative at 300 s (−0.04, CI −0.25) and 900 s (−0.45, CI
+−0.76), and ARB's noise-of-zero goes negative at 300 s. The liquid failures
+(HYPE, SOL, LINK, DOT) stay negative everywhere; NOT and TNSR stay hugely
+positive and remain sub-capacity.
+
+### 4. Selection audit — a spread-motivated screen, then an out-of-sample test
+
+How the 12 were chosen, from the C.9 record (report.md §C.9 Task 1;
+`config/venues.yaml` comment, retrieved rankings 2026-08-03): the universe was
+the venue's own 24 h-notional liquidity ranking (177 live perps), sampled
+across its range — ranks 1–6, 29–33, 152–153, 175–177. **But the selection was
+not blind to spread**: the endpoint's impact spread was retrieved with the
+rankings and is recorded as "the (loose) proxy that motivated each pick", and
+PUMP's own annotation reads "**first above cost**" — rank 6 was chosen
+precisely because its 4.47 bps impact spread was the first to clear the 3 bps
+round trip. That is a spread-linked screen, and kill condition 4's clause
+("made on observed spread or any outcome-linked property") is **partially
+met**: MERL/GMX (adjacent ranks 152/153, the thin stratum), TNSR/NOT (the
+extreme tail) are rank-stratified picks; PUMP is a spread-screened pick.
+
+Two things keep this from being selection *on the outcome* outright. The
+screen used 2026-08-03 impact spreads and the census scored 2026-08-04→11
+touch spreads — screen-then-test on fresh data, not scoring the selection
+data. And within the tested ten, outcome did not follow the screen variable:
+ARB (impact 6.01, higher than PUMP's 4.47) failed, DOT/LINK (3–4 bps impact)
+failed — thin *competition*, not wide *impact spread*, is what survived. What
+the screen does break is the multiplicity accounting: BH q=0.10 was corrected
+across the 10 tested, not the 177 screened, so "expected false positives 0.5"
+understates the search that surfaced PUMP. **Consequence, per the registered
+condition: the survivors are demoted to screened positives.** An unbiased
+selection requires a pre-registered universe rule blind to every spread field
+— all live perps inside declared volume bands (or a seeded random sample per
+band), subscribed before the scoring window opens, scored on a fresh window
+with BH across the full tested set. That rule folds into the ≥ 4-week re-run
+(viable ~2026-09-08); it costs recording time, not credits.
+
+### 5. Verdict — H6 survives all four, restated
+
+- **PUMP**: estimate **+2.15 bps per round trip** — the always-last end only
+  (tick-pinned; the +4.30 end is unreachable and no longer quoted) — and
+  **only under an inventory cap**, which costs ~74% of gross fills but is the
+  difference between −28.4 and +1.2 bps per leg. Carries the screened-positive
+  demotion (its selection was spread-motivated).
+- **MERL**: the D.1a range **[+5.42, +6.45] stands** (not tick-pinned, price
+  improvement available); inventory bounded when capped, positive this week by
+  path luck; capture episodic within the week (halves +1.9 / +8.6). Rank-
+  stratified pick, so the demotion bites less, and the multiplicity caveat
+  still applies.
+- **Longer horizons change nothing** for the survivors and strengthen the GMX
+  discount.
+- **D.1d (the bounded replay) proceeds**, with the inventory cap and the ALO
+  rejection as first-class policy terms, Hyperliquid latency still to accrue,
+  and the unbiased re-selection folded into the ≥ 4-week multi-regime re-run
+  reaching viability ~2026-09-08. Until that re-run, every figure above rests
+  on one census week — a one-week measurement, not a durable edge.
+
+Recorders confirmed alive throughout (all three heartbeats < 30 s, Hyperliquid
+untouched); the stage read recorded data and one metadata call at zero credit
+cost.
