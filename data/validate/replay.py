@@ -418,7 +418,9 @@ def validate_venue_day(cfg: AppConfig, venue: str, date: str) -> DayReport:
     function is :mod:`data.validate.scope`'s job.
     """
     vcfg = cfg.venues[venue]
-    if vcfg.kind != "recorder":
+    # "retired" replays exactly like "recorder": the feed stopped, but the raw
+    # partitions it left are immutable and their validated days stay valid.
+    if vcfg.kind not in ("recorder", "retired"):
         raise VenueConfigurationError(
             f"venue '{venue}' is declared kind={vcfg.kind!r}: its data arrives as vendor "
             "files under data/vendor/, never as raw capture under data/raw/, so there is "

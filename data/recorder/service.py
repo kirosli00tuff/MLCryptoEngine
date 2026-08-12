@@ -9,7 +9,7 @@ import time
 
 import structlog
 
-from data.config import AppConfig, load_config
+from data.config import AppConfig, VenueConfig, load_config
 from data.logsetup import configure_logging
 from data.recorder import RECORDER_TYPES
 from data.recorder.base import DryRunLimiter, VenueRecorder
@@ -17,6 +17,16 @@ from data.recorder.diskguard import DiskGuard
 from data.recorder.gaps import GapLogger
 from data.recorder.sessions import SessionLogger
 from data.recorder.writer import RawFileWriter
+
+
+def default_venue_keys(venues: dict[str, VenueConfig]) -> list[str]:
+    """Venues recorded when none are named: live (kind=recorder) with a recorder.
+
+    Retired venues (kind=retired) hold immutable history but run no process;
+    naming one explicitly on the CLI still works, so an operator can resurrect
+    a feed deliberately — it just never restarts by default.
+    """
+    return sorted(key for key in RECORDER_TYPES if key in venues and venues[key].kind == "recorder")
 
 
 def build_recorders(
@@ -86,7 +96,7 @@ async def run_service(venue_keys: list[str] | None, dry_run: bool) -> None:
     configure_logging(cfg.logs_dir / "recorder.log", cfg.log_level)
     log = structlog.get_logger("recorder")
 
-    keys = venue_keys if venue_keys else sorted(RECORDER_TYPES)
+    keys = venue_keys if venue_keys else default_venue_keys(cfg.venues)
     limiter = DryRunLimiter(cfg.recorder.dry_run_messages) if dry_run else None
     recorders = build_recorders(cfg, keys, limiter)
 

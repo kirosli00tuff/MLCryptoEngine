@@ -14,6 +14,14 @@
 venues:
   kraken:
     name: Kraken
+    # Retired at Stage D.1b (2026-08-12): no open item consumes this feed —
+    # H1 closed cost-bound, H7 closed by decision, and C.14 measured the
+    # cross-venue features at +0.0044 AUC, immaterial. The raw partitions
+    # (2026-07-30 → 2026-08-12) are immutable, stay replayable, and their
+    # validated days stay valid; no recorder process, heartbeat, or latency
+    # probe is expected. Resurrect by naming the venue explicitly:
+    # `python -m data.recorder kraken` (and set kind back to recorder).
+    kind: retired
     ws_url: wss://ws.kraken.com/v2
     rest_status_url: https://api.kraken.com/0/public/Time
     symbols: [BTC/USD, ETH/USD]
@@ -64,6 +72,8 @@ venues:
     name: Coinbase Advanced Trade
     ws_url: wss://advanced-trade-ws.coinbase.com
     rest_status_url: https://api.coinbase.com/api/v3/brokerage/time
+    # Retired at Stage D.1b (2026-08-12), same grounds as kraken above.
+    kind: retired
     symbols: [BTC-USD, ETH-USD]
     # level2 channel delivers full-depth snapshot + incremental updates; depth here
     # is the persisted reconstruction depth, not a subscription parameter.
@@ -137,7 +147,22 @@ venues:
     #
     # The thin end is where the ratio could plausibly be favourable, so it is
     # where adverse selection has to be measured before any of it is believed.
-    symbols: [BTC, ETH, HYPE, SOL, PUMP, DOT, LINK, ARB, GMX, MERL, TNSR, NOT]
+    # Stage D.1b (2026-08-12): the blind universe, selected by the rule
+    # registered in commit 4bde24c BEFORE this retrieval — 24h-notional bands
+    # only (B0>=100M cap 3 / B1 10-100M cap 5 / B2 1-10M cap 5 / B3 100k-1M
+    # cap 6 / B4 10k-100k cap 6, <10k excluded), seeded sample per band, seed
+    # 20260812, blind to every spread/impact/price field. Band memberships at
+    # retrieval: 4/7/36/107/23 of 177 live perps.
+    #   Blind picks (25): BTC ETH HYPE | CRV DOGE KAITO LIT ZEC |
+    #     ICP LDO NEAR TRUMP VIRTUAL | 0G ANIME BERA LAYER MOODENG PENDLE |
+    #     BIGTIME COMP DYM KAS NOT SAGA
+    #   Carried over, NOT blind picks (series continuity only, never to be
+    #   counted as unbiased selections): PUMP MERL
+    # The pre-D.1b census set (SOL DOT LINK ARB GMX TNSR) leaves the live
+    # subscription; its recorded history remains on disk.
+    symbols: ["0G", ANIME, BERA, BIGTIME, BTC, COMP, CRV, DOGE, DYM, ETH,
+              HYPE, ICP, KAITO, KAS, LAYER, LDO, LIT, MERL, MOODENG, NEAR,
+              NOT, PENDLE, PUMP, SAGA, TRUMP, VIRTUAL, ZEC]
     # l2Book delivers 20 levels per side, full snapshot per push.
     book_depth: 20
     # The feed provides neither sequence numbers nor checksums; both render

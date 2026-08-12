@@ -17,7 +17,7 @@ typecheck: ## Mypy over data/, ops/, tests/
 test: ## Run the pytest suite
 	uv run pytest
 
-record: ## Start the market data recorder (Kraken + Coinbase public feeds)
+record: ## Start the market data recorder (Hyperliquid public feeds; kraken/coinbase retired at D.1b)
 	uv run python -m data.recorder
 
 status: ## Process liveness, heartbeat age per venue, today's partition sizes, free disk

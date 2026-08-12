@@ -24,7 +24,16 @@ DATE = "2026-07-31"
 
 
 def _venues() -> dict[str, VenueConfig]:
-    return load_config().venues
+    # The repo config retires kraken/coinbase (Stage D.1b). These tests
+    # exercise liveness mechanics — missing and stale heartbeats — so they
+    # re-mark those venues as live here; retired-venue behaviour has its own
+    # coverage in tests/test_retired_venues.py.
+    return {
+        key: (
+            vcfg.model_copy(update={"kind": "recorder"}) if key in ("kraken", "coinbase") else vcfg
+        )
+        for key, vcfg in load_config().venues.items()
+    }
 
 
 def _config(tmp_path: Path, **disk: float) -> AppConfig:

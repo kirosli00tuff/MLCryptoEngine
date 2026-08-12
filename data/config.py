@@ -88,7 +88,14 @@ class InstrumentMeta(BaseModel):
 # a configuration error worth failing on; a *vendor* venue with no raw capture
 # is its normal, permanent state. Conflating the two is what made a routine
 # `python -m data.validate --date <today>` abort before validating anything.
-VenueKind = Literal["recorder", "vendor", "archive"]
+#
+#   retired   was captured live and is no longer: the feed was deliberately
+#             stopped (Stage D.1b — kraken/coinbase), the raw partitions are
+#             immutable and stay replayable/validatable, but no recorder
+#             process runs, no heartbeat is expected, and no latency probe
+#             fires. Distinct from vendor (never recorded) and from a dead
+#             recorder venue (which must read as unhealthy).
+VenueKind = Literal["recorder", "vendor", "archive", "retired"]
 
 
 class VenueConfig(BaseModel):

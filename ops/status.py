@@ -179,9 +179,14 @@ def render(cfg: AppConfig, now: datetime) -> tuple[str, bool]:
     stale_after = cfg.recorder.heartbeat_interval_s * STALE_HEARTBEAT_INTERVALS
     heartbeats = latest_heartbeats(cfg.logs_dir / "recorder.log", now)
     # Only venues with a live recorder are expected to heartbeat: vendor-fed
-    # venues (cme via Databento) have no recorder process and must not read
-    # as unhealthy forever.
-    live_venues = sorted(set(cfg.venues) & set(RECORDER_TYPES))
+    # venues (cme via Databento) have no recorder process, and retired venues
+    # (kraken/coinbase since D.1b) deliberately stopped — neither may read as
+    # unhealthy forever.
+    live_venues = sorted(
+        venue
+        for venue in set(cfg.venues) & set(RECORDER_TYPES)
+        if cfg.venues[venue].kind == "recorder"
+    )
     lines.append(f"Heartbeats (stale after {stale_after:.0f}s)")
     for venue in live_venues:
         beat = heartbeats.get(venue)
