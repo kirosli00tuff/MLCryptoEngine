@@ -49,11 +49,18 @@ async def probe_once(
     client: httpx.AsyncClient,
     url: str,
     timeout_s: float,
+    method: str = "GET",
+    json_body: dict[str, object] | None = None,
 ) -> tuple[float, bool, str | None]:
-    """One RTT measurement: (rtt_ms, ok, error). Timeouts count with rtt=timeout."""
+    """One RTT measurement: (rtt_ms, ok, error). Timeouts count with rtt=timeout.
+
+    ``method``/``json_body`` exist for POST-only endpoints: Hyperliquid's info
+    endpoint rejects GET with 405, so a GET there would measure the rejection
+    path, not the request path an order-shaped POST traverses.
+    """
     start = time.perf_counter()
     try:
-        response = await client.get(url, timeout=timeout_s)
+        response = await client.request(method, url, json=json_body, timeout=timeout_s)
         rtt_ms = (time.perf_counter() - start) * 1000
     except httpx.HTTPError as exc:
         rtt_ms = (time.perf_counter() - start) * 1000

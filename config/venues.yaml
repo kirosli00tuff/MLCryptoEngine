@@ -95,6 +95,15 @@ venues:
     name: Hyperliquid
     ws_url: wss://api.hyperliquid.xyz/ws
     rest_status_url: https://api.hyperliquid.xyz/info
+    # Latency probe (Stage D.1b): POST a one-coin l2Book request to /info. The
+    # info endpoint is POST-only — a GET measures the 405 rejection, not the
+    # request path — and this exercises the same host/TLS/HTTP front end an
+    # order POST to /exchange traverses. It is a PROXY, stated plainly: true
+    # submission latency (a signed order to /exchange) is unmeasurable without
+    # placing an order, which no stage before D may do. The recorded figure
+    # omits order-gateway queue and matching time, so it reads LOW.
+    probe_method: POST
+    probe_json: { type: l2Book, coin: BTC }
     # Coin names discovered from the info endpoint ({"type":"meta"}) on
     # 2026-08-01: 232 perp assets; BTC (szDecimals 5, maxLeverage 40) and ETH
     # (szDecimals 4, maxLeverage 25) confirmed present under exactly these names.

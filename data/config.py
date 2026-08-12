@@ -113,6 +113,11 @@ class VenueConfig(BaseModel):
     # snapshot cadence instead of sequence/checksum integrity, and warm-start
     # replay is skipped because every message already carries the whole book.
     snapshot_stream: bool = False
+    # How the latency probe exercises rest_status_url. Hyperliquid's info
+    # endpoint is POST-only: a GET measures the 405 rejection path, not the
+    # path an order-shaped request traverses.
+    probe_method: Literal["GET", "POST"] = "GET"
+    probe_json: dict[str, Any] | None = None
     # See VenueKind above. Defaults to "recorder" on purpose: an undeclared
     # venue is one this project believes it is capturing live, so a missing
     # declaration surfaces as a loud configuration error rather than as a

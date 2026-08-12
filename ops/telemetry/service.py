@@ -23,7 +23,11 @@ async def run_service() -> None:
     log = structlog.get_logger("telemetry")
 
     store = TelemetryStore(cfg.processed_dir, cfg.logs_dir)
-    windows = {venue: PercentileWindow(cfg.telemetry.window) for venue in cfg.venues}
+    # Only live-recorded venues are probed: a vendor venue's REST URL (cme →
+    # Databento metadata) measures nothing about an order path, and a retired
+    # venue's latency has no consumer (C.9.1 kind distinction).
+    probed = {venue: vcfg for venue, vcfg in cfg.venues.items() if vcfg.kind == "recorder"}
+    windows = {venue: PercentileWindow(cfg.telemetry.window) for venue in probed}
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -33,15 +37,19 @@ async def run_service() -> None:
 
     log.info(
         "telemetry_starting",
-        venues=sorted(cfg.venues),
+        venues=sorted(probed),
         interval_s=cfg.telemetry.interval_s,
     )
     async with httpx.AsyncClient(http2=False) as client:
         while not stop.is_set():
             cycle_start = time.time_ns()
-            for venue, vcfg in sorted(cfg.venues.items()):
+            for venue, vcfg in sorted(probed.items()):
                 rtt_ms, ok, error = await probe_once(
-                    client, vcfg.rest_status_url, cfg.telemetry.timeout_s
+                    client,
+                    vcfg.rest_status_url,
+                    cfg.telemetry.timeout_s,
+                    method=vcfg.probe_method,
+                    json_body=vcfg.probe_json,
                 )
                 window = windows[venue]
                 if ok:
