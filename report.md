@@ -4258,3 +4258,86 @@ H6 stands as resolved-and-D.1-feasible: the sign of the thin-perp spread capture
 survives the worst-case queue assumption on available data, and its magnitude is a
 positive *range*, not a point. Recorders untouched; this stage read recorded data
 at zero credit cost.
+
+## Stage D.1c — pre-registration: tick geometry, inventory, longer horizons, selection audit — 2026-08-12
+
+*Committed **before any D.1c measurement**. An external audit (2026-08-11) raised
+four items measurable from data on disk or one metadata call, two of which would
+change the D.1a result rather than refine it. The kill conditions below are
+registered first so this stage can fail; a stage that cannot fail is not a
+measurement. Nothing here builds the replay.*
+
+### Declared quoting policy (Task 2, fixed before running)
+
+Two-sided quotes at the touch, **fixed size, no skew, instant refill** — the
+honest starting policy, because it isolates the inventory term rather than hiding
+it behind an unvalidated control. Concretely, per instrument (PUMP and MERL, the
+C.27 survivors):
+
+- Quote size `Q` = **$500 notional** at the first scored-window mid, rounded to
+  the instrument's size granularity. Both sides always quoted at the touch.
+- Every aggressor print fills the opposite-side quote for **min(print size, Q)**
+  at the touch price — the same every-quote-credited optimism as the census
+  upper bound, applied symmetrically so the inventory term is measured under the
+  same fill assumption the capture was.
+- Maker fee **1.5 bps** per fill. Funding applied hourly at the boundary:
+  archive `fundingHistory` rate where the hour is covered (C.11 archive ends
+  2026-08-05T09:00Z for PUMP/MERL), else the last recorded `activeAssetCtx`
+  funding at or before the boundary; charge = −position × mark × rate, mark from
+  the last ctx `markPx` at or before the boundary (mid as fallback).
+- PnL decomposition, all in USD then bps of filled notional: **spread edge**
+  (executed price vs contemporaneous mid), **inventory** (Σ position × Δmid),
+  **funding**, **fees**. The identity equity = edge + inventory + funding − fees
+  is asserted in tests, not assumed.
+- Inventory-cap variants at **{2.5, 5, 10} × Q**: at the cap the side that would
+  extend the position stops quoting; the forgone spread edge of refused fills is
+  recorded. That is the tradeoff a quoting bot faces, measured not asserted.
+
+### Registered kill conditions
+
+1. **Inventory closes H6.** If, under the declared policy, week-total net PnL per
+   filled notional (edge − fee + inventory + funding) is **≤ 0 for both PUMP and
+   MERL**, and **no cap in the declared grid** restores a positive net while
+   keeping ≥ 150 fills/day, then inventory losses swamp the spread capture, H6
+   **closes**, and D.1d (the bounded replay) is unnecessary. One instrument
+   killed leaves the other carrying D.1 alone. Qualifier: if removing the single
+   worst hour flips a negative to positive, the verdict is recorded as
+   *fragile-negative* and deferred to the ≥ 4-week re-run rather than closed —
+   one hour of one week is not a closure. If net is positive but inventory +
+   funding drag off **≥ half** the spread edge, the D.1a range is re-stated with
+   inventory as a first-class term and the replay design must carry it.
+2. **Tick geometry invalidates the always-first end.** If the time-weighted
+   median spread on PUMP or MERL is **≤ 2 ticks** (tick = the instrument's actual
+   minimum price increment at its observed price, from 5-significant-figure ×
+   szDecimals rules), price improvement inside the spread is impossible for most
+   of the quoted week, joining the queue at the touch is the only action, and the
+   always-last bound is the modal case. The D.1a range then **collapses toward
+   its lower end** — PUMP +2.15, MERL +5.42 bps — and the report quotes that end
+   as the estimate, not the range. This narrows D.1a; it does not close H6 (the
+   lower end is already the measured worst case and is positive).
+3. **Longer horizons overturn the census.** Per-trade net (trade-time spread −
+   adverse − 3.0 bps) recomputed at **300 s and 900 s** on the same scored fills:
+   an instrument is **overturned** if the 95% CI lower bound of net at either
+   longer horizon is ≤ 0 — the census's 60 s worst-horizon judgment was then
+   horizon-optimistic. Both survivors overturned closes H6. Independently, if
+   mean adverse still grows monotonically 60 s → 300 s → 900 s on a survivor,
+   that is reported as "census horizon too short" even where net stays positive.
+4. **Selection audit demotes the census.** If the C.9 instrument selection is
+   found to have been made on observed spread or any outcome-linked property
+   (rather than the venue's own liquidity ranking sampled across its range), the
+   BH multiplicity correction does not cover the selection step, the survivors
+   demote to hypothesis-generating, and an unbiased selection — a pre-registered
+   universe rule scored on a fresh window — is stated as required before any
+   D.1 continuation. This is a documentary audit of the C.9 record, not a
+   measurement.
+
+### Scope and standing caveat
+
+Tick geometry: all 12 recorded instruments. Inventory: PUMP and MERL. Longer
+horizons: all 10 thin census instruments, decision on the survivors. Everything
+rests on the single census week (2026-08-04→08-11, 96.4% covered); the ≥ 4-week
+multi-regime re-run reaches viability ~2026-09-08 regardless of this stage's
+outcome. Measured pace for the ETA rule: full parse of one recorded hour runs at
+18.5 MB/s compressed (308k msg/s), so the ~1.45 GB scored window is ~80 s of
+parse and 3–8 minutes with accumulators, re-quoted from the run log after the
+pass.
