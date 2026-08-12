@@ -4605,3 +4605,109 @@ horizons); they never enter the blind family. **Earliest window close:
 subscription date + 28 days — subscribing 2026-08-12 puts that at
 2026-09-09**, extended if the window has not spanned more than one regime by
 then.
+
+## Stage D.1b results — both clocks started: Hyperliquid latency accruing, the blind universe subscribed; kraken and coinbase retired — 2026-08-12
+
+The stage's value is the two wall-clock dependencies now running. Measured
+ETAs held: telemetry code ~25 min, universe application one ~150 ms call,
+retirement plumbing ~35 min, the whole stage ~2 h.
+
+### 1. Latency telemetry now covers the census venue (Task 1)
+
+The probe supports a per-venue method and JSON body: Hyperliquid's info
+endpoint is POST-only, so the previous GET convention could only have
+measured the 405 rejection path. The probe now POSTs a one-coin `l2Book`
+request to `api.hyperliquid.xyz/info` on the same 60 s schedule as before,
+reporting P50/P95/P99 as a distribution (ADR-003).
+
+**Stated plainly, as required: this is a proxy.** The true submission path —
+a signed order POST to `/exchange` — is unmeasurable without placing an
+order, which no stage before D may do. The recorded figure exercises the
+same DNS/TCP/TLS/HTTP front end an order POST traverses and omits
+order-gateway queueing and matching time, so it reads **low**; the D.1
+replay must treat it as a floor, not an estimate.
+
+First measurements (sanity check, from the recording host in BC): manual
+probe 122–157 ms over 6 samples; the service's first cycle reads **p50
+162 ms / p95 208 ms** (n = 7), against kraken p50 176 / coinbase p50 115 on
+the same cycles — same order of magnitude, inside the ADR-002 design tier.
+**A usable distribution (7 days spanning the daily cycle, ~10,080 samples)
+exists on 2026-08-19.** Probing is restricted to `kind: recorder` venues, so
+the vendor cme URL (Databento metadata — measures nothing about an order
+path) and the retired venues are not probed.
+
+### 2. The blind universe, applied and subscribed (Task 2)
+
+The rule registered above (commit `4bde24c`) ran once against the live
+ranking, **after** the registration commit. Band memberships at retrieval:
+B0 4 · B1 7 · B2 36 · B3 107 · B4 23, of 177 live perps at ≥ $10k/day.
+Selection, seed 20260812:
+
+| band | members | cap | picks |
+|---|---|---|---|
+| B0 ≥ $100M | 4 | 3 | BTC, ETH, HYPE |
+| B1 $10–100M | 7 | 5 | CRV, DOGE, KAITO, LIT, ZEC |
+| B2 $1–10M | 36 | 5 | ICP, LDO, NEAR, TRUMP, VIRTUAL |
+| B3 $100k–1M | 107 | 6 | 0G, ANIME, BERA, LAYER, MOODENG, PENDLE |
+| B4 $10–100k | 23 | 6 | BIGTIME, COMP, DYM, KAS, NOT, SAGA |
+
+**25 blind picks + PUMP and MERL carried over (marked not-blind) = 27
+subscribed instruments**, all confirmed flowing within a minute of the
+restart. NOT re-enters as a genuine blind pick; SOL, DOT, LINK, ARB, GMX and
+TNSR leave the live subscription (history preserved). The scoring window
+opened at the subscription restart (2026-08-12, session marker
+1786510236894021684); **earliest close 2026-09-09**, BH across the full
+blind set, PUMP/MERL as their own replication family, per the registration.
+
+### 3. Kraken and coinbase retired (Task 3)
+
+**Verification before touching anything.** Consumers searched: research
+modules reference the venues only as historical entry points over recorded
+partitions (`python -m research --venue kraken --date …`), which are
+preserved; validation replays whatever partitions exist and checks no
+liveness; the desktop renders heartbeat/validation JSON cosmetically — its
+venue toggles predate C.1 (they do not know hyperliquid exists) and the app
+has never been compiled on this machine, so they were already stale; noted
+for a future desktop pass rather than fixed here. **No live consumer
+exists** — H1 closed cost-bound, H7 closed by decision, and C.14 measured
+the cross-venue features at +0.0044/+0.0037 AUC, immaterial against the
+registered bar.
+
+**The stop, cleanly.** New venue kind **`retired`** (C.9.1's kind
+distinction extended): raw partitions are immutable and stay
+replayable/validatable (the replay guard accepts recorder|retired; scope
+routes retired to the recorder path — pinned by tests), the recorder skips
+retired venues by default (explicit CLI naming can deliberately resurrect
+one), `make status` expects no heartbeat, and telemetry does not probe
+them. The graceful restart wrote **terminal `end` session markers** for both
+venues (kraken and coinbase end at ns 1786510236475094116) — the stop reads
+as explained downtime, not an unlogged hole (the C.5 distinction). Every
+recorded byte preserved: kraken 2026-07-30→08-12 and coinbase ditto remain
+on disk, and their validated days stay valid.
+
+**Load, measured before → after:**
+
+| | before (3 venues) | after (hyperliquid, 27 coins) |
+|---|---|---|
+| message rate | 100.8 + 36.9 + 30.3 ≈ **168/s** | **~72/s** (71–74 over 3 heartbeats) |
+| bytes/day | 540 + 451 + 217 = **1,208 MB** (2026-08-11) | **~301 MB** (6-min growth window × 288) |
+
+The 27-coin subscription costs ~84 MB/day more than the 12-coin one and the
+retirement frees ~991 MB/day — net **−75%**. **Four weeks of the expanded
+Hyperliquid subscription alone ≈ 8.4 GB** (301 MB/day × 28; call it 8–12 GB
+allowing diurnal and volatility variation — the 6-minute window is one pace
+sample, which is the stated assumption behind the projection), against
+270 GB free.
+
+### 4. The two clocks, on the record (Task 4)
+
+- **Hyperliquid latency distribution usable: 2026-08-19** (7 days of 60 s
+  probes from 2026-08-12; a proxy floor, stated above).
+- **Blind four-week scoring window earliest close: 2026-09-09** (opened at
+  the 2026-08-12 subscription; extends until the window spans more than one
+  volatility regime).
+
+Both gate D.1d *conclusions*, not D.1d itself — the bounded replay needs no
+waiting and runs as its own stage. ADR-059 (blind universe rule), ADR-060
+(feed retirement). Recorder confirmed alive after the change; zero credit
+cost.

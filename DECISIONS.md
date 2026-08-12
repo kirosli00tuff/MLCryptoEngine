@@ -2369,3 +2369,62 @@ positive inventory must not be projected forward; a capped policy bounds the
 term to the cap × the weekly move, which is the honest way to carry it into a
 one-week-sample design. All figures remain screened positives on one census
 week (D.1c §4), pending the ≥ 4-week unbiased re-run (~2026-09-08).
+
+## ADR-059: Universe selection is a pre-registered, spread-blind, seeded band rule
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** D.1c's audit found the C.9 instrument selection was a
+spread-motivated screen (PUMP annotated "first above cost" on impact spread),
+with BH corrected across the 10 tested rather than the 177 screened — so the
+census survivors are screened positives, not unbiased ones.
+
+**Decision.** Instrument selection for scoring is a **rule, registered before
+the ranking it applies to is retrieved** (`research/microstructure/
+blind_universe.py`, commit 4bde24c): 24 h-notional bands (B0 ≥ $100M cap 3 /
+B1 cap 5 / B2 cap 5 / B3 cap 6 / B4 cap 6; < $10k/day excluded as unable to
+meet the C.18 capacity floor), all-or-seeded-sample within band, per-band
+independent generators, seed 20260812 committed with the rule. Blindness is
+structural: the code reads exactly `name`, `isDelisted`, `dayNtlVlm`, pinned
+by a decoy-perturbation test. Applied 2026-08-12: 25 blind picks of 177 live
+perps; PUMP and MERL carried over and **never counted as blind picks**.
+Scoring: a fresh ≥ 4-week window from subscription spanning > 1 volatility
+regime, BH q = 0.10 across the full blind tested set; PUMP/MERL form their
+own two-instrument replication family. Earliest close 2026-09-09.
+
+**Consequences.** The screened-positive demotion becomes resolvable by
+measurement instead of standing forever. Any future universe change goes
+through the same shape — rule first, retrieval second — or it is a screen and
+must say so. The draw is reproducible from the committed seed and the
+retrieval-day payload; the band memberships at retrieval (4/7/36/107/23) are
+recorded in venues.yaml alongside the list.
+
+## ADR-060: Kraken and coinbase feeds retired; venue kind "retired" for recorded history with no live feed
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** Nothing consumes the kraken/coinbase live feeds: H1 closed
+cost-bound, H7 closed by decision, C.14 measured the cross-venue features at
++0.0044/+0.0037 AUC (immaterial), research references are historical entry
+points over preserved partitions, and the desktop's venue toggles predate
+C.1 and have never run here. Meanwhile the D.1b blind universe raises
+Hyperliquid load ~2.4× in message rate.
+
+**Decision.** kraken and coinbase are **retired**: a new venue kind
+(`retired`) meaning *was captured live, deliberately stopped, history
+immutable and still replayable/validatable*. Enforced in code, not prose:
+the recorder's default venue set takes only `kind: recorder` (explicit CLI
+naming can resurrect a feed deliberately); `make status` expects no
+heartbeat from retired venues; telemetry does not probe them; the validation
+replay guard accepts recorder|retired so validated days stay valid. The stop
+was graceful — terminal `end` session markers landed for both venues, so the
+halt reads as explained downtime (C.5), not an unlogged hole.
+
+**Consequences.** Measured: 168 → ~72 msg/s and 1,208 → ~301 MB/day (−75%);
+four weeks of the expanded 27-coin Hyperliquid subscription ≈ 8.4 GB against
+270 GB free. Every recorded kraken/coinbase byte remains on disk under the
+immutability rule. Resurrecting either feed is one config flip plus an
+explicit restart, and doing so re-opens the heartbeat expectation
+automatically. The kraken/coinbase latency series end with their feeds; the
+Phase-C-relevant distribution is now Hyperliquid's, accruing since
+2026-08-12.

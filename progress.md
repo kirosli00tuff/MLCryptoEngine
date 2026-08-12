@@ -2613,3 +2613,38 @@ indexer-dependent features has not cleared it.
     the Hyperliquid latency accrual. One census week remains the standing caveat.
     Recorders alive (all heartbeats <30 s); zero credit cost; summary regenerable
     at logs/d1c_summary.json.
+
+- 2026-08-12 — Stage D.1b: the two wall-clock dependencies started, and the feeds
+  reduced to what the open items consume. **Both clocks are now running:**
+  - **⏱ Hyperliquid latency distribution usable: 2026-08-19** (60 s probes from
+    2026-08-12, ~10,080 samples spanning the daily cycle). The probe now POSTs a
+    one-coin l2Book to api.hyperliquid.xyz/info — the info endpoint is POST-only,
+    so the old GET convention could only measure the 405 rejection. Stated
+    plainly: a **proxy floor** — the true submission path (signed order to
+    /exchange) is unmeasurable without placing an order, forbidden before Phase
+    D; the figure omits order-gateway queue/matching time and reads low. First
+    cycle: p50 162 / p95 208 ms (kraken 176 / coinbase 115 on the same cycles).
+  - **⏱ Blind four-week scoring window earliest close: 2026-09-09** (opened at
+    the 2026-08-12 subscription restart; extends until >1 volatility regime is
+    spanned). Universe rule registered blind in 4bde24c BEFORE retrieval —
+    24h-notional bands, seeded sample, seed 20260812, structurally blind to
+    every spread/impact/price field (decoy-perturbation test). Applied: 25 blind
+    picks of 177 live perps (memberships 4/7/36/107/23), PUMP+MERL carried over
+    and marked not-blind, NOT re-enters as a genuine blind pick; 27 subscribed,
+    all confirmed flowing. Scoring: C.18 bars + D.1c long horizons, BH q=0.10
+    across the full blind set; PUMP/MERL their own replication family. ADR-059.
+  - **Kraken and coinbase retired** (verified first: no live consumer — research
+    references are historical entry points over preserved partitions; desktop
+    venue toggles predate C.1 and never ran here; H1 cost-bound, H7 by decision,
+    C.14 +0.0044 AUC immaterial). New venue kind `retired`: raw partitions
+    immutable and still replayable/validatable, recorder skips by default,
+    make status expects no heartbeat, telemetry does not probe. Terminal end
+    session markers written for both — explained downtime per C.5, not a hole.
+    Load measured before → after: **168 → ~72 msg/s, 1,208 → ~301 MB/day**
+    (−75%); four weeks of the 27-coin subscription alone ≈ **8.4 GB** (6-min
+    growth window × 288 × 28 — one pace sample, the stated assumption) against
+    270 GB free. ADR-060.
+  - The bounded replay (D.1d) was deliberately NOT built here; it needs no
+    waiting and runs separately. 388 tests; make lint/typecheck/test green;
+    hyperliquid recorder confirmed alive after the config change (27 coins,
+    heartbeats 71–74 msg/s).
