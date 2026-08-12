@@ -4552,3 +4552,56 @@ with BH across the full tested set. That rule folds into the ≥ 4-week re-run
 Recorders confirmed alive throughout (all three heartbeats < 30 s, Hyperliquid
 untouched); the stage read recorded data and one metadata call at zero credit
 cost.
+
+## Stage D.1b — pre-registration: the blind universe rule — 2026-08-12
+
+*Committed **before any ranking retrieval or subscription change**. D.1c found
+the C.9 selection was a spread-motivated screen ("PUMP … first above cost"),
+so the survivors carry a screened-positive demotion until an unbiased
+selection is scored. This registers the unbiased rule; the same stage then
+subscribes it, because a valid scoring window can only open after
+subscription. Nothing about quoted spread, impact spread, mid, mark, funding,
+or any cost comparison enters the rule — the applying code reads exactly
+three fields per asset (`name`, `isDelisted`, `dayNtlVlm`) and its blindness
+is pinned by a test that perturbs every price-like field and asserts the
+selection is unchanged.*
+
+### The registered rule
+
+- **Universe**: every live perp in the venue's `metaAndAssetCtxs` response
+  (`isDelisted` false), retrieved once, after this commit.
+- **Ranking field**: 24-hour notional volume (`dayNtlVlm`) only.
+- **Bands** (USD 24 h notional, lower bound inclusive, upper exclusive):
+  B0 ≥ $100M · B1 [$10M, $100M) · B2 [$1M, $10M) · B3 [$100k, $1M) ·
+  B4 [$10k, $100k). Below $10k/day is excluded: a book that thin cannot meet
+  the 150-trade/day capacity floor registered at C.18, so measuring it
+  answers nothing H6 asks.
+- **Within each band**: all live perps if the band has no more members than
+  its cap, else a seeded random sample of exactly the cap, drawn without
+  replacement from the band membership sorted by name. **Caps: B0 = 3,
+  B1 = 5, B2 = 5, B3 = 6, B4 = 6** (≤ 25 instruments). The thin bands carry
+  larger caps because the open question lives there; B0–B2 are controls the
+  census pattern predicts to fail. Per-band generators are seeded
+  independently (`"{seed}:{band}"`) so one band's membership size cannot
+  shift another band's draw.
+- **Seed: 20260812**, fixed here before retrieval.
+- **Carryover**: PUMP and MERL stay subscribed regardless of whether the rule
+  selects them, marked **carried-over, not blind picks** — the existing
+  series stays continuous and no later stage may count them as unbiased
+  selections.
+
+### The registered scoring plan (stated, not run)
+
+A fresh window opening at the subscription timestamp, running **≥ 4 weeks and
+spanning more than one volatility regime** (the standing-caveat criterion),
+scored under the C.18 bars — worst-horizon net on the 95% CI lower bound,
+extended per D.1c to include 300 s and 900 s — with **Benjamini–Hochberg
+q = 0.10 applied across the full blind-selected tested set** (every blind
+pick meeting the ≥ 300-trade floor), not across survivors and not across a
+screened subset. PUMP and MERL are scored alongside on the same window but
+form their own pre-specified two-instrument replication family (each must
+independently hold CI > 0 at its worst horizon including the D.1c long
+horizons); they never enter the blind family. **Earliest window close:
+subscription date + 28 days — subscribing 2026-08-12 puts that at
+2026-09-09**, extended if the window has not spanned more than one regime by
+then.
