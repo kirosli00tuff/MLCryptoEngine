@@ -4711,3 +4711,85 @@ Both gate D.1d *conclusions*, not D.1d itself — the bounded replay needs no
 waiting and runs as its own stage. ADR-059 (blind universe rule), ADR-060
 (feed retirement). Recorder confirmed alive after the change; zero credit
 cost.
+
+## Stage D.1d — pre-registration: the bounded replay's policy and kill conditions — 2026-08-12
+
+*Committed before any replay runs. D.1c's sim was generous on fills — every
+print credited min(print, quote) as though the quote sat at the touch and
+filled proportionally. This stage tightens fills to what a resting order
+would experience: queue position at the always-last bound (the only
+defensible one, D.1a), latency in both directions, and ALO rejection.
+hftbacktest is unusable on this feed (aggregated touch state, 83–97% of
+changes unexplained by trades); the replay is custom and bounded.*
+
+### Declared policy (D.1c's base, changes stated)
+
+- **Quote size Q = $500 notional** at the first scored-window mid (PUMP
+  224,065 contracts, MERL 28,510 — identical to D.1c). Two-sided, no skew.
+- **Inventory cap = 2.5 × Q, declared, not fitted.** D.1c measured +1.23 bps
+  at 2.5× and +1.19 at 10× — the result is insensitive to the choice, so one
+  cap is declared here and **5× and 10× are reported as sensitivity only**.
+  Picking a grid maximum on the same week that scores it would be fitting.
+  At the cap the extending side is withdrawn (cancel subject to latency);
+  quoting resumes when the position re-enters the cap.
+- **Cancel-and-replace on touch move** (change from D.1c, which had no order
+  book presence to manage — stated): when the observed touch leaves our
+  order's price, a cancel is issued arriving after one latency L; the
+  replacement is placed at cancel-arrival and becomes active after another L
+  (a 2L cycle). **While the cancel is in flight the order remains fillable
+  at its stale price — this is the leg where latency costs money.**
+- **Latency L = 162 ms each direction** (the D.1b proxy floor, p50 of the
+  first measured cycle), applied to placements and cancels independently.
+  The floor omits gateway queueing and matching; Task 4's grid adds
+  {+50, +100, +200, +400, +800} ms and reports where net crosses zero.
+- **Fill rules under always-last** (registered; all three are
+  level-exhaustion signals): our order at price p fills only on (a) a print
+  at exactly p whose size ≥ the visible touch size standing before it (a
+  full sweep — D.1a's criterion), for min(print, Q remaining); (b) any print
+  strictly through p, for the full remainder; (c) the opposing touch
+  crossing p on a bbo update (stale-price fill during the cancel window),
+  for the full remainder. After any fill the cycle re-quotes at the next
+  touch. Fills are evaluated against the last observed touch, the same
+  resolution C.27 and D.1a used.
+- **ALO**: an arriving order that would cross the current touch is rejected
+  (venue behaviour, D.1c), counted, and retried at the next bbo update. The
+  rejection rate is a measured output.
+- **MERL only — the price-improved end**: a variant quoting one tick inside
+  the touch (a 7-tick book allows it), filling on **any** print at or
+  through its price (first in queue at a new best level), reported as the
+  upper end alongside always-last. PUMP is tick-pinned (85.5% at one tick),
+  price improvement is impossible, and its result is a **point estimate at
+  always-last**, not a range.
+- **Fees 1.5 bps maker per leg** (config/venues.yaml, base tier, verified
+  2026-08-01 and re-verified 2026-08-11). **Funding** hourly from the
+  recorded `activeAssetCtx` stream cross-checked against the C.11 archive,
+  exactly as D.1c (the two agreed on all 28 overlap hours). The PnL
+  decomposition (edge + inventory + funding − fees = net) is an identity
+  asserted in tests.
+
+### Known-answer gate (Task 2, registered tolerance)
+
+With fills relaxed to D.1c's assumption (every print fills min(print, Q) at
+the touch, L = 0, no ALO), the new engine must reproduce D.1c's capped
+results — **PUMP +1.23, MERL +6.67 bps per filled notional at the 2.5× cap —
+within ±0.10 bps** on both instruments, before any tightened number is
+reported. A replay that cannot reproduce the settled number does not get to
+produce the open one (the C.18 gate).
+
+### Registered kill conditions and outcome map
+
+1. **H6 closes** if the tightened net at the declared cap and the latency
+   floor is **≤ 0 for both instruments** at their always-last end. A clean
+   negative; D.2 does not follow. One instrument ≤ 0 removes that instrument
+   from H6 and the other carries it alone.
+2. **Forward to D.2 design** (still short of any deployment): an
+   instrument's tightened net at the declared cap is **> 0 at the floor**
+   AND its zero-crossing added latency is **≥ +200 ms above the floor**
+   (room for the gateway/matching time the floor omits). Even then, nothing
+   proceeds past design until the 2026-08-19 latency re-run confirms and
+   the 2026-09-09 blind window reads out — the screened-positive demotion
+   stands until an unbiased selection is scored.
+3. **Undecided** if net is positive at the floor but the zero-crossing sits
+   **< +200 ms above it**: latency-fragile, parked until the accrued
+   distribution exists (2026-08-19), and the stage re-runs then regardless —
+   this run is not final.
