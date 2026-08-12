@@ -2648,3 +2648,56 @@ indexer-dependent features has not cleared it.
     waiting and runs separately. 388 tests; make lint/typecheck/test green;
     hyperliquid recorder confirmed alive after the config change (27 coins,
     heartbeats 71–74 msg/s).
+
+- 2026-08-12 — Stage D.1d: the bounded fill-simulation replay. **H6 CLOSES.** The
+  C.27 positive was per-fill accounting; it does not survive an order-lifecycle
+  fill model. Policy and kill conditions pre-registered (6a17edf) before any
+  replay ran; one pass, 28.7M records, **130 s** (ETA 3–8 min), 19 variants via
+  new `research/microstructure/{fill_replay,d1d}.py` (12 tests incl. the ledger
+  identity and a generous-mode equivalence check against D.1c's engine).
+  - **Known-answer gate passed exactly**: the new engine, fills relaxed to
+    D.1c's assumption, reproduces **PUMP +1.23 / MERL +6.67** to the digit
+    (registered tolerance ±0.10) with an independently written ledger — so the
+    tightened numbers are a fill-model difference, not arithmetic.
+  - **The result.** Always-last queue + cancel/replace latency (162 ms floor
+    each way) + ALO rejection, declared 2.5×Q cap: **PUMP −4.75 bps (−$7,321),
+    MERL −4.23 bps (−$467)** per filled notional. Negative at 5× and 10× caps,
+    at **every** latency in the grid, and at MERL's price-improved end (−6.35;
+    improvement buys a tick away and *increases* adverse fills). Fall from
+    D.1c's generous model: **−5.98 / −10.90 bps**. ALO rejection 0.19–1.75%.
+    Identity sums (edge + inventory + funding − fees = net); funding 163/168
+    boundaries applied, the 5 skipped inside the 08-04 hole at zero position.
+  - **The mechanism, measured, and it generalises**: expected half-spread at
+    placement **+2.7 bps** vs **realised edge −1.0 to −2.7 bps**. The events
+    that fill a last-in-queue quote — full sweeps, prints through the level,
+    stale-price crossings while the cancel is in flight (27% of PUMP's fills) —
+    are exactly the events where price is already moving through it.
+    Glosten–Milgrom at the fill instant, on this project's own data. ADR-061.
+  - **The closure is not an artifact of the most pessimistic rule.** Per-rule
+    edge attribution (diagnostic added after the run; every top-line number
+    re-ran identical): sweeps — the one rule where we are genuinely the passive
+    party — earn **+1.23 / +1.21 bps** but are only 10–20% of filled notional;
+    through-fills lose 0.84 / 1.56; stale-quote crossings lose **2.77 / 4.91**.
+    **Deleting every crossing fill outright still leaves both negative**
+    (PUMP −3.98, MERL −2.57, MERL improved −3.43 bps net).
+  - **Latency sensitivity: no zero-crossing exists.** Net is negative at
+    +0/+50/+100/+200/+400/+800 ms, so **latency is not the binding constraint —
+    fill selection is**, and the 2026-08-19 accrued-distribution re-run cannot
+    flip the sign (recorded as for-the-record follow-up, not a decision gate).
+    PUMP's grid is nearly flat because the ~198 ms median bbo cadence, not the
+    network, sets the stale-quote floor. ADR-062.
+  - **First PerformanceReports** against the Phase B contract, `mode: backtest`
+    stated explicitly: `data/processed/reports/d1d_{PUMP_base,MERL_base,
+    MERL_improved}.json` (32,018 / 4,270 / 14,085 leg records) with equity
+    gross+net, drawdown, slippage expected-vs-realised, latency percentiles.
+    TypeScript drift test passes untouched; no schema change needed.
+  - **Caveats restated, not footnoted**: one census week and one regime; PUMP
+    was a screened positive ("first above cost") and MERL sat inside a
+    10-instrument correction of a 177-perp screen; latency is a proxy floor
+    (but the sign is insensitive to it); the replay is pessimistic in two named
+    ways (crossing fills take the full remainder; no visibility inside a 198 ms
+    bbo gap). The blind window closing 2026-09-09 still reads out as a
+    selection-bias check, since any future survivor faces this same gate.
+  - **Reopens only on order-level book data** (arrivals/cancels/order IDs) or
+    venue fill-level ground truth — not on lower latency, not on a better queue
+    model from this feed, not on more weeks of per-fill accounting.

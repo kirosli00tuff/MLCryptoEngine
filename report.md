@@ -4793,3 +4793,150 @@ produce the open one (the C.18 gate).
    **< +200 ms above it**: latency-fragile, parked until the accrued
    distribution exists (2026-08-19), and the stage re-runs then regardless —
    this run is not final.
+
+## Stage D.1d results — the capture does not survive an order-lifecycle fill model: both survivors negative everywhere, and H6 closes — 2026-08-12
+
+One pass, 28.7M records, **130 s wall** (registered ETA 3–8 min), 19 sim
+variants (`research/microstructure/{fill_replay,d1d}.py`, 12 new tests
+including the ledger identity and a generous-mode equivalence check against
+D.1c's engine). Summary at `logs/d1d_summary.json`; the project's first
+`PerformanceReport` files (mode: backtest) under `data/processed/reports/`.
+
+### 1. Known-answer gate (Task 2) — passes exactly
+
+The new engine, fills relaxed to D.1c's assumption, reproduces D.1c's capped
+results to the printed digit: **PUMP +1.23 bps, MERL +6.67 bps** per filled
+notional (registered tolerance ±0.10; measured Δ ≈ 0). Same events, an
+independently implemented ledger — the accounting is trusted, so the
+tightened numbers below are differences in *fill model*, not arithmetic.
+
+### 2. The replay proper (Task 3) — the sign flips, on both
+
+Base = always-last, declared 2.5×Q cap, latency floor 162 ms each way. The
+decomposition sums as an identity (edge + inventory + funding − fees = net):
+
+| | PUMP base | MERL base | MERL improved (upper end) |
+|---|---|---|---|
+| fills (sweep / through / crossing) | 32,018 (9.1k / 14.2k / 8.7k) | 4,270 (2.2k / 1.0k / 1.0k) | 14,085 (8.9k / 0 / 5.1k) |
+| filled notional | $15.4M | $1.10M | $2.71M |
+| ALO rejection rate | **0.82%** | **0.19%** | **1.75%** |
+| expected edge at placement (bps) | +2.74 | +2.77 | +1.75 |
+| **realized edge (bps)** | **−1.01** | **−2.74** | **−2.39** |
+| inventory (bps) | −2.24 | +0.02 | −2.46 |
+| funding (bps) | −0.00 | −0.00 | −0.00 |
+| fees (bps) | 1.50 | 1.50 | 1.50 |
+| **net (bps / USD)** | **−4.75 / −$7,321** | **−4.23 / −$467** | **−6.35 / −$1,719** |
+| max \|pos\| / time at cap | 560k / 32.4% | 71k / 18.9% | 71k / 16.7% |
+| time away from flat / max DD | 99.8% / $7,323 | 98.9% / $471 | 99.6% / $1,721 |
+
+**The mechanism, visible in the slippage line: a last-in-queue maker's fills
+are adversely selected at the fill instant.** The quote is placed expecting
++2.7 bps of half-spread; the fills that actually reach it — full sweeps,
+prints through the level, and the touch crossing a stale quote before the
+cancel lands — deliver **−1.0 to −2.7 bps** of realized edge, because by the
+time a level-exhaustion event fires, the price is already moving through the
+quote. 27% of PUMP's fills (8.7k) are stale-price crossings booked at the
+post-move mid. Add the inventory drift of positions acquired exactly when
+the price moves against them, and 1.5 bps of fee, and both instruments are
+**negative at the declared cap, at 5×, at 10×, and at MERL's price-improved
+end** — improvement buys a tick of edge away and *increases* adverse fills
+(36% crossings), scoring −6.35. Fall from D.1c's generous model: PUMP
+**+1.23 → −4.75** (−5.98), MERL **+6.67 → −4.23** (−10.90). Funding is
+immaterial (163/168 boundaries applied; the 5 skipped sit in the 08-04
+recorder hole at zero position — the hole is an explained gap carrying no
+events, not absorbed into any average).
+
+### 2b. Is the closure an artifact of the most pessimistic rule? No
+
+The registered fill rules carry one clear pessimism: a stale-price crossing
+fills the **full** remaining size, where in reality a small aggressor would
+clear the queue ahead of us first. Since crossings are the largest negative
+term, the closure has to be shown not to rest on them. Per-rule attribution
+(a diagnostic added after the run; it changed no total — every top-line figure
+re-ran identical):
+
+| fill rule | PUMP: notional / edge | MERL: notional / edge |
+|---|---|---|
+| sweep (full sweep at our price) | 20.1% / **+1.23 bps** | 9.5% / **+1.21 bps** |
+| through (print past our price) | 49.5% / −0.84 bps | 47.1% / −1.56 bps |
+| crossing (stale quote run over) | 30.3% / **−2.77 bps** | 43.4% / **−4.91 bps** |
+
+The shape is exactly the mechanism: **the one rule where we are genuinely the
+passive party being swept earns its half-spread (+1.2 bps on both), and every
+rule where price is moving through the quote loses.** Sweeps are only 10–20%
+of filled notional.
+
+**The counterfactual that matters: delete every crossing fill entirely** — the
+maximally generous reading of the pessimism — and both instruments are still
+negative. PUMP: edge −0.24 bps, less 1.5 fee, plus −2.24 inventory =
+**−3.98 bps**. MERL: −1.09 − 1.5 + 0.02 = **−2.57 bps**. MERL improved:
++0.53 − 1.5 − 2.46 = **−3.43 bps**. The closure survives deleting the rule it
+could most plausibly be accused of resting on.
+
+### 3. Latency sensitivity (Task 4) — the prominent number: **there is no zero-crossing**
+
+| added ms above floor | +0 | +50 | +100 | +200 | +400 | +800 |
+|---|---|---|---|---|---|---|
+| PUMP net (bps) | −4.75 | −4.80 | −4.83 | −4.79 | −4.69 | −4.63 |
+| MERL net (bps) | −4.23 | −6.30 | −7.04 | −6.93 | −6.40 | −5.83 |
+
+Net is negative at **every** point including the floor itself, so the
+zero-crossing the stage was designed to report **does not exist — latency is
+not the binding constraint; fill selection is.** The grid is nearly flat on
+PUMP (the stale-quote window is dominated by the feed's own 198 ms median
+bbo cadence, which no latency improvement below it can beat), and MERL
+worsens then partially recovers as slower cancels trade fewer, worse fills.
+Consequence: the planned post-2026-08-19 re-run with the accrued latency
+distribution **cannot flip the sign** (recorded as a for-the-record
+follow-up, not a decision gate).
+
+### 4. PerformanceReport (Task 5)
+
+First reports against the Phase B contract, `mode: backtest` stated
+explicitly: `d1d_PUMP_base.json` (32,018 leg records), `d1d_MERL_base.json`
+(4,270), `d1d_MERL_improved.json` (14,085) — equity gross and net hourly,
+drawdown as % of the $1,250 capital base, per-leg trade records, expectancy
+= net bps per filled notional, slippage expected-vs-realized (+2.74 vs
+−1.01 on PUMP — the stage's finding in one pair of numbers), and the run's
+applied latency percentiles. The TypeScript drift test passes untouched
+(`make test`); no schema change was needed.
+
+### 5. Verdict and caveats (Task 6) — H6 closes
+
+**By the registered kill condition, verbatim: the tightened net at the
+declared cap and the latency floor is ≤ 0 for both instruments, so H6
+closes and D.2 does not follow.** The closure is not marginal: negative at
+every cap, every latency, and both ends of the MERL range. The bounded
+range the project carries forward is honest about what happened: the census
+and D.1a measured *per-fill* accounting that credits the standing spread
+and charges only post-trade drift (+2.15 / +5.42 at the pessimistic end);
+an order-lifecycle model shows the fills themselves arrive with the price
+already through the quote. That is Glosten–Milgrom operating at the fill
+instant — the external corroboration H3 already carried — now measured on
+this project's own data.
+
+Caveats, stated plainly rather than in footnotes:
+
+- **One census week, one regime.** Every number above rests on 2026-08-04→11
+  (96.4% covered).
+- **PUMP was a screened positive** ("first above cost") and **MERL sat
+  inside a 10-instrument multiplicity correction of a 177-perp screen**; the
+  blind window closing **2026-09-09** remains the first unbiased test — its
+  role after this closure is to check the selection-bias question, since any
+  future survivor would face this same replay gate.
+- **Latency is a proxy floor**, but the grid shows the sign is insensitive
+  to it — the 08-19 re-run is recorded as follow-up, not a reopening path.
+- **The replay books observation-resolution pessimistically** (a crossing
+  fill takes the full remainder and is marked at the post-move mid; the feed
+  cannot see inside a 198 ms bbo gap), as registered. The truth lies between
+  D.1c's generous +1.23 and this bounded −4.75 — but §2b shows the verdict
+  does not depend on where in that interval it falls: **deleting every
+  crossing fill still leaves both instruments negative** (−3.98 / −2.57).
+
+**What would reopen H6**: not lower latency (measured: no crossing exists),
+not a better queue model on this feed (D.1a: none is estimable), and not
+more weeks of the same accounting. It reopens only on **order-level book
+data** — a venue stream carrying arrivals, cancellations, or order IDs that
+would let fill-instant adverse selection be measured rather than bounded —
+or venue-provided fill-level ground truth. Recorders untouched throughout;
+zero credit cost.

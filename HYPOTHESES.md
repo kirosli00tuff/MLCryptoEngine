@@ -5,13 +5,16 @@
 **The alpha search concluded by decision on 2026-08-06** (C.17, bars and end
 condition pre-registered in commit 370ba41 before any data). Eleven entries
 stand: nine tested and closed, one untestable on available data (H10), one
-closed by the decision itself (H7). **The census (H6) resolved at C.27 — the
-project's first pre-registered-bar-clearing positive**: thin-perp spread capture
-(PUMP and MERL) surviving spread − adverse − cost as an *upper bound*, which by its
-registered outcome-map is a **Phase D.1 fill-simulation input, not a strategy**. So
-no alpha hypothesis remains open; the sole live next step is that D.1 fill
-simulation. The detection track (below, off-register per ADR-044) produced two
-positives and **concluded at C.26**. `report.md` runs past 2,850 lines across nineteen stage sections, each written for the moment it
+closed by the decision itself (H7). **The census (H6) resolved at C.27 to the
+project's first pre-registered-bar-clearing positive — and that positive closed
+at D.1d on 2026-08-12.** Thin-perp spread capture (PUMP and MERL) cleared
+spread − adverse − cost as an *upper bound*, was routed by its registered
+outcome-map to a **fill simulation rather than a strategy**, and did not survive
+it: under an order-lifecycle fill model both instruments go **negative (−4.75 and
+−4.23 bps)** because a last-in-queue quote is filled precisely when price is
+already moving through it. **No alpha hypothesis remains open and no live next
+step exists on the strategy side.** The detection track (below, off-register per
+ADR-044) produced two positives and **concluded at C.26**. `report.md` runs past 2,850 lines across nineteen stage sections, each written for the moment it
 landed rather than for someone reading months later. The failure mode this file
 exists to prevent is **retrying a settled question because the number that
 closed it is buried** — nobody remembers six weeks later that BTC/ETH
@@ -183,14 +186,15 @@ This file contains no analysis. It records what other stages established.
 
 ---
 
-### H6 — Spread capture on thin perpetuals *(resolved at C.27 — the project's first positive)*
+### H6 — Spread capture on thin perpetuals *(positive at C.27, closed at D.1d)*
 
 > On instruments too thin for the majors' competition, the spread-to-cost ratio
 > is favourable enough to survive adverse selection.
 
 | | |
 |---|---|
-| **Status** | **Resolved at C.27 — the project's first pre-registered-bar-clearing positive, as an upper bound.** By the registered outcome-to-action map this is a **D.1 fill-simulation input, not a strategy**; H6 does **not** close to zero. |
+| **Status** | **Closed at D.1d — 2026-08-12.** The per-fill positive (C.27, an upper bound) does **not** survive an order-lifecycle fill model: both survivors are negative under the bounded replay, everywhere in the pre-registered grid. The rows below record how it got there. |
+| **D.1d bounded replay (2026-08-12) — the closure** | Known-answer gate passed exactly (the new engine reproduces D.1c's generous +1.23 / +6.67 to the digit). Under always-last queue with cancel/replace latency (162 ms proxy floor each way) and ALO rejection: **PUMP −4.75 bps, MERL −4.23 bps** per filled notional at the declared 2.5×Q cap — negative at 5× and 10×, at **every** added latency (+0…+800 ms: **no zero-crossing exists, so latency is not the binding term**), and at MERL's price-improved end (**−6.35**; improvement buys a tick away and *increases* adverse fills). Mechanism, measured: expected half-spread at placement **+2.7 bps** vs **realized edge −1.0 to −2.7 bps** — the fills that reach a last-in-queue quote (full sweeps, prints through the level, stale-price crossings during the cancel window; 27% of PUMP's fills are crossings) arrive with the price already moving through it. Glosten–Milgrom at the fill instant, on this project's own data. Fall from D.1c's generous model: −5.98 / −10.90 bps. ALO rejection 0.19–1.75%. **Not an artifact of the model's most pessimistic rule**: per-rule attribution shows sweeps (where we are genuinely the passive party) earn **+1.2 bps** on both but are only 10–20% of filled notional, and **deleting every stale-quote crossing fill outright still leaves both negative** (−3.98 / −2.57). By the pre-registered kill condition (both ≤ 0 at declared cap and floor) **H6 closes and D.2 does not follow**. **Reopens only on order-level book data** (a venue stream with arrivals/cancels/order IDs — the D.1a condition) or venue fill-level ground truth; **not** on lower latency (no crossing exists), not on a better queue model from this feed (D.1a: none estimable), not on more weeks of per-fill accounting. The blind window closing 2026-09-09 still reads out — as a selection-bias check, since any future survivor faces this same replay gate. |
 | **Census verdict (C.27)** | Scored 2026-08-04→08-11 (96.4% coverage; a ~5.75 h recorder hole on 08-04, in the first half, reported not absorbed), known-answer reproduced (BTC −3.051 / ETH −2.753). Of the ten thin Hyperliquid perps, the **liquid** ones fail (HYPE −2.11, SOL −2.61, LINK −1.77, DOT −0.60 bps) and the **thinner-competition** ones survive: **PUMP +4.30, MERL +6.45, GMX +0.40 bps** clear BH q=0.10 + CI>0 + both-halves + capacity; NOT (+31) and TNSR (+35) survive but sub-capacity (positive_but_rare). Every net is an **upper bound** — GMX discounts to ~zero, leaving **PUMP and MERL** as the robust survivors. Expected false positives at q=0.10: 0.5. |
 | **Prior evidence** | Suggestive but unusable at the time: CME micro silver showed a spread-to-cost ratio of **3,889 on 69 quote updates in a day** (one quote per 20 minutes); micro copper **65.0 on 1,494**. A spread you cannot be filled against is not an opportunity — and was not a dismissal either. |
 | **Resolution** | **Resolved, not closed.** The census produced survivors, so H3's thin tail did NOT close — it **opened Phase D.1**. The registered action is followed verbatim: PUMP and MERL are inputs to a fill simulation that models queue position, fill probability, and fill conditioning (the terms the upper-bound measure omits, all pointing down), not a strategy and not a deployment. |
@@ -252,13 +256,15 @@ project's first two substantive positives. Two questions, tracked separately.
 | **Working** | `research/detection/behavior.py`; `report.md` §Stage C.24, §Stage C.25. ADR-051 (survivor-conditioned framing), ADR-052 (cutoff leakage rule), ADR-053 (depth stratification and the Method-B depth-independent retrieval). |
 | **What would reopen it** | **Concluded, not closed-absent** — the signal is real in direction but small and its confirmation is priced out. Reopens on an **affordable decontaminated label**: C.26 measured the pool-path decon-unbiased test at **~125k weighted (~2× the cap)** and found the creator-address restructure **blocked because the creator is not reliably identifiable** from on-chain launch data (the mint predates pool-activity T0; 0/8 pools resolved a creator). A soft/slow-rug label cheaper than 30-day insider-sell detail — or a **live forward-recorded cohort** labelled as outcomes arrive — plus a Method-B sample several times larger, would let the mid-stratum lift's CI be pulled off zero. Does **not** reopen on a better model — capacity was never the constraint. |
 
-**Project-wide open items:** the detection track **concluded at C.26** and the
-census (H6) **resolved at C.27** — the project's first pre-registered-bar-clearing
-positive (thin-perp spread capture, PUMP and MERL, as an *upper bound*). No alpha
-hypothesis remains open; the **sole live next step is the Phase D.1 fill
-simulation** of those survivors, which needs no new access or capital — recorded
-data and a simulator. D2 is concluded (real but small, unconfirmed), reopenable
-only on an affordable decontaminated label.
+**Project-wide open items:** the detection track **concluded at C.26**, the
+census (H6) **resolved at C.27** to the project's first bar-clearing positive,
+and that positive **closed at D.1d (2026-08-12)** — the capture does not survive
+an order-lifecycle fill model. **No alpha hypothesis remains open and no live
+next step exists on the strategy side.** Two clocks still read out for the
+record: the Hyperliquid latency distribution (2026-08-19, moot for the sign) and
+the blind-universe scoring window (2026-09-09, now a selection-bias check). D2
+is concluded (real but small, unconfirmed), reopenable only on an affordable
+decontaminated label.
 
 ---
 
@@ -490,14 +496,16 @@ but snapshot cadence) and has never been the reason a strategy failed.
 
 **Awaiting data only — no new access or capital required:**
 
-- **H6 resolved at C.27 to the project's first positive** — thin-perp spread
-  capture (PUMP, MERL) surviving spread − adverse − cost as an *upper bound*. The
-  open item is no longer H6 but the **Phase D.1 fill simulation** it feeds:
-  whether that capture survives queue position and fill conditioning, on more than
-  a 96.4%-covered week. Still no new access or capital — recorded data and a
-  simulator.
+- **H6 is no longer open.** It resolved at C.27 to the project's first positive
+  (thin-perp spread capture as an *upper bound*), and the D.1 fill simulation it
+  was routed to **closed it at D.1d**: the capture is an artifact of per-fill
+  accounting and does not survive an order-lifecycle model. Nothing here awaits
+  data — it awaits a **different kind of data** (order-level book state), which is
+  an access question, not a waiting one.
 - **H7, cross-venue divergence.** Needs months of simultaneous three-venue
-  history; the recorders have run together only since 2026-08-01.
+  history — and note the kraken/coinbase feeds were retired at D.1b (2026-08-12),
+  so that overlap stopped accruing at 12 days; reopening H7 now requires
+  restarting those recorders first (one config flip, ADR-060).
 - **Whether any Phase B result generalises across regimes.** Every model metric
   so far rests on days, not regimes. This is a data problem and not a code
   problem, and the research-honesty rule in CLAUDE.md keeps it labelled as such.
@@ -537,12 +545,23 @@ tested and closed on measured figures, one (H10) closed as untestable on
 available data, one (H7) closed by this decision with its design preserved.
 **The census (H6) resolved on 2026-08-11 — and not to the expected zero.** Three
 thin Hyperliquid perps cleared the pre-registered bars; discounted for the upper
-bound they are, **PUMP and MERL** stand as the project's first bar-clearing
-positive, and by the registered outcome-map they are a **Phase D.1 fill-simulation
-input, not a strategy**. The register holds no open alpha hypothesis; the one live
-next step is that fill simulation, and whether any capture survives queue position
-and fill conditioning — the terms the upper-bound measure omits — is the honest
-open question, on more than a single week.
+bound they are, **PUMP and MERL** stood as the project's first bar-clearing
+positive, and by the registered outcome-map they were a **Phase D.1
+fill-simulation input, not a strategy**.
+
+**That fill simulation closed them on 2026-08-12 (D.1d).** The honest open
+question — whether the capture survives queue position and fill conditioning,
+the terms the upper-bound measure omits — was answered no, against a bar
+registered before the replay ran: **PUMP −4.75 bps and MERL −4.23 bps** per
+filled notional, negative at every declared cap, at every latency in the grid,
+and at both ends of MERL's range. The mechanism is worth carrying forward
+because it generalises past this instrument pair: **a quote expecting +2.7 bps
+of half-spread realises −1.0 to −2.7 bps, because the events that fill a
+last-in-queue order are exactly the events where price is already moving
+through it.** Per-fill accounting cannot see that; only an order-lifecycle
+model can. The register now holds **no open alpha hypothesis and no live next
+step** — a sixth closure, and the first one this project reached by building
+the thing that could have proved it right.
 
 The durable output is the infrastructure: three continuously validated
 recorders, a provenance-complete archive of free historical data, a validation

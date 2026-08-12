@@ -2428,3 +2428,74 @@ explicit restart, and doing so re-opens the heartbeat expectation
 automatically. The kraken/coinbase latency series end with their feeds; the
 Phase-C-relevant distribution is now Hyperliquid's, accruing since
 2026-08-12.
+
+## ADR-061: Spread capture is evaluated on an order lifecycle, never on per-fill accounting
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** Every measure this project applied to spread capture before D.1d
+— C.9's time-weighted spread, C.27's trade-time spread minus adverse, D.1a's
+always-last restriction, D.1c's inventory sim — is **per-fill accounting**: it
+credits a fill with the spread standing at that moment and charges it with
+drift measured *after* the trade. None of them models the order that earned
+the fill. D.1c's sim was deliberately generous (every print filled
+`min(print, quote)` at the touch) because its job was isolating inventory,
+not fills. hftbacktest cannot close the gap: its queue models need observable
+book evolution, and this feed gives aggregated touch state with 83–97% of
+changes unexplained by any trade (D.1a).
+
+**Decision.** A quoting result is only reportable from a model that simulates
+the **order lifecycle**: placement latency, ALO rejection, resting at a price
+while the book moves, cancel latency with the order still fillable at its
+stale price, and fills triggered only by level-exhaustion evidence
+(`research/microstructure/fill_replay.py`). Per-fill figures may be reported
+as an explicit **upper bound** and never as an estimate. Any new engine must
+pass a known-answer gate against the settled generous result before its
+tightened output is read — D.1d's engine reproduced D.1c's +1.23 / +6.67 to
+the printed digit with an independently written ledger, which is why its
+−4.75 / −4.23 is a fill-model difference rather than an arithmetic one.
+
+**Consequences.** The gap between the two framings is not a refinement, it is
+the whole result: **+2.7 bps expected half-spread at placement against −1.0 to
+−2.7 bps realised**, because the events that fill a last-in-queue quote are
+the events where price is already moving through it. H6 closes on that
+number. Two pessimisms travel with the model and are stated wherever it is
+quoted: a stale-price crossing fills the **full** remaining size (a small
+aggressor would in reality clear the queue ahead of us first), and fills are
+marked against the last observed mid, so the replay cannot see inside a
+~198 ms bbo gap. The truth lies between the generous and bounded models — but
+the verdict does not depend on where: per-rule attribution shows sweeps earn
+**+1.2 bps** on both instruments while through- and crossing-fills lose, and
+**deleting every crossing fill outright still leaves both negative** (−3.98 /
+−2.57). A closure has to survive the removal of the rule it could most
+plausibly be accused of resting on; this one does. Any future engine of this
+kind reports per-rule edge attribution for the same reason.
+
+## ADR-062: Latency is a measured proxy floor with a reported grid, never a single assumed constant
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** ADR-003 forbids constant-latency backtests because they miss the
+slow tail where queue position is lost. D.1b measured Hyperliquid at a
+**proxy floor** (p50 162 ms): a POST to the info endpoint exercises the same
+host/TLS/HTTP front end an order traverses but omits gateway queueing and
+matching, and the true path cannot be measured without placing an order.
+Using that floor as *the* latency would understate exactly the term ADR-003
+exists to protect.
+
+**Decision.** Latency enters a simulation as a **floor plus a declared
+sensitivity grid**, both reported; the grid's **zero-crossing — how much
+slower than the floor the strategy can be and still clear zero — is a headline
+output, not a table row**. D.1d ran {+0, +50, +100, +200, +400, +800} ms above
+the floor, applied independently to placements and cancels (the cancel leg is
+where latency costs money).
+
+**Consequences.** D.1d found **no zero-crossing exists**: net is negative at
+every grid point including the floor, so latency is not the binding
+constraint and no latency improvement reopens H6. The grid is nearly flat on
+PUMP because the stale-quote window is dominated by the feed's own ~198 ms
+median bbo cadence, which no faster order path can beat — a structural
+observation worth keeping: **on a feed this coarse, the observation interval,
+not the network, sets the floor on stale-quote risk.** The 2026-08-19 accrued
+distribution re-run is recorded as a for-the-record follow-up rather than a
+decision gate, because the sign cannot move.
