@@ -2758,3 +2758,47 @@ detection-track closures. Their inputs were not present in the audit clone, so
 they were read, not run. The leakage suites reach none of the census / D.1c /
 D.1d modules, and `spread.py` / `adverse.py` still have no direct test.
 
+
+## 2026-08-13 — Recording ends: the archive is closed and the project is complete
+
+**Recording stopped 2026-08-13T05:02:49Z.** `mlce-recorder` and `mlce-telemetry`
+were stopped and disabled through systemd, so the final zstd frame closed
+cleanly and a lifecycle `end` marker was written. `sessions.jsonl` shows the
+stop as an explained downtime, not an unlogged hole; no `unclean` record exists
+on any venue. No recorder or telemetry process remains.
+
+**Why now.** D.1d closed H6, and the audit (`AUDIT.md`, `fb296cb`) plus the
+D.1d corrections (`d2a0f05`) re-confirmed that closure by a wider margin.
+Every register entry is closed. Neither clock started at D.1b feeds a surviving
+decision:
+
+- **Hyperliquid latency**, usable 2026-08-19, existed to re-run D.1d with real
+  percentiles. The corrected engine shows **no zero-crossing anywhere on the
+  0–800 ms grid**, so the sign is insensitive to latency.
+- **The blind universe window**, earliest close 2026-09-09, existed to test
+  whether the C.27 survivors were a selection artefact. Any survivor of a blind
+  selection meets the same order-lifecycle fill model that closed PUMP and MERL.
+
+Recording further data would not change an answer. The 27-instrument blind
+universe subscribed on 2026-08-12 is therefore left with 1 day of capture and is
+**not** a scoreable window; it should not be treated as one.
+
+**Final archive, immutable and retained in full: 14 GB.**
+
+| venue | days | range | on disk |
+|---|---|---|---|
+| kraken | 14 | 2026-07-30 → 2026-08-12 | 6.8 GB |
+| coinbase | 14 | 2026-07-30 → 2026-08-12 | 5.1 GB |
+| hyperliquid | 13 | 2026-08-01 → 2026-08-13 | 2.2 GB |
+
+Kraken and Coinbase were retired at D.1b on 2026-08-12 with terminal end
+markers and venue kind `retired`; their history is preserved and still
+validates. Disk after the stop: 271 GB free of 466 GB. `data/vendor/` (Databento
+MBT April–May 2026, the free daily/hourly archive, the funding archive) is
+unaffected.
+
+**What a future reader should start from.** `HYPOTHESES.md` for the register and
+every reopening condition, `AUDIT.md` for what has and has not been independently
+checked, `DECISIONS.md` for the ADRs. The reopening conditions are thresholds,
+not invitations: H6 reopens only on order-level book data, and no amount of
+further recording on this feed produces it.
