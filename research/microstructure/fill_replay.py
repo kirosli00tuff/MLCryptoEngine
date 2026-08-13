@@ -7,10 +7,13 @@ engine tightens fills to what a resting order would experience, per the
 policy registered in report.md §D.1d:
 
 - **Queue** at the always-last bound (D.1a: the only defensible model). An
-  order at price p fills only on level-exhaustion evidence: a full-sweep
-  print at p (size ≥ the visible touch), a print strictly through p, or the
-  opposing touch crossing p on a bbo update (the stale-price fill while a
-  cancel is in flight).
+  order at price p fills only on level-exhaustion evidence: a print at p
+  large enough to clear the queue standing at p when we joined it (only its
+  residual reaches us), a print strictly through p, or the opposing touch
+  crossing p on a bbo update (the stale-price fill while a cancel is in
+  flight). Until 2026-08-12 the first rule compared against the depth at
+  whatever level happened to be the touch, which is a different price once
+  the order is stale -- audit finding A4, corrected; see ``QueueModel``.
 - **Latency** in both directions: placements become active one L after they
   are issued, cancels take effect one L after they are issued, and the order
   stays fillable at its stale price until the cancel lands — the leg where
@@ -23,9 +26,11 @@ resolution C.27 and D.1a used; the bbo cadence (~123-330 ms median) is the
 clock this feed can support.
 
 The PnL ledger deliberately mirrors ``InventorySim`` field-for-field rather
-than sharing code with it: the Task 2 known-answer gate runs this engine in
-``generous`` mode against ``InventorySim`` on identical events, and that
-check is only independent if the two ledgers are separate implementations.
+than sharing code with it. That buys less than D.1d originally claimed for
+it: the generous-mode gate against ``InventorySim`` executes none of the
+order machine above (audit finding A1). The control that does cover it is
+the differential test in ``tests/test_fill_replay_gate.py`` against
+``research.microstructure.reference_replay``.
 """
 
 from __future__ import annotations
@@ -33,13 +38,39 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from research.microstructure.fees import HYPERLIQUID_MAKER_BPS
 from research.microstructure.tick import tick_size
 
-MAKER_FEE_BPS = 1.5
+# A10: one sourced, dated statement of the fee, in research.microstructure.fees.
+MAKER_FEE_BPS = HYPERLIQUID_MAKER_BPS
 NS_PER_HOUR = 3_600_000_000_000
 FLAT_NOTIONAL_USD = 10.0
 
 FillModel = Literal["always_last", "improved", "generous"]
+# Where the queue ahead of a resting order is read from (audit finding A4).
+#
+# ``touch``      the shipped D.1d behaviour: compare the print against the size
+#                at the *current* touch, whatever price that is. Wrong whenever
+#                the order is stale, and wrong in the generous direction.
+#                Retained only to reproduce the published run.
+# ``own_level``  the always-last bound done properly: snapshot the depth at the
+#                order's own price when it is placed, decrement it by prints at
+#                that price, credit no cancellations. A print fills us only with
+#                whatever is left of it once that queue is cleared.
+# ``own_level_cancels``
+#                as ``own_level``, but the queue may also shrink when the
+#                observed depth at our price falls below it — cancellations
+#                ahead of us count. The less pessimistic end of the correction.
+QueueModel = Literal["touch", "own_level", "own_level_cancels"]
+# How long an ALO rejection suppresses re-quoting (audit finding A5).
+#
+# ``update_scoped`` the documented rule: the side is not re-quoted on the update
+#                   that rejected it, and is retried on the next bbo.
+# ``legacy_leak``   the shipped D.1d behaviour: the suppression lived in
+#                   instance state cleared only at the end of on_bbo, so a
+#                   rejection raised inside on_trade also cost the *following*
+#                   bbo its quote. Retained only to reproduce the published run.
+AloSuppression = Literal["update_scoped", "legacy_leak"]
 _SIDES = ("bid", "ask")
 _DIRECTION = {"bid": 1, "ask": -1}
 
@@ -49,6 +80,7 @@ class _Order:
     price: float
     size: float
     active_ns: int
+    queue_ahead: float = 0.0
     cancel_dead_ns: int | None = None
     alo_checked: bool = False
     expected_edge_bps: float = 0.0
@@ -67,6 +99,8 @@ class BoundedQuoteSim:
     latency_ns: int
     sz_decimals: int
     fill_model: FillModel = "always_last"
+    queue_model: QueueModel = "own_level"
+    alo_suppression: AloSuppression = "update_scoped"
     maker_fee_bps: float = MAKER_FEE_BPS
 
     # Ledger — field-for-field the InventorySim decomposition.
@@ -102,9 +136,7 @@ class BoundedQuoteSim:
     notional_by_reason: dict[str, float] = field(default_factory=dict)
 
     _orders: dict[str, _Order | None] = field(default_factory=lambda: dict.fromkeys(_SIDES))
-    _rejected_this_update: dict[str, bool] = field(
-        default_factory=lambda: dict.fromkeys(_SIDES, False)
-    )
+    _leaked_rejections: set[str] = field(default_factory=set)
     _bid_px: float | None = None
     _bid_sz: float = 0.0
     _ask_px: float | None = None
@@ -127,12 +159,17 @@ class BoundedQuoteSim:
         self._last_ns, self._last_mid = ts_ns, mid
 
         if self.fill_model != "generous":
-            self._process_transitions(ts_ns, bid_px, ask_px)
+            # A5: suppression is scoped to *this* update. A rejection raised
+            # inside on_trade must not also cost the next bbo its quote, which
+            # is what an instance-level flag cleared here used to do.
+            rejected = self._process_transitions(ts_ns, bid_px, ask_px)
+            if self.alo_suppression == "legacy_leak":
+                rejected |= self._leaked_rejections
+                self._leaked_rejections = set()
             self._crossing_fills(ts_ns, bid_px, ask_px)
             self._cancel_stale(ts_ns, bid_px, ask_px)
-            self._place_wanted(ts_ns, bid_px, ask_px, mid)
-            for side in _SIDES:
-                self._rejected_this_update[side] = False
+            self._refresh_queue(ts_ns, bid_px, bid_sz, ask_px, ask_sz)
+            self._place_wanted(ts_ns, bid_px, bid_sz, ask_px, ask_sz, mid, rejected)
 
         self._bid_px, self._bid_sz = bid_px, bid_sz
         self._ask_px, self._ask_sz = ask_px, ask_sz
@@ -146,7 +183,9 @@ class BoundedQuoteSim:
             return
         if self._bid_px is None or self._ask_px is None:
             return
-        self._process_transitions(ts_ns, self._bid_px, self._ask_px)
+        leaked = self._process_transitions(ts_ns, self._bid_px, self._ask_px)
+        if self.alo_suppression == "legacy_leak":
+            self._leaked_rejections |= leaked
         side = "ask" if aggressor_sign > 0 else "bid"
         order = self._orders[side]
         if order is None or not order.is_live(ts_ns):
@@ -159,11 +198,12 @@ class BoundedQuoteSim:
             return
         through = px > order.price + eps if side == "ask" else px < order.price - eps
         at_price = abs(px - order.price) <= eps
-        visible = self._ask_sz if side == "ask" else self._bid_sz
         if through:
+            # A print strictly through our price implies every resting order at
+            # and better than it cleared, ours included, whatever the print size.
             self._fill(ts_ns, side, order, order.size, "through")
-        elif at_price and sz >= visible > 0.0:
-            self._fill(ts_ns, side, order, min(sz, order.size), "sweep")
+        elif at_price:
+            self._sweep(ts_ns, side, order, sz)
 
     def on_funding(self, ts_ns: int, hourly_rate: float, mark: float) -> None:
         self.funding_hours += 1
@@ -171,9 +211,56 @@ class BoundedQuoteSim:
         self.funding_usd += charge
         self._book(ts_ns, charge, fee=0.0)
 
+    # ------------------------------------------------------------- sweep ---
+    def _sweep(self, ts_ns: int, side: str, order: _Order, print_size: float) -> None:
+        """A print at our own price. We are last, so only its residual is ours.
+
+        Under ``touch`` this reproduces the shipped rule: compare the print
+        against the size at the current touch — a different level entirely once
+        the order is stale — and credit ``min(print, order)`` when it wins.
+        Under the corrected models the comparison is against the queue standing
+        at *our* price, and only what the print has left after clearing that
+        queue can reach us.
+        """
+        if self.queue_model == "touch":
+            visible = self._ask_sz if side == "ask" else self._bid_sz
+            if print_size >= visible > 0.0:
+                self._fill(ts_ns, side, order, min(print_size, order.size), "sweep")
+            return
+        consumed = min(print_size, order.queue_ahead)
+        order.queue_ahead -= consumed
+        residual = print_size - consumed
+        if residual > 0.0:
+            self._fill(ts_ns, side, order, min(residual, order.size), "sweep")
+
+    def _refresh_queue(
+        self, ts_ns: int, bid_px: float, bid_sz: float, ask_px: float, ask_sz: float
+    ) -> None:
+        """Let the queue ahead shrink when the book says it did.
+
+        Only under ``own_level_cancels``, only while our order still sits at the
+        touch — that is the one level whose depth this feed reports — and only
+        once it is *live*: an order still in flight holds no queue position, so
+        depth observed before it arrives says nothing about who is ahead of it.
+        The strict ``own_level`` bound credits no cancellation at all, which is
+        what makes it the always-last floor.
+        """
+        if self.queue_model != "own_level_cancels":
+            return
+        for side, touch_px, touch_sz in (("bid", bid_px, bid_sz), ("ask", ask_px, ask_sz)):
+            order = self._orders[side]
+            if order is not None and order.is_live(ts_ns) and order.price == touch_px:
+                order.queue_ahead = min(order.queue_ahead, touch_sz)
+
     # ------------------------------------------------------ order machine --
-    def _process_transitions(self, ts_ns: int, bid_px: float, ask_px: float) -> None:
-        """Bury dead cancels; run the one-shot ALO check on newly arrived orders."""
+    def _process_transitions(self, ts_ns: int, bid_px: float, ask_px: float) -> set[str]:
+        """Bury dead cancels; run the one-shot ALO check on newly arrived orders.
+
+        Returns the sides rejected *in this call*, so the caller can decline to
+        re-quote them on the same update without that suppression leaking into
+        the next one (A5).
+        """
+        rejected: set[str] = set()
         for side in _SIDES:
             order = self._orders[side]
             if order is None:
@@ -188,7 +275,8 @@ class BoundedQuoteSim:
                     # The venue rejects an ALO that would match, never reprices.
                     self.alo_rejections += 1
                     self._orders[side] = None
-                    self._rejected_this_update[side] = True
+                    rejected.add(side)
+        return rejected
 
     def _crossing_fills(self, ts_ns: int, bid_px: float, ask_px: float) -> None:
         """The opposing touch crossed a live order's price: stale-price fill."""
@@ -211,22 +299,34 @@ class BoundedQuoteSim:
                 order.cancel_dead_ns = ts_ns + self.latency_ns
                 self.cancels_started += 1
 
-    def _place_wanted(self, ts_ns: int, bid_px: float, ask_px: float, mid: float) -> None:
+    def _place_wanted(
+        self,
+        ts_ns: int,
+        bid_px: float,
+        bid_sz: float,
+        ask_px: float,
+        ask_sz: float,
+        mid: float,
+        rejected: set[str],
+    ) -> None:
         for side in _SIDES:
-            if (
-                self._orders[side] is not None
-                or self._rejected_this_update[side]
-                or self._side_capped(side)
-            ):
+            if self._orders[side] is not None or side in rejected or self._side_capped(side):
                 continue
             spread_bps = (ask_px - bid_px) / mid * 1e4
             expected = spread_bps / 2.0
             if self.fill_model == "improved":
                 expected -= tick_size(mid, self.sz_decimals) / mid * 1e4
+            price = self._target_price(side, bid_px, ask_px)
+            # Everything resting at our price when we join is ahead of us. An
+            # improved quote steps inside the touch onto an empty level, so it
+            # joins with nobody in front.
+            at_touch = price == (bid_px if side == "bid" else ask_px)
+            queue_ahead = (bid_sz if side == "bid" else ask_sz) if at_touch else 0.0
             self._orders[side] = _Order(
-                price=self._target_price(side, bid_px, ask_px),
+                price=price,
                 size=self.quote_size,
                 active_ns=ts_ns + self.latency_ns,
+                queue_ahead=queue_ahead,
                 expected_edge_bps=expected,
             )
             self.placements += 1
@@ -343,6 +443,7 @@ class BoundedQuoteSim:
         return {
             "symbol": self.symbol,
             "fill_model": self.fill_model,
+            "queue_model": self.queue_model,
             "quote_size": self.quote_size,
             "cap_size": self.cap_size,
             "latency_ms": self.latency_ns / 1e6,

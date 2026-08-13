@@ -15,6 +15,13 @@ probe suites re-run to the same 10/2 and 18/8 pass/fail counts). Note
 a sweep credits `min(print, order)`, not the full order — corrected in
 `audit/probe2.py`; the shipped code was right and I was not.
 
+> **Status, 2026-08-12: all findings have been actioned.** This file is the
+> frozen audit record as delivered against commit `ed786ce`; it is not updated
+> as fixes land. What each correction did to the numbers is in report.md
+> **§Stage D.1d corrections**, with ADR-063 (gate replacement) and ADR-064
+> (mechanism withdrawal). Headline change: the closure holds and tightens —
+> **PUMP −4.75 → −4.81, MERL −4.23 → −4.35**.
+
 Every finding is labelled **[VERIFIED]** — a defect reproduced by executing
 code — or **[STATIC]** — read from source, not executed. §B lists verified
 negatives: things the brief asked me to suspect that were tested and came back
@@ -387,11 +394,13 @@ including the H6 register itself.
 
 **Where:** `research/microstructure/d1d.py:240,243-244`
 
-```python
-expectancy_bps_net = (float(summary["net_bps"] or 0.0),)
-expected_bps = (float(summary["expected_edge_bps"] or 0.0),)
-realized_bps = (float(summary["edge_bps"] or 0.0),)
+```text
+expectancy_bps_net=float(summary["net_bps"] or 0.0),
+expected_bps=float(summary["expected_edge_bps"] or 0.0),
+realized_bps=float(summary["edge_bps"] or 0.0),
 ```
+(kwargs to `PerformanceReport`; fenced as `text` because `ruff format` rewrites
+a `python` block into tuple assignments and misquotes the source.)
 
 `summary()` returns `None` for these when `filled_notional_usd == 0`
 (`fill_replay.py:340`). A variant producing no fills would emit a

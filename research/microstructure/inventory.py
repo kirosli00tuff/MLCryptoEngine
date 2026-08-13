@@ -25,7 +25,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-MAKER_FEE_BPS = 1.5
+from research.microstructure.fees import HYPERLIQUID_MAKER_BPS
+
+# A10: one sourced, dated statement of the fee, in research.microstructure.fees.
+MAKER_FEE_BPS = HYPERLIQUID_MAKER_BPS
 NS_PER_HOUR = 3_600_000_000_000
 # |position notional| at or above the venue's $10 minimum order value counts
 # as away from flat: below it the position could not even be quoted away.

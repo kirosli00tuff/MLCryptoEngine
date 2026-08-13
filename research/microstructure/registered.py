@@ -43,6 +43,7 @@ from statsmodels.stats.multitest import multipletests
 
 from data.recorder.reader import iter_day_records
 from research.microstructure.census import AGGRESSOR_SIGN, CensusResult, _quote, run_census
+from research.microstructure.fees import HYPERLIQUID_MAKER_ROUND_TRIP_BPS
 
 REGISTRATION_COMMIT = "6025f5c"
 # 2026-08-04T00:00Z .. 2026-08-11T00:00Z, in the recorder's epoch nanoseconds.
@@ -54,7 +55,8 @@ THIN_COINS: frozenset[str] = frozenset(
 LIQUID_COINS: frozenset[str] = frozenset({"BTC", "ETH"})
 
 HORIZONS_MS: tuple[int, ...] = (1_000, 5_000, 60_000)
-ROUND_TRIP_BPS = 3.0
+# A10: derived from the single sourced fee, never restated as a literal.
+ROUND_TRIP_BPS = HYPERLIQUID_MAKER_ROUND_TRIP_BPS
 SAMPLE_FLOOR_TRADES = 300
 BH_Q = 0.10
 CAPACITY_TRADES_PER_DAY = 150.0
@@ -141,29 +143,75 @@ class RegisteredInstrument:
             )
 
 
+def _day_clustered_se(rows: list[tuple[int, float, float]]) -> tuple[float, int]:
+    """Standard error over UTC-day cluster means (audit finding A3).
+
+    The IID standard error below treats every aggressor print as an independent
+    draw. It is not: the touch spread persists across bursts, and at the 5 s and
+    60 s horizons consecutive trades share overlapping forward windows. Treating
+    each recorded day as one cluster is the crudest honest correction and, on
+    the C.27 population, widens the interval 2-28x.
+    """
+    by_day: dict[int, list[float]] = {}
+    for ts_ns, spread, adverse in rows:
+        by_day.setdefault(ts_ns // NS_PER_DAY, []).append(spread - adverse - ROUND_TRIP_BPS)
+    means = [sum(v) / len(v) for v in by_day.values()]
+    k = len(means)
+    if k < 2:
+        return math.inf, k
+    mu = sum(means) / k
+    return math.sqrt(sum((m - mu) ** 2 for m in means) / (k - 1) / k), k
+
+
 def _horizon_stats(rows: list[tuple[int, float, float]]) -> dict[str, float]:
+    """Per-horizon net, with the registered bar and the corrections beside it.
+
+    ``ci95_lower_bps`` is the A6 correction: a one-sided registered bar
+    ("95% CI lower bound > 0") judged with the one-sided critical value. C.27
+    was scored with the two-sided 1.96, which is ~19% *harder* to clear;
+    ``ci95_lower_bps_as_scored`` reproduces that, and no instrument's category
+    moves between the two. ``ci95_lower_bps_day_clustered`` is the A3 correction
+    and is the one that matters: it is 2-28x wider than either.
+    """
     n = len(rows)
     nets = [spread - adverse - ROUND_TRIP_BPS for _, spread, adverse in rows]
     mean = sum(nets) / n
+    day_se, clusters = _day_clustered_se(rows)
     if n > 2:
         var = sum((x - mean) ** 2 for x in nets) / (n - 1)
         se = math.sqrt(var / n)
-        crit = float(student_t.ppf(0.5 + CONFIDENCE / 2, n - 1))
-        lower = mean - crit * se
+        one_sided = float(student_t.ppf(CONFIDENCE, n - 1))
+        two_sided = float(student_t.ppf(0.5 + CONFIDENCE / 2, n - 1))
+        lower = mean - one_sided * se
+        as_scored = mean - two_sided * se
         p_one_sided = float(student_t.sf(mean / se, n - 1)) if se > 0 else 1.0
+        day_lower = (
+            mean - float(student_t.ppf(CONFIDENCE, clusters - 1)) * day_se
+            if clusters > 1
+            else -math.inf
+        )
     else:
-        lower, p_one_sided = -math.inf, 1.0
+        se = math.inf
+        lower = as_scored = day_lower = -math.inf
+        p_one_sided = 1.0
     return {
         "n": n,
         "mean_spread_bps": sum(r[1] for r in rows) / n,
         "mean_adverse_bps": sum(r[2] for r in rows) / n,
         "net_mean_bps": mean,
         "ci95_lower_bps": lower,
+        "ci95_lower_bps_as_scored": as_scored,
+        "ci95_lower_bps_day_clustered": day_lower,
+        "se_iid_bps": se,
+        "se_day_clustered_bps": day_se,
+        "day_clusters": clusters,
         "p_one_sided": p_one_sided,
     }
 
 
-def instrument_report(inst: RegisteredInstrument) -> dict[str, Any]:
+def instrument_report(
+    inst: RegisteredInstrument, recorded_ns: int = SCORED_END_NS - SCORED_START_NS
+) -> dict[str, Any]:
     """One instrument against every registered bar except multiplicity."""
     per_horizon: dict[str, dict[str, float]] = {}
     floor_met = True
@@ -198,18 +246,31 @@ def instrument_report(inst: RegisteredInstrument) -> dict[str, Any]:
             sum(s - a - ROUND_TRIP_BPS for _, s, a in block) / len(block) if block else None
         )
     days = sorted(inst.usd_by_day)
-    median_usd = sorted(inst.usd_by_day[d] for d in days)[len(days) // 2] if days else 0.0
-    trades_per_day = inst.trades / max(1.0, (SCORED_END_NS - SCORED_START_NS) / NS_PER_DAY)
+    ordered = sorted(inst.usd_by_day[d] for d in days)
+    # A8: a true median, not the upper element on an even day count.
+    if not ordered:
+        median_usd = 0.0
+    elif len(ordered) % 2:
+        median_usd = ordered[len(ordered) // 2]
+    else:
+        median_usd = 0.5 * (ordered[len(ordered) // 2 - 1] + ordered[len(ordered) // 2])
+    # A8: divide by the span actually recorded. The window is 7 calendar days but
+    # a ~5.75 h recorder hole on 08-04 means 96.4% of it was captured, and
+    # crediting the missing hours understates every instrument's rate.
+    trades_per_day = inst.trades / max(1.0, recorded_ns / NS_PER_DAY)
 
     report.update(
         {
             "worst_horizon_ms": int(worst),
             "net_mean_bps_worst": stats["net_mean_bps"],
             "ci95_lower_bps_worst": stats["ci95_lower_bps"],
+            "ci95_lower_bps_worst_as_scored": stats["ci95_lower_bps_as_scored"],
+            "ci95_lower_bps_worst_day_clustered": stats["ci95_lower_bps_day_clustered"],
             "p_one_sided_worst": stats["p_one_sided"],
             "half_net_means_bps": halves,
             "holds_in_both_halves": all(h is not None and h > 0 for h in halves),
             "trades_per_day": trades_per_day,
+            "recorded_days": recorded_ns / NS_PER_DAY,
             "median_daily_usd": median_usd,
             "capacity_tier_met": trades_per_day >= CAPACITY_TRADES_PER_DAY
             and median_usd >= CAPACITY_MEDIAN_DAILY_USD,

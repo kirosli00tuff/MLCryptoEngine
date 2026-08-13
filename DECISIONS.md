@@ -2499,3 +2499,77 @@ observation worth keeping: **on a feed this coarse, the observation interval,
 not the network, sets the floor on stale-quote risk.** The 2026-08-19 accrued
 distribution re-run is recorded as a for-the-record follow-up rather than a
 decision gate, because the sign cannot move.
+
+---
+
+## ADR-063 — A gate that does not execute the code it guards is withdrawn, not weakened
+
+**Date.** 2026-08-12. **Status.** Accepted. **Context.** D.1d offered a
+known-answer gate as the warrant for its arithmetic: the new engine in
+`generous` mode reproducing D.1c's `InventorySim` to the printed digit, stated
+as *"an independently implemented ledger — the accounting is trusted."* An
+adversarial audit (`AUDIT.md`, A1) traced the gate and found it executes **zero
+lines** of the order machine — `_process_transitions`, `_crossing_fills`,
+`_cancel_stale`, `_place_wanted`, `_target_price`, `_fill`; 106 consecutive
+lines, every line separating D.1d from D.1c. The agreement was also exact to 15
+significant figures, which is itself diagnostic: two genuinely independent
+implementations do not agree bit-for-bit across 286,378 floating-point
+accumulations. They agreed because one ledger is a statement-by-statement
+transliteration of the other.
+
+**Decision.** A control that does not execute the code it is offered over is
+**withdrawn from the record, not softened**. The claim is struck from
+report.md §D.1d.1 and replaced by a differential gate: a second implementation
+of the registered policy (`research/microstructure/reference_replay.py`) with a
+per-order lifecycle and a ledger recomputed from a blotter in a late pass,
+differenced against `BoundedQuoteSim` over randomised streams, plus
+lifecycle-accounting invariants and — the part that matters for recurrence — a
+**coverage assertion that fails if the gate ever stops executing the order
+machine**. A1 is encoded as a test, so it cannot come back silently.
+
+**Consequences.** The new gate caught a real defect on its first run:
+`_refresh_queue` was shrinking the queue-ahead of orders still in flight, which
+hold no queue position. Fixed. The general rule this generalises to, and which
+applies to every future stage: **state what a gate covers in terms of lines
+executed, not in terms of numbers matched.** Two numbers matching is consistent
+with both paths sharing the defect. The residual limit is recorded rather than
+hidden: both implementations are the same author's reading of the same
+registered policy, so a misreading of the policy is reproduced in both, and
+**the D.1d replay has still only run once with no second pair of eyes**.
+
+---
+
+## ADR-064 — Report the quantity the data can separate, not the one that tells a better story
+
+**Date.** 2026-08-12. **Status.** Accepted. **Context.** D.1d explained its
+closure as *"a last-in-queue maker's fills are adversely selected at the fill
+instant"*, and shipped `+2.74 expected vs −1.01 realized` as *"the stage's
+finding in one pair of numbers"* — into report.md, into the H6 register, and
+into a `PerformanceReport` consumed by the desktop dashboard. Audit finding A13
+perturbed the two independent WebSocket subscriptions the replay orders on,
+shifting `trades` by ±5 ms against `bbo` — 25–65× smaller than the feed's own
+123–330 ms bbo cadence. The **net** proved robust: negative under every
+ordering, with the published figure the least negative of the three. The
+**decomposition** did not: PUMP's realized edge flipped **−1.01 → +0.45** while
+inventory moved −2.24 → −4.08 to absorb it. That is forced, not coincidental —
+`MTM = edge + inventory` is an identity, so moving the instant a fill is marked
+only relocates P&L between the two buckets.
+
+**Decision.** Where an identity ties two reported terms together, the project
+reports the **invariant** as the finding and the **split** as a diagnostic
+carrying its stability. The fill-instant attribution is withdrawn from
+report.md, HYPOTHESES.md and the shipped report. H6 closes on *"capture does not
+survive an order-lifecycle fill model"* — which the perturbation test
+strengthens rather than weakens.
+
+**Consequences.** H6's reopening condition had been scoped to *"letting
+fill-instant adverse selection be measured rather than bounded"* — it named a
+test that could not settle anything, because the quantity is not separable at
+this resolution. Rewritten to the net surviving an order-lifecycle model, by
+order-level book data, venue fill-level ground truth, or a materially different
+cost structure. **A reopening condition must name something the data could
+actually show.** Generalised: before a decomposition is published as a
+mechanism, perturb the input ordering it depends on and report how far it
+moves — cheap here (one 166 s replay per point) and it is the difference
+between a finding and a story.
+

@@ -2701,3 +2701,60 @@ indexer-dependent features has not cleared it.
   - **Reopens only on order-level book data** (arrivals/cancels/order IDs) or
     venue fill-level ground truth — not on lower latency, not on a better queue
     model from this feed, not on more weeks of per-fill accounting.
+
+### 2026-08-12 — adversarial audit applied; H6's closure re-confirmed, its explanation withdrawn
+
+An external adversarial audit (`AUDIT.md`, evidence under `audit/`, commit
+`fb296cb`) re-derived C.27, D.1c and D.1d from raw and returned 13 findings.
+Verdict: **no closure is more likely a defect than a market fact** — sign
+convention, per-leg fee, bidirectional latency, cancel path, ALO condition and
+the decomposition identity all tested clean; the full 28.7M-record replay and
+the census both reproduce **bit-exactly**; pre-registration is clean with no
+bar ever edited. Corrections applied today, all gates green:
+
+  - **A4 (the decisive check)** — the always-last sweep rule read queue-ahead
+    from the current touch, a different price once the order is stale, and
+    credited `min(print, order)` instead of the print's residual. Corrected to
+    the order's own level. **PUMP −4.75 → −4.81, MERL −4.23 → −4.35** — more
+    negative, as the bias direction predicted. Cancels-credited end −4.39 /
+    −4.14. No queue model moves net toward zero by as much as 1 bps, so the
+    stop condition did not fire. MERL's fills fall 41% (4,270 → 2,536).
+  - **A5** — an ALO rejection inside `on_trade` suppressed two quote updates
+    instead of one. Fixed; **effect on the scored numbers: none, to every
+    digit.** Measured rather than assumed: on 2026-08-05, 0 of 298 rejections
+    fired at a trade event (PUMP 216/0, MERL 82/0). Real defect, unreachable
+    on this feed.
+  - **A1** — the known-answer gate executed **zero** of the 106 order-machine
+    lines it was offered over. Withdrawn and replaced by a differential gate
+    against a second implementation (`reference_replay.py`) plus a coverage
+    assertion that fails if it ever stops covering them. The new gate caught a
+    real defect on its first run (`_refresh_queue` shrinking in-flight orders'
+    queue). ADR-063.
+  - **A13** — net is robust to feed interleaving (±5 ms `trades` shift), but
+    the edge/inventory split is not: PUMP's realized edge flips −1.01 → +0.45.
+    Fill-instant attribution withdrawn from report.md, H6 and the shipped
+    `PerformanceReport`; H6's reopening condition rewritten, since it had been
+    scoped to a mechanism the data cannot pin down. ADR-064.
+  - **A2** — §2b's "delete every crossing fill" counterfactual was arithmetic
+    on a path-dependent ledger with mixed denominators. Re-run: **−4.35 /
+    −2.13**, not −3.98 / −2.57. Conclusion unchanged.
+  - **A3/A6/A8** — census intervals assume independence and are 2–17× too
+    narrow (`halfwidth·√n/sd = 1.9600` for all ten instruments). PUMP and MERL
+    survive HAC, day-clustered and block-bootstrap; **GMX flips** (+0.288 →
+    −0.070 day-clustered) and is now recorded as unresolved rather than a
+    survivor. One-sided bar no longer judged with a two-sided critical value;
+    capacity tier now divides by the recorded span, not 7 calendar days.
+  - **A10/A11/A12** — fee centralised into `research/microstructure/fees.py`
+    with a source, a date, and `ROUND_TRIP = 2 × MAKER` derived; per-leg vs
+    per-round-trip units marked where they sat adjacent; `None` metrics now
+    raise instead of publishing `0.0`.
+
+**Unchanged verdict:** the registered kill condition re-read against the
+corrected engine returns the same answer by a wider margin. **H6 stays closed;
+D.2 does not follow.**
+
+**Explicitly still unaudited:** H1, H2, H4, H5, H8–H11 — the Phase B and
+detection-track closures. Their inputs were not present in the audit clone, so
+they were read, not run. The leakage suites reach none of the census / D.1c /
+D.1d modules, and `spread.py` / `adverse.py` still have no direct test.
+

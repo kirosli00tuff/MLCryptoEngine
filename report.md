@@ -4796,6 +4796,17 @@ produce the open one (the C.18 gate).
 
 ## Stage D.1d results — the capture does not survive an order-lifecycle fill model: both survivors negative everywhere, and H6 closes — 2026-08-12
 
+> **Partly superseded, 2026-08-12, by the adversarial audit recorded in
+> `AUDIT.md`.** Three claims below did not survive it. The **known-answer gate
+> (§1) executed none of the code it was offered as a control over** (A1); the
+> **fill-instant adverse-selection mechanism (§2, §4) is not separable at this
+> feed's resolution** (A13); and **§2b's counterfactual arithmetic is wrong**
+> (A2). The *closure* holds and is now measured tighter — **PUMP −4.81, MERL
+> −4.35** under a corrected fill model. The figures in this section are left
+> exactly as published and remain reproducible as the `as_published` variant;
+> what replaced each claim is in **§Stage D.1d corrections**.
+
+
 One pass, 28.7M records, **130 s wall** (registered ETA 3–8 min), 19 sim
 variants (`research/microstructure/{fill_replay,d1d}.py`, 12 new tests
 including the ledger identity and a generous-mode equivalence check against
@@ -4806,9 +4817,34 @@ D.1c's engine). Summary at `logs/d1d_summary.json`; the project's first
 
 The new engine, fills relaxed to D.1c's assumption, reproduces D.1c's capped
 results to the printed digit: **PUMP +1.23 bps, MERL +6.67 bps** per filled
-notional (registered tolerance ±0.10; measured Δ ≈ 0). Same events, an
-independently implemented ledger — the accounting is trusted, so the
-tightened numbers below are differences in *fill model*, not arithmetic.
+notional (registered tolerance ±0.10; measured Δ ≈ 0 — in fact exact to 15
+significant figures).
+
+> **Withdrawn 2026-08-12 (A1).** The sentence that stood here — *"Same events,
+> an independently implemented ledger — the accounting is trusted, so the
+> tightened numbers below are differences in fill model, not arithmetic"* — was
+> not earned. In `generous` mode the engine short-circuits its entire order
+> machine: `_process_transitions`, `_crossing_fills`, `_cancel_stale`,
+> `_place_wanted`, `_target_price` and `_fill` — 106 lines, every line that
+> distinguishes D.1d from D.1c — execute **zero times** under this gate, traced
+> with `trace.Trace`. It validated the ledger D.1d *inherited*, not the model
+> D.1d *added*, and the 15-significant-figure agreement is the tell: two
+> independent implementations do not agree bit-for-bit across 286,378
+> floating-point accumulations. They agree because `_settle` is a
+> statement-by-statement transliteration of `InventorySim.on_trade`.
+>
+> The replacement control is a differential test against
+> `research/microstructure/reference_replay.py` — a second implementation of the
+> registered policy with a per-order lifecycle and a blotter-recomputed ledger,
+> sharing no code with `fill_replay` — over randomised event streams, plus
+> lifecycle-accounting invariants and a coverage assertion that fails if the
+> gate ever stops executing the order machine again
+> (`tests/test_fill_replay_gate.py`). **It is not independent in the strongest
+> sense: both implementations are the same author's reading of the same
+> registered policy, so a misreading of the policy would be reproduced in
+> both.** It caught one real divergence on its first run (§Stage D.1d
+> corrections). What remains true and should be said plainly: **the D.1d replay
+> ran once, and no second pair of eyes has checked it.**
 
 ### 2. The replay proper (Task 3) — the sign flips, on both
 
@@ -4829,8 +4865,8 @@ decomposition sums as an identity (edge + inventory + funding − fees = net):
 | max \|pos\| / time at cap | 560k / 32.4% | 71k / 18.9% | 71k / 16.7% |
 | time away from flat / max DD | 99.8% / $7,323 | 98.9% / $471 | 99.6% / $1,721 |
 
-**The mechanism, visible in the slippage line: a last-in-queue maker's fills
-are adversely selected at the fill instant.** The quote is placed expecting
+**The mechanism — the specific attribution is withdrawn below.** As published:
+*a last-in-queue maker's fills are adversely selected at the fill instant.* The quote is placed expecting
 +2.7 bps of half-spread; the fills that actually reach it — full sweeps,
 prints through the level, and the touch crossing a stale quote before the
 cancel lands — deliver **−1.0 to −2.7 bps** of realized edge, because by the
@@ -4845,6 +4881,22 @@ end** — improvement buys a tick of edge away and *increases* adverse fills
 immaterial (163/168 boundaries applied; the 5 skipped sit in the 08-04
 recorder hole at zero position — the hole is an explained gap carrying no
 events, not absorbed into any average).
+
+> **Corrected 2026-08-12 (A13).** The split between *realized edge* and
+> *inventory* is not a measurement at this feed's resolution. `trades` and `bbo`
+> arrive on two independent subscriptions ordered by local receive time, and
+> which lands first decides whether an event books as `through` (marked at the
+> pre-move mid) or `crossing` (marked at the post-move mid) — together 80–92% of
+> filled notional. Shifting every `trades` timestamp by −5 ms, a perturbation
+> 25–65× smaller than the feed's own 123–330 ms bbo cadence, moves PUMP's
+> realized edge from **−1.01 to +0.45 — a sign flip** — while inventory moves
+> −2.24 → −4.08 to absorb it. That is forced: `MTM = edge + inventory` is the
+> invariant, so relocating the marking instant only moves P&L between the two
+> buckets. **What the data supports is that the capture does not survive an
+> order-lifecycle fill model. It does not support attributing the loss to
+> adverse selection *at the fill instant* rather than to inventory drift.** The
+> *net* is robust to the same perturbation: negative under every ordering
+> tested, with the published figure the least negative of the three.
 
 ### 2b. Is the closure an artifact of the most pessimistic rule? No
 
@@ -4868,10 +4920,21 @@ of filled notional.
 
 **The counterfactual that matters: delete every crossing fill entirely** — the
 maximally generous reading of the pessimism — and both instruments are still
-negative. PUMP: edge −0.24 bps, less 1.5 fee, plus −2.24 inventory =
-**−3.98 bps**. MERL: −1.09 − 1.5 + 0.02 = **−2.57 bps**. MERL improved:
-+0.53 − 1.5 − 2.46 = **−3.43 bps**. The closure survives deleting the rule it
-could most plausibly be accused of resting on.
+negative.
+
+> **Arithmetic corrected 2026-08-12 (A2).** The figures originally given here
+> (PUMP **−3.98**, MERL **−2.57**, MERL improved **−3.43**) were obtained by
+> subtracting the crossing rows from the totals. That is invalid twice over: the
+> edge was recomputed on the *reduced* notional while inventory and fees were
+> carried over from the *full* notional, and the ledger is path dependent —
+> removing fills changes the position path, hence inventory, hence net. Re-run
+> properly (`_crossing_fills` disabled, all 8 days replayed) the answer is
+> **PUMP −4.35, MERL −2.13**, with *more* fills than subtraction implies
+> (24,394 vs 23,333; 3,370 vs 3,293), because orders that would have been run
+> over instead survive to be filled by the sweep and through rules. The
+> conclusion §2b was drawn for is unchanged, and slightly stronger on PUMP: the
+> closure survives deleting the rule it could most plausibly be accused of
+> resting on.
 
 ### 3. Latency sensitivity (Task 4) — the prominent number: **there is no zero-crossing**
 
@@ -4897,8 +4960,12 @@ explicitly: `d1d_PUMP_base.json` (32,018 leg records), `d1d_MERL_base.json`
 (4,270), `d1d_MERL_improved.json` (14,085) — equity gross and net hourly,
 drawdown as % of the $1,250 capital base, per-leg trade records, expectancy
 = net bps per filled notional, slippage expected-vs-realized (+2.74 vs
-−1.01 on PUMP — the stage's finding in one pair of numbers), and the run's
-applied latency percentiles. The TypeScript drift test passes untouched
+−1.01 on PUMP), and the run's applied latency percentiles.
+
+> **Corrected 2026-08-12 (A13).** *"The stage's finding in one pair of numbers"*
+> is withdrawn: that pair is the least stable quantity in the stage. Under a
+> −5 ms feed shift it reads +2.74 vs **+0.45**. The regenerated reports carry
+> the corrected engine's values, and the stage's finding is the **net**. The TypeScript drift test passes untouched
 (`make test`); no schema change was needed.
 
 ### 5. Verdict and caveats (Task 6) — H6 closes
@@ -4909,7 +4976,9 @@ closes and D.2 does not follow.** The closure is not marginal: negative at
 every cap, every latency, and both ends of the MERL range. The bounded
 range the project carries forward is honest about what happened: the census
 and D.1a measured *per-fill* accounting that credits the standing spread
-and charges only post-trade drift (+2.15 / +5.42 at the pessimistic end);
+and charges only post-trade drift (+2.15 / +5.42 at the pessimistic end,
+**per round trip** — halve to **+1.08 / +2.71** to compare with the per-leg
+figures in this section; A11);
 an order-lifecycle model shows the fills themselves arrive with the price
 already through the quote. That is Glosten–Milgrom operating at the fill
 instant — the external corroboration H3 already carried — now measured on
@@ -4940,3 +5009,182 @@ data** — a venue stream carrying arrivals, cancellations, or order IDs that
 would let fill-instant adverse selection be measured rather than bounded —
 or venue-provided fill-level ground truth. Recorders untouched throughout;
 zero credit cost.
+
+---
+
+## Stage D.1d corrections — the audit's findings applied; the closure holds and tightens — 2026-08-12
+
+An adversarial audit of this repository (`AUDIT.md`, evidence under `audit/`,
+commit `fb296cb`) re-derived C.27, D.1c and D.1d from the raw capture and
+returned 13 findings. Its verdict was that no closure is more likely a defect
+than a market fact, but that two things D.1d claimed for itself were not earned:
+its control, and its explanation. This section records what each correction did
+to the numbers. One pass, 28,658,883 records, **166 s wall**.
+
+### 1. Reproduction control — the published figures still reproduce exactly
+
+Before changing anything, the pre-correction engine is retained as the
+`as_published` variant so the 2026-08-12 figures stay regenerable:
+
+| | published 2026-08-12 | `as_published` today | exact |
+|---|---|---|---|
+| PUMP net (bps) | −4.750295 | −4.750295 | ✓ |
+| MERL net (bps) | −4.231439 | −4.231439 | ✓ |
+| PUMP / MERL fills | 32,018 / 4,270 | 32,018 / 4,270 | ✓ |
+
+### 2. A4 — the always-last sweep rule now reads the queue at its own price
+
+The rule compared each print against the depth at whatever level happened to be
+the *current touch*, which after any touch move is a different price. It also
+credited `min(print, order)` rather than the print's residual past the queue.
+Both errors admitted fills that always-last should exclude, and both were
+generous. Corrected: the depth at the order's own price is snapshotted when it
+joins, decremented by prints at that price, and only a print's residual past
+that queue reaches us (`QueueModel = "own_level"`). A less pessimistic end,
+crediting cancellations the feed can see, is reported alongside
+(`"own_level_cancels"`), because this feed cannot distinguish a cancellation
+ahead of us from one behind.
+
+| | PUMP net | MERL net | PUMP fills | MERL fills |
+|---|---|---|---|---|
+| as published (`touch`) | −4.7503 | −4.2314 | 32,018 | 4,270 |
+| **corrected, strict (`own_level`)** | **−4.8087** | **−4.3459** | 31,875 | 2,536 |
+| corrected, cancels credited | −4.3944 | −4.1436 | 43,364 | 4,250 |
+
+**The bias direction predicted by the audit is confirmed: both instruments move
+more negative** (PUMP −0.058, MERL −0.115). The stop condition — *net moving
+toward zero by more than ~1 bps* — is not triggered anywhere: the largest move
+toward zero is PUMP's +0.356 at the cancels-credited end, and both instruments
+are negative under every queue model. MERL's fill count falls 41% (4,270 →
+2,536), which is the correction doing exactly what it should: most of what used
+to reach a stale MERL quote was queue that was never actually cleared.
+
+The sweep row the old §2b leaned on shrinks and weakens, as the audit predicted:
+
+| | published | corrected |
+|---|---|---|
+| PUMP sweep | 20.1% of notional @ **+1.23 bps** | 17.1% @ **+0.71 bps** |
+| MERL sweep | 9.5% @ **+1.21 bps** | 1.2% @ **+1.16 bps** |
+
+### 3. A5 — reported separately: a real defect with **zero** effect here
+
+An ALO rejection raised inside `on_trade` set instance state cleared only at the
+end of the *next* `on_bbo`, so it cost that update its quote too — two
+suppressed updates where the policy documents one. The fix scopes suppression to
+the update that raised it. Effect on the scored numbers, isolated as the
+`a5_only` variant: **none, to every digit** — PUMP −4.750295, MERL −4.231439,
+identical placements (176,568 / 305,335), identical fills.
+
+That is a measurement, not an assumption. Instrumenting a full day (2026-08-05)
+to count where rejections fire: **PUMP 216 on bbo, 0 on trade; MERL 82 on bbo,
+0 on trade.** The leak needs an order to first become live *at a trade event*
+while already crossing; on this feed the book move that creates the crossing
+condition is itself a bbo event, which runs the check first. The defect is real
+and now fixed; it was unreachable on this data.
+
+### 4. A1 — the known-answer gate is withdrawn and replaced
+
+The gate executed none of the order machine (§D.1d.1, corrected in place). Its
+replacement is `tests/test_fill_replay_gate.py`: a differential test against
+`research/microstructure/reference_replay.py`, a second implementation of the
+registered policy with a per-order lifecycle and a ledger recomputed from a
+blotter in a late pass, sharing no code with `fill_replay`. Plus
+lifecycle-accounting invariants (every order reaches exactly one terminal state;
+no fill before its order could be live; fees exactly 1.5 bps per leg) and a
+coverage assertion that fails if the gate ever stops executing the order machine
+— A1 encoded as a test so it cannot recur silently.
+
+**The new gate found a real defect on its first run.** `_refresh_queue` was
+shrinking the queue-ahead of orders still *in flight*, which hold no queue
+position; the reference disagreed on one sweep fill (seed 41). Fixed. This is
+the first time any control in this project has caught something in the D.1d
+order machine, which is the point.
+
+**Stated plainly, as the audit asked:** both implementations are the same
+author's reading of the same registered policy. A misreading of the policy is
+reproduced in both. **The D.1d replay ran once and no second pair of eyes has
+checked it.**
+
+### 5. A13 — the mechanism claim is withdrawn; the closure is not
+
+Corrected in place at §D.1d.2 and §D.1d.4. In short: `net` is robust to feed
+interleaving (negative under trades −5 ms / base / +5 ms, with the published
+figure the least negative), but the *edge vs inventory* split is not — PUMP's
+realized edge flips −1.01 → +0.45 under a −5 ms shift while inventory absorbs
+it, because `MTM = edge + inventory` is the invariant. **The closure is that
+capture does not survive an order-lifecycle fill model. The attribution to
+fill-instant adverse selection is withdrawn.**
+
+### 6. Corrected headline, and the bars re-read
+
+| | PUMP | MERL |
+|---|---|---|
+| net at declared 2.5×Q cap, 162 ms floor (bps) | **−4.81** | **−4.35** |
+| net at 5× / 10× cap | −4.87 / −4.76 | −6.53 / −11.14 |
+| MERL price-improved end | — | −6.35 |
+| latency grid +0…+800 ms | −4.81, −4.92, −4.95, −4.88, −4.75, −4.66 | −4.35, −6.40, −6.67, −7.05, −6.35, −5.89 |
+| zero-crossing | none | none |
+| filled notional | $14.06M | $1.11M |
+| ALO rejection rate | 0.77% | 0.19% |
+
+**The registered kill condition is re-read against the corrected engine and
+returns the same verdict, by a wider margin: net ≤ 0 at the declared cap and
+latency floor on both instruments. H6 stays closed and D.2 does not follow.**
+
+### 7. Census statistics (A3, A6, A8)
+
+Applied to `research/microstructure/registered.py`. The scored C.27 categories
+are **unchanged**; what changes is the precision claimed for them.
+
+- **A3 — the intervals assume independence and are 2–17× too narrow.** The rows
+  are per-print `spread − adverse − 3.0`, and at 5 s and 60 s consecutive trades
+  share overlapping forward windows. Measured across all ten instruments,
+  `halfwidth·√n/sd = 1.9600` to four decimals — mechanically 1.96·sd/√n
+  everywhere, with no adjustment anywhere. Newey–West inflates the standard
+  error 1.3–3.6×; day-clustering (7 clusters) 2.2–28×. PUMP's ±0.03 bps is
+  really ±0.07 (HAC) or ±0.71 (day-clustered). `_horizon_stats` now reports
+  `ci95_lower_bps_day_clustered` and `se_day_clustered_bps` beside the
+  registered figure.
+  **PUMP and MERL survive every correction** (day-clustered lower bounds +3.59
+  and +1.73; block-bootstrap +4.16 and +5.12). **GMX does not**: it moves from
+  `ci95_lower = +0.288` (survivor) to **−0.070** day-clustered, block-bootstrap
+  +0.101 — straddling zero. GMX was one of C.27's three survivors and was
+  already discounted to ~zero on independent grounds; it should now be read as
+  **unresolved, not a survivor**. Neither PUMP nor MERL is affected, so the
+  chain into D.1c/D.1d is untouched.
+- **A6 — a one-sided bar was judged with a two-sided critical value.** C.27 used
+  `t(0.975)` = 1.96 where a one-sided 95% bound needs 1.645, making the bar ~19%
+  *harder* than registered. Corrected; `ci95_lower_bps_as_scored` preserves the
+  published figure. No instrument's category moves between the two — the
+  correction only loosens, and nothing that failed comes within reach. Against
+  A3 this conservatism is swamped many times over.
+- **A8 — the capacity tier divided by 7 calendar days** despite a ~5.75 h
+  recorder hole (96.4% coverage). `trades_per_day` now divides by the recorded
+  span, and `median_daily_usd` takes a true median rather than the upper element
+  on an even day count. Both errors were conservative; PUMP and MERL clear the
+  floor by ~300× either way, so no category moves.
+
+### 8. Low-severity (A10, A11, A12)
+
+- **A10** — the maker fee lived as three unsourced, undated literals. Now one
+  sourced, dated statement in `research/microstructure/fees.py`, with
+  `ROUND_TRIP = 2 × MAKER` derived rather than restated so they cannot drift.
+  Stated honestly there: this is a **documented** figure, not a measured one —
+  Stage 1 places no orders, so there is no fill to reconcile it against, and
+  under the project's "measured beats documented" rule it is the weakest input
+  in the chain until D.2 or later produces one.
+- **A11** — the per-round-trip and per-leg units are now marked where they sat
+  adjacent (§D.1d.5). Per round trip the bounded result is **−9.62**, not −4.81.
+- **A12** — `float(summary["net_bps"] or 0.0)` would have published a metric
+  computed on an empty fill set as `0.0`. `performance_report` now raises
+  instead.
+
+### 9. What remains unaudited
+
+**The Phase B and detection-track closures — H1, H2, H4, H5, H8–H11 — remain
+unaudited.** Their inputs were not present in the audit clone, so they were read
+and not run. Nothing in this section speaks to them. The leakage suites with the
+planted-future canary and prefix invariance cover the Phase B research pipeline
+and the detection pipeline; they reach **none** of the census / D.1c / D.1d
+modules, and `spread.py` and `adverse.py` still have no direct test of their own.
+

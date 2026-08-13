@@ -36,7 +36,13 @@ from backtest.reporting import (
 from data.recorder.reader import iter_day_records
 from research.microstructure.census import AGGRESSOR_SIGN
 from research.microstructure.d1c import FUNDING_ARCHIVE_DIR, SZ_DECIMALS, load_funding_archive
-from research.microstructure.fill_replay import MAKER_FEE_BPS, BoundedQuoteSim, FillModel
+from research.microstructure.fill_replay import (
+    MAKER_FEE_BPS,
+    AloSuppression,
+    BoundedQuoteSim,
+    FillModel,
+    QueueModel,
+)
 from research.microstructure.registered import SCORED_END_NS, SCORED_START_NS
 
 # The declared policy (registered before any replay ran).
@@ -61,7 +67,14 @@ NS_PER_HOUR = 3_600_000_000_000
 REPORTS_DIR = Path("data/processed/reports")
 
 
-def _sim(symbol: str, model: FillModel, cap_mult: float, latency_ms: float) -> BoundedQuoteSim:
+def _sim(
+    symbol: str,
+    model: FillModel,
+    cap_mult: float,
+    latency_ms: float,
+    queue_model: QueueModel = "own_level",
+    alo_suppression: AloSuppression = "update_scoped",
+) -> BoundedQuoteSim:
     quote = SURVIVOR_QUOTE_SIZES[symbol]
     return BoundedQuoteSim(
         symbol=symbol,
@@ -70,13 +83,44 @@ def _sim(symbol: str, model: FillModel, cap_mult: float, latency_ms: float) -> B
         latency_ns=int(latency_ms * 1e6),
         sz_decimals=SZ_DECIMALS[symbol],
         fill_model=model,
+        queue_model=queue_model,
+        alo_suppression=alo_suppression,
     )
 
 
 def build_variants(symbol: str) -> dict[str, BoundedQuoteSim]:
+    """Every scored variant, plus the audit-correction decomposition.
+
+    ``base`` is the corrected engine (audit A4 + A5). The four ``a*``/``as_*``
+    variants exist so the 2026-08-12 published figures stay reproducible and so
+    the two corrections can be read apart rather than conflated: ``as_published``
+    reproduces -4.75 / -4.23 exactly, and the singles isolate each fix.
+    """
     variants: dict[str, BoundedQuoteSim] = {
         "known_answer": _sim(symbol, "generous", CAP_MULTIPLE_DECLARED, 0.0),
         "base": _sim(symbol, "always_last", CAP_MULTIPLE_DECLARED, LATENCY_FLOOR_MS),
+        "as_published": _sim(
+            symbol, "always_last", CAP_MULTIPLE_DECLARED, LATENCY_FLOOR_MS, "touch", "legacy_leak"
+        ),
+        "a4_only": _sim(
+            symbol,
+            "always_last",
+            CAP_MULTIPLE_DECLARED,
+            LATENCY_FLOOR_MS,
+            "own_level",
+            "legacy_leak",
+        ),
+        "a4_only_cancels": _sim(
+            symbol,
+            "always_last",
+            CAP_MULTIPLE_DECLARED,
+            LATENCY_FLOOR_MS,
+            "own_level_cancels",
+            "legacy_leak",
+        ),
+        "a5_only": _sim(
+            symbol, "always_last", CAP_MULTIPLE_DECLARED, LATENCY_FLOOR_MS, "touch", "update_scoped"
+        ),
     }
     for mult in CAP_MULTIPLES_SENSITIVITY:
         variants[f"cap_{mult:g}x"] = _sim(symbol, "always_last", mult, LATENCY_FLOOR_MS)
@@ -226,6 +270,14 @@ def performance_report(sim: BoundedQuoteSim, run_id: str) -> PerformanceReport:
         for ts, side, size, _px, edge, fee in sim.trade_records
     ]
     summary = sim.summary()
+    # A12: summary() returns None for these when nothing filled. Coercing to 0.0
+    # would publish a metric computed on an empty set as though it were a
+    # measurement -- the exact failure the dashboard rule forbids. Refuse instead.
+    if summary["net_bps"] is None or summary["edge_bps"] is None:
+        raise ValueError(
+            f"{sim.symbol}/{sim.fill_model}: no fills, so expectancy and realized "
+            f"edge are undefined; a PerformanceReport must not report 0.0 for them"
+        )
     return PerformanceReport(
         run_id=run_id,
         mode=Mode.BACKTEST,
@@ -237,11 +289,11 @@ def performance_report(sim: BoundedQuoteSim, run_id: str) -> PerformanceReport:
         equity_curve=equity,
         drawdown=drawdown,
         trades=trades,
-        expectancy_bps_net=float(summary["net_bps"] or 0.0),
+        expectancy_bps_net=float(summary["net_bps"]),
         hit_rate=None,
         slippage=SlippageStats(
             expected_bps=float(summary["expected_edge_bps"] or 0.0),
-            realized_bps=float(summary["edge_bps"] or 0.0),
+            realized_bps=float(summary["edge_bps"]),
         ),
         latency=LatencyPercentiles(
             p50_ms=sim.latency_ns / 1e6, p95_ms=sim.latency_ns / 1e6, p99_ms=sim.latency_ns / 1e6
