@@ -1,0 +1,206 @@
+{
+ "trade_shift_ms": -5.0,
+ "records": 28658883,
+ "funding": {
+  "next": 1786410000000000000,
+  "applied": 326,
+  "skipped": 10
+ },
+ "elapsed_s": 114.3,
+ "variants": {
+  "PUMP": {
+   "base": {
+    "symbol": "PUMP",
+    "fill_model": "always_last",
+    "quote_size": 224065.0,
+    "cap_size": 560162.5,
+    "latency_ms": 162.0,
+    "fills": 36659,
+    "fills_sweep": 18509,
+    "fills_through": 10786,
+    "fills_crossing": 7364,
+    "placements": 186152,
+    "alo_rejections": 1290,
+    "alo_rejection_rate": 0.006882128871864363,
+    "cancels_started": 156263,
+    "filled_notional_usd": 11794285.42537992,
+    "final_position": 331650.5,
+    "max_abs_position": 560162.5,
+    "frac_time_away_from_flat": 0.9935884656653565,
+    "frac_time_at_cap": 0.217435681607247,
+    "mean_abs_notional_usd": 825.1531689152724,
+    "edge_usd": 526.4513252499938,
+    "inventory_usd": -4807.119790000018,
+    "funding_usd": -0.07376572642296172,
+    "fees_usd": 1769.1428138070064,
+    "net_usd": -6049.885044283454,
+    "edge_bps": 0.4463613574393683,
+    "inventory_bps": -4.075804185352052,
+    "funding_bps": -6.254361647398029e-05,
+    "fees_bps": 1.5000000000000155,
+    "net_bps": -5.129505371529173,
+    "expected_edge_bps": 2.858593835854571,
+    "edge_usd_by_reason": {
+     "crossing": -943.1835032500577,
+     "sweep": 532.9487094999945,
+     "through": 936.686119000064
+    },
+    "edge_bps_by_reason": {
+     "crossing": -2.4720894928195167,
+     "sweep": 2.211332539157856,
+     "through": 1.6820018514118737
+    },
+    "notional_by_reason": {
+     "crossing": 3815329.121335002,
+     "sweep": 2410079.443334008,
+     "through": 5568876.860710997
+    },
+    "max_drawdown_usd": 6052.456615627328,
+    "funding_hours": 163
+   },
+   "no_crossing": {
+    "symbol": "PUMP",
+    "fill_model": "always_last",
+    "quote_size": 224065.0,
+    "cap_size": 560162.5,
+    "latency_ms": 162.0,
+    "fills": 29873,
+    "fills_sweep": 18739,
+    "fills_through": 11134,
+    "fills_crossing": 0,
+    "placements": 187583,
+    "alo_rejections": 1363,
+    "alo_rejection_rate": 0.007213701269145682,
+    "cancels_started": 158816,
+    "filled_notional_usd": 8049220.333397554,
+    "final_position": 551262.5,
+    "max_abs_position": 560162.5,
+    "frac_time_away_from_flat": 0.9936477793989203,
+    "frac_time_at_cap": 0.1941590799581866,
+    "mean_abs_notional_usd": 821.7373160186887,
+    "edge_usd": 1440.48370224997,
+    "inventory_usd": -4009.769687500049,
+    "funding_usd": 0.024045751821323444,
+    "fees_usd": 1207.3830500096217,
+    "net_usd": -3776.6449895078795,
+    "edge_bps": 1.789594075681049,
+    "inventory_bps": -4.9815628364188855,
+    "funding_bps": 2.9873392484429353e-05,
+    "fees_bps": 1.4999999999999858,
+    "net_bps": -4.691938887345338,
+    "expected_edge_bps": 3.009854376214142,
+    "edge_usd_by_reason": {
+     "sweep": 523.9495894999964,
+     "through": 916.5341127500627
+    },
+    "edge_bps_by_reason": {
+     "sweep": 2.212352375867887,
+     "through": 1.6133526419125357
+    },
+    "notional_by_reason": {
+     "sweep": 2368291.756843009,
+     "through": 5680928.576554502
+    },
+    "max_drawdown_usd": 3786.1710456200303,
+    "funding_hours": 163
+   }
+  },
+  "MERL": {
+   "base": {
+    "symbol": "MERL",
+    "fill_model": "always_last",
+    "quote_size": 28510.0,
+    "cap_size": 71275.0,
+    "latency_ms": 162.0,
+    "fills": 3807,
+    "fills_sweep": 2120,
+    "fills_through": 723,
+    "fills_crossing": 964,
+    "placements": 309419,
+    "alo_rejections": 560,
+    "alo_rejection_rate": 0.0018065739937221555,
+    "cancels_started": 306251,
+    "filled_notional_usd": 940803.1858019996,
+    "final_position": 44056.0,
+    "max_abs_position": 71275.0,
+    "frac_time_away_from_flat": 0.9977922471705802,
+    "frac_time_at_cap": 0.15915670247475042,
+    "mean_abs_notional_usd": 720.0141846874359,
+    "edge_usd": -134.47574850000254,
+    "inventory_usd": -198.6917295000075,
+    "funding_usd": -0.050622460162499994,
+    "fees_usd": 141.1204778702997,
+    "net_usd": -474.3385783304723,
+    "edge_bps": -1.429371738206509,
+    "inventory_bps": -2.1119372521111335,
+    "funding_bps": -0.0005380770487011715,
+    "fees_bps": 1.4999999999999973,
+    "net_bps": -5.041847067366342,
+    "expected_edge_bps": 2.7573217425225023,
+    "edge_usd_by_reason": {
+     "crossing": -228.7938085000024,
+     "through": 60.08325150000008,
+     "sweep": 34.23480849999984
+    },
+    "edge_bps_by_reason": {
+     "crossing": -4.869253019452763,
+     "through": 1.6733736419229306,
+     "sweep": 3.0601212504496074
+    },
+    "notional_by_reason": {
+     "crossing": 469874.55280299997,
+     "through": 359054.6067819998,
+     "sweep": 111874.02621700008
+    },
+    "max_drawdown_usd": 488.0454222303432,
+    "funding_hours": 163
+   },
+   "no_crossing": {
+    "symbol": "MERL",
+    "fill_model": "always_last",
+    "quote_size": 28510.0,
+    "cap_size": 71275.0,
+    "latency_ms": 162.0,
+    "fills": 2894,
+    "fills_sweep": 2154,
+    "fills_through": 740,
+    "fills_crossing": 0,
+    "placements": 315472,
+    "alo_rejections": 565,
+    "alo_rejection_rate": 0.0017877653565879943,
+    "cancels_started": 312321,
+    "filled_notional_usd": 470235.2176050003,
+    "final_position": 61171.0,
+    "max_abs_position": 71275.0,
+    "frac_time_away_from_flat": 0.9933229461646856,
+    "frac_time_at_cap": 0.12384963998448487,
+    "mean_abs_notional_usd": 743.728965181671,
+    "edge_usd": 87.1746809999998,
+    "inventory_usd": -182.8729789999994,
+    "funding_usd": -0.23300495783749994,
+    "fees_usd": 70.53528264075008,
+    "net_usd": -166.4665855985872,
+    "edge_bps": 1.8538526621633626,
+    "inventory_bps": -3.8889681621765195,
+    "funding_bps": -0.004955072464037033,
+    "fees_bps": 1.5000000000000007,
+    "net_bps": -3.540070572477195,
+    "expected_edge_bps": 3.4247947019716953,
+    "edge_usd_by_reason": {
+     "through": 53.88130650000003,
+     "sweep": 33.29337449999989
+    },
+    "edge_bps_by_reason": {
+     "through": 1.5007892731273649,
+     "sweep": 2.993593449606992
+    },
+    "notional_by_reason": {
+     "through": 359019.80021300016,
+     "sweep": 111215.41739200006
+    },
+    "max_drawdown_usd": 240.9614987471287,
+    "funding_hours": 163
+   }
+  }
+ }
+}
